@@ -31,7 +31,7 @@ import java.util.Date;
  */
 
 
-public class InfoDumper implements Serializable {
+public class InfoDumper implements InfoManager, Serializable {
     private String message;
     private String mightyName;
 

@@ -1,8 +1,13 @@
 package uni.bielefeld.cmg.reflexiv.main;
 
 
+import uni.bielefeld.cmg.reflexiv.pipeline.Pipelines;
+import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import uni.bielefeld.cmg.reflexiv.util.Parameter;
+
+import java.io.IOException;
+import org.apache.commons.cli.ParseException;
 
 /**
  * Created by Liren Huang on 24.08.17.
@@ -36,6 +41,17 @@ public class Main {
         info.screenDump();
 
         Parameter parameter = null;
+        try{
+            parameter = new Parameter(args);
+        } catch (IOException e) {
+            e.fillInStackTrace();
+        } catch (ParseException e){
+            e.fillInStackTrace();
+        }
+        DefaultParam param = parameter.importCommandLine();
 
+        Pipelines pipes = new Pipelines();
+        pipes.setParameter(param);
+        pipes.reflexivMainPipe();
     }
 }

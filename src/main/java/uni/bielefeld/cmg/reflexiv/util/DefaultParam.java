@@ -1,6 +1,8 @@
 package uni.bielefeld.cmg.reflexiv.util;
 
 
+import java.io.Serializable;
+
 /**
  * Created by Liren Huang on 24.08.17.
  *
@@ -25,5 +27,79 @@ package uni.bielefeld.cmg.reflexiv.util;
  */
 
 
-public class DefaultParam {
+public class DefaultParam implements Serializable{
+
+    public DefaultParam () {
+        /**
+         * This is a class of data structure which stores the default parameters
+         */
+    }
+
+    public String mightyName = "Reflexiv";
+    public String inputFqPath;
+    public String inputFaPath;
+    public String outputPath;
+
+    public int kmerSize = 63;
+    public int subKmerSize = kmerSize - 1;
+    public int kmerBits = (1 << (kmerSize*2)) - 1;
+    public int kmerOverlap = kmerSize - 1;
+    public int minReadSize = kmerSize;
+    public int minKmerCoverage = 1;
+
+
+    public boolean cache = false;
+    public int partitions = 0;
+
+
+    public int[] initialAlphaCode(){
+        int[] alphaCodeInitial = new int[256];
+        for (int i=0; i<256; i++){
+            alphaCodeInitial[i] = 0;         // 'a' 'A' ASCII code and all other Char
+        }
+
+        alphaCodeInitial['c']=alphaCodeInitial['C']=1; // 'c' is ASCII number of c
+        alphaCodeInitial['g']=alphaCodeInitial['G']=2; // the same
+        alphaCodeInitial['t']=alphaCodeInitial['T']=3; // the same
+
+        return alphaCodeInitial;
+    }
+
+    public int[] initialAlphaCodeComplement(){
+        int[] alphaCodeComplementInitial = new int[256];
+        for (int i=0; i<256; i++){
+            alphaCodeComplementInitial[i] = 3;
+        }
+
+        alphaCodeComplementInitial['c']=alphaCodeComplementInitial['C']=2;
+        alphaCodeComplementInitial['g']=alphaCodeComplementInitial['G']=1;
+        alphaCodeComplementInitial['t']=alphaCodeComplementInitial['T']=0;
+        return alphaCodeComplementInitial;
+    }
+
+    public int[] initialNNNNNFilter(){
+        int[] alphaCodeNNNNNInitial = new int[256];
+        for (int i=0; i<256; i++){
+            alphaCodeNNNNNInitial[i] = 1;
+        }
+        alphaCodeNNNNNInitial['c']=alphaCodeNNNNNInitial['C']=0;
+        alphaCodeNNNNNInitial['g']=alphaCodeNNNNNInitial['G']=0;
+        alphaCodeNNNNNInitial['t']=alphaCodeNNNNNInitial['T']=0;
+        alphaCodeNNNNNInitial['a']=alphaCodeNNNNNInitial['A']=0;
+        return alphaCodeNNNNNInitial;
+    }
+
+    /* change kmer length and maximum bit */
+    public  void setKmerSize(int k){
+        kmerSize = k;
+        kmerBits = (1 << (kmerSize*2))-1;
+    }
+
+    public void setSubKmerSize(int s){
+        subKmerSize = s;
+    }
+
+    public void setKmerOverlap(int o){
+        kmerOverlap = o;
+    }
 }
