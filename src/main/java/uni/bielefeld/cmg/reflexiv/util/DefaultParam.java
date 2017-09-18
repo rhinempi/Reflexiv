@@ -50,6 +50,8 @@ public class DefaultParam implements Serializable{
 
     public boolean cache = false;
     public int partitions = 0;
+    public int maximumIteration = 100;
+    public int minimumIteration = 20;
 
 
     public int[] initialAlphaCode(){

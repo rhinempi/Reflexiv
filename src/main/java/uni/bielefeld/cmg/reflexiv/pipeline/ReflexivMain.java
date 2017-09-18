@@ -5,10 +5,8 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
-import org.apache.spark.api.java.function.PairFlatMapFunction;
-import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.api.java.function.*;
+import org.apache.spark.rdd.RDD;
 import scala.Tuple2;
 import scala.Tuple3;
 import scala.Tuple4;
@@ -19,6 +17,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 
 /**
@@ -124,15 +123,22 @@ public class ReflexivMain implements Serializable{
          */
         KmerExtraction RDDExtractKmerFromFastq = new KmerExtraction();
         KmerRDD = FastqRDD.flatMapToPair(RDDExtractKmerFromFastq);
+
         /**
-         * Step 4: counting kmer frequencies with reduceByKey function
+         * Step 4: filter kmers by coverage
+         */
+        KmerCoverageFilter RDDKmerFilter = new KmerCoverageFilter();
+        KmerRDD = KmerRDD.filter(RDDKmerFilter);
+
+        /**
+         * Step 5: counting kmer frequencies with reduceByKey function
          */
 
         KmerCounting RDDCountingKmerFreq = new KmerCounting();
         KmerRDD = KmerRDD.reduceByKey(RDDCountingKmerFreq);
 
         /**
-         * Step 5: extract sub-kmers from each K-mer
+         * Step 6: extract sub-kmers from each K-mer
          */
 
         SubKmerExtraction RDDextractSubKmer = new SubKmerExtraction();
@@ -140,22 +146,60 @@ public class ReflexivMain implements Serializable{
 
 
         /**
-         * Step 6: sort all sub-kmers
+         * Step 7: sort all sub-kmers
          */
 
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         /**
-         * Step 7: connect and extend overlap kmers
+         * Step 8: connect and extend overlap kmers
          */
         ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.flatMapToPair(KmerExtention);
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
 
         /**
-         * Step 8: filter extended Kmers
+         * Step 9: filter extended Kmers
          */
-        ExtendedKmerFilter KmerExtendedFilter = new ExtendedKmerFilter();
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.filter(KmerExtendedFilter);
+  //      ExtendedKmerFilter KmerExtendedFilter = new ExtendedKmerFilter();
+     //   ReflexivSubKmerRDD = ReflexivSubKmerRDD.filter(KmerExtendedFilter);
+
+        /**
+         * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
+         */
+        int partitionNumber = ReflexivSubKmerRDD.getNumPartitions();
+        int iterations = 0;
+        long contigNumber = 0;
+        while (iterations <= param.maximumIteration) {
+            iterations++;
+            if (iterations >= param.minimumIteration){
+                if (iterations % 3 == 0) {
+
+                    long currentContigNumber = ReflexivSubKmerRDD.count();
+                    if (contigNumber == currentContigNumber) {
+                        break;
+                    } else {
+                        contigNumber = currentContigNumber;
+                    }
+
+                    if (partitionNumber >= 32) {
+                        if (currentContigNumber / partitionNumber <= 40) {
+                            ReflexivSubKmerRDD = ReflexivSubKmerRDD.coalesce(partitionNumber / 4 + 1);
+                        }
+                    }
+                }
+            }
+
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+ //           ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + iterations);
+            KmerExtention = new ExtendReflexivKmer();
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
+ //           ReflexivSubKmerRDD = ReflexivSubKmerRDD.filter(KmerExtendedFilter);
+        }
+
+        /**
+         * Step 11: change reflexiv kmers to contig
+         */
+
 
         /**
          * Step N: save result
@@ -164,20 +208,25 @@ public class ReflexivMain implements Serializable{
 
       /*  KmerRDD = KmerRDD.sortByKey();
         KmerRDD.saveAsTextFile(param.outputPath);
+
 */
+        /**
+         * Step N+1: Stop
+         */
+        sc.stop();
     }
 
     /**
      *
      */
-    class ExtendReflexivKmer implements PairFlatMapFunction<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>, String, Tuple4<Integer, String, Integer, Integer>>, Serializable{
+    class ExtendReflexivKmer implements PairFlatMapFunction<Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>, String, Tuple4<Integer, String, Integer, Integer>>, Serializable{
 
         /* marker to identify similar SubKmers in the loop sequence */
         private int lineMarker=1;
 
         /* 1 stands for forward sub-kmer */
         /* 2 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = 2;
+        private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
 
         /* temporary capsule to store identical SubKmer units */
         List<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> tmpReflexivKmerExtendList = new ArrayList<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>();
@@ -187,7 +236,7 @@ public class ReflexivMain implements Serializable{
 
         /**
          *
-         * @param s is the input data structure Tuple2<SubKmer, Tuple2<Marker, TheRestSequence>>
+         * @param sIterator is the input data structure Tuple2<SubKmer, Tuple2<Marker, TheRestSequence>>
          *          s._1 represents sub kmer sequence
          *          s._2._1 represents sub kmer marker: 1, for forward sub kmer;
          *                                              2, for reverse (reflexiv) sub kmer;
@@ -195,19 +244,21 @@ public class ReflexivMain implements Serializable{
          *          s._2._2 represents the coverage of the K-mer
          * @return a list of extended Tuples for next iteration
          */
-        public Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> call (Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s){
+        public Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> call (Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> sIterator) {
 
+            while (sIterator.hasNext()) {
+                Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s = sIterator.next();
             /* receive the first sub-kmer, set new units */
-            if (lineMarker == 1){
-                resetSubKmerGroup(s);
+                if (lineMarker == 1) {
+                    resetSubKmerGroup(s);
 
-                return reflexivKmerConcatList.iterator();
-            }
+                   // return reflexivKmerConcatList.iterator();
+                }
 
             /* removal condition */
-            /**
-             * Deprecated function for killer k-mers
-             */
+                /**
+                 * Deprecated function for killer k-mers
+                 */
 /*
  *           else if (lineMarker == -1){
  *               if (s._2._1() == 0) {
@@ -223,54 +274,58 @@ public class ReflexivMain implements Serializable{
  *           }
 */
             /* next element of RDD */
-            else{/* if (lineMarker >= 2){ */
+                else {/* if (lineMarker >= 2){ */
                 /* initiate a new capsule for the current sub-kmer group */
-                reflexivKmerConcatList = new ArrayList<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>();
+              //      reflexivKmerConcatList = new ArrayList<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>();
 
-                if (tmpReflexivKmerExtendList.size() == 0){
-                    directKmerComparison(s);
-                }else { /* tmpReflexivKmerExtendList.size() != 0 */
-                    for (int i =0 ; i< tmpReflexivKmerExtendList.size(); i++){ // the tmpReflexivKmerExtendList is changing dynamically
-                        if (s._1.equals(tmpReflexivKmerExtendList.get(i)._1)) {
-                            if (s._2._1() == 1) {
-                                if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                    reflexivExtend(s, tmpReflexivKmerExtendList.get(i));
-                                    tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                    break;
-                                } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                    singleKmerRandomizer(s);
-                                    directKmerComparison(s);
-                                    break;
+                    if (tmpReflexivKmerExtendList.size() == 0) {
+                        directKmerComparison(s);
+                    } else { /* tmpReflexivKmerExtendList.size() != 0 */
+                        for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) { // the tmpReflexivKmerExtendList is changing dynamically
+                            if (s._1.equals(tmpReflexivKmerExtendList.get(i)._1)) {
+                                if (s._2._1() == 1) {
+                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
+                                        reflexivExtend(s, tmpReflexivKmerExtendList.get(i));
+                                        tmpReflexivKmerExtendList.remove(i); /* already extended */
+                                        break;
+                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
+                                        singleKmerRandomizer(s);
+                                        //directKmerComparison(s);
+                                        break;
+                                    }
+                                } else { /* if (s._2._1() == 2) { */
+                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
+                                        singleKmerRandomizer(s);
+                                        //directKmerComparison(s);
+                                        break;
+                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
+                                        reflexivExtend(tmpReflexivKmerExtendList.get(i), s);
+                                        tmpReflexivKmerExtendList.remove(i); /* already extended */
+                                        break;
+                                    }
                                 }
-                            } else{ /* if (s._2._1() == 2) { */
-                                if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                    singleKmerRandomizer(s);
-                                    directKmerComparison(s);
-                                    break;
-                                } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                    reflexivExtend(tmpReflexivKmerExtendList.get(i), s);
-                                    tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                    break;
-                                }
-                            }
                             /* return reflexivKmerConcatList.iterator(); */
-                        }
+                            }
 
                         /* new Sub-kmer group section */
-                        else { /* s._1 != tmpReflexivKmerExtendList.get(i)._1()*/
-                            if (lineMarker == 2){ // lineMarker == 2 represents the second line of the partition
-                                singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
+                            else { /* s._1 != tmpReflexivKmerExtendList.get(i)._1()*/
+                                //  if (lineMarker == 2) { // lineMarker == 2 represents the second line of the partition
+                                //     singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
+                                // }
+                                //  singleKmerRandomizer(s);
+                                tmpKmerRandomizer();
+                                resetSubKmerGroup(s);
+                                break;
                             }
-                            singleKmerRandomizer(s);
-                            resetSubKmerGroup(s);
-                            break;
-                        }
-                    } /* end of the while loop */
-                }// end of else condition
+                        } /* end of the while loop */
+                    }// end of else condition
 
-                lineMarker++;
-                return reflexivKmerConcatList.iterator();
-            }
+                    lineMarker++;
+                   // return reflexivKmerConcatList.iterator();
+                }
+            } // while loop
+            tmpKmerRandomizer();
+            return reflexivKmerConcatList.iterator();
         }
 
         /**
@@ -464,6 +519,17 @@ public class ReflexivMain implements Serializable{
                     )
             );
         }
+
+        /**
+         *
+         */
+        public void tmpKmerRandomizer(){
+            if (tmpReflexivKmerExtendList.size() != 0) {
+                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
+                                   singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
+                }
+            }
+        }
     }
 
     /**
@@ -596,6 +662,16 @@ public class ReflexivMain implements Serializable{
         }
     }
 
+    class KmerCoverageFilter implements Function<Tuple2<String, Integer>, Boolean>, Serializable{
+        public Boolean call(Tuple2<String, Integer> s){
+            if (s._2 >= param.minKmerCoverage){
+                return true;
+            }else{
+                return false;
+            }
+        }
+
+    }
 
     class ExtendedKmerFilter implements Function<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>, Boolean>, Serializable{
         public Boolean call(Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s){

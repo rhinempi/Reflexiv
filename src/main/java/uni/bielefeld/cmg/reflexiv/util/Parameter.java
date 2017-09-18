@@ -54,6 +54,8 @@ public class Parameter {
             OUTPUT_FILE = "outfile",
             KMER_SIZE = "kmer",
             OVERLAP = "overlap",
+            MINITERATIONS = "miniter",
+            MAXITERATIONS = "maxiter",
             MINCOVER= "cover",
             MINLENGTH = "minlength",
             PARTITIONS = "partition",
@@ -72,6 +74,8 @@ public class Parameter {
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(KMER_SIZE, o++);
         parameterMap.put(OVERLAP, o++);
+        parameterMap.put(MINITERATIONS, o++);
+        parameterMap.put(MAXITERATIONS, o++);
         parameterMap.put(MINCOVER, o++);
         parameterMap.put(MINLENGTH, o++);
         parameterMap.put(PARTITIONS, o++);
@@ -104,6 +108,14 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("kmer overlap")
                 .hasArg().withDescription("Overlap size between two adjacent kmers")
                 .create(OVERLAP));
+
+        parameter.addOption(OptionBuilder.withArgName("minimum iterations")
+                .hasArg().withDescription("Minimum iterations for contig construction")
+                .create(MINITERATIONS));
+
+        parameter.addOption(OptionBuilder.withArgName("maximum iterations")
+                .hasArg().withDescription("Maximum iterations for contig construction")
+                .create(MAXITERATIONS));
 
         parameter.addOption(OptionBuilder.withArgName("minimal kmer coverage")
                 .hasArg().withDescription("Minimal coverage to filter low freq kmers")
@@ -200,6 +212,24 @@ public class Parameter {
                 }else{
                     throw new RuntimeException("Parameter " + PARTITIONS+
                             " should be larger than 0");
+                }
+            }
+
+            if ((value = cl.getOptionValue(MINITERATIONS)) != null){
+                if (Integer.decode(value) >= 0 ) {
+                    param.minimumIteration = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + MINITERATIONS +
+                            " should be larger than 0");
+                }
+            }
+
+            if ((value = cl.getOptionValue(MAXITERATIONS)) != null){
+                if (Integer.decode(value) <= 100000 ) {
+                    param.maximumIteration = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + MAXITERATIONS +
+                            " should be larger than 100000");
                 }
             }
 
