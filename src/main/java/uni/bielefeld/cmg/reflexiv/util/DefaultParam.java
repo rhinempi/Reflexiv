@@ -46,12 +46,16 @@ public class DefaultParam implements Serializable{
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
     public int minKmerCoverage = 1;
-
+    public int maxKmerCoverage = 100000;
+    public int minContig = 100;
+    public boolean bubble= true;
 
     public boolean cache = false;
     public int partitions = 0;
     public int maximumIteration = 100;
     public int minimumIteration = 20;
+    public int frontClip = 0;
+    public int endClip = 0;
 
 
     public int[] initialAlphaCode(){

@@ -56,8 +56,13 @@ public class Parameter {
             OVERLAP = "overlap",
             MINITERATIONS = "miniter",
             MAXITERATIONS = "maxiter",
+            FRONTCLIP = "clipf",
+            ENDCLIP = "clipe",
             MINCOVER= "cover",
+            MAXCOVER= "maxcov",
+            BUBBLE = "bubble",
             MINLENGTH = "minlength",
+            MINCONTIG = "mincontig",
             PARTITIONS = "partition",
             CACHE = "cache",
             VERSION = "version",
@@ -76,9 +81,14 @@ public class Parameter {
         parameterMap.put(OVERLAP, o++);
         parameterMap.put(MINITERATIONS, o++);
         parameterMap.put(MAXITERATIONS, o++);
+        parameterMap.put(FRONTCLIP, o++);
+        parameterMap.put(ENDCLIP, o++);
         parameterMap.put(MINCOVER, o++);
+        parameterMap.put(MAXCOVER, o++);
         parameterMap.put(MINLENGTH, o++);
+        parameterMap.put(MINCONTIG, o++);
         parameterMap.put(PARTITIONS, o++);
+        parameterMap.put(BUBBLE, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
         parameterMap.put(HELP2, o++);
@@ -109,6 +119,10 @@ public class Parameter {
                 .hasArg().withDescription("Overlap size between two adjacent kmers")
                 .create(OVERLAP));
 
+        parameter.addOption(OptionBuilder.withArgName("remove bubbles")
+                .hasArg(false).withDescription("Set to NOT remove bubbles.")
+                .create(BUBBLE));
+
         parameter.addOption(OptionBuilder.withArgName("minimum iterations")
                 .hasArg().withDescription("Minimum iterations for contig construction")
                 .create(MINITERATIONS));
@@ -117,13 +131,29 @@ public class Parameter {
                 .hasArg().withDescription("Maximum iterations for contig construction")
                 .create(MAXITERATIONS));
 
+        parameter.addOption(OptionBuilder.withArgName("clip front nt")
+                .hasArg().withDescription("Clip N number of nucleotides from the beginning of the reads")
+                .create(FRONTCLIP));
+
+        parameter.addOption(OptionBuilder.withArgName("clip end nt")
+                .hasArg().withDescription("Clip N number of nucleotides from the end of the reads")
+                .create(ENDCLIP));
+
         parameter.addOption(OptionBuilder.withArgName("minimal kmer coverage")
                 .hasArg().withDescription("Minimal coverage to filter low freq kmers")
                 .create(MINCOVER));
 
+        parameter.addOption(OptionBuilder.withArgName("maximal kmer coverage")
+                .hasArg().withDescription("Maximal coverage to filter high freq kmers")
+                .create(MAXCOVER));
+
         parameter.addOption(OptionBuilder.withArgName("minimal read length")
                 .hasArg().withDescription("Minimal read length required for assembly")
                 .create(MINLENGTH));
+
+        parameter.addOption(OptionBuilder.withArgName("minimal contig length")
+                .hasArg().withDescription("Minimal contig length to be reported")
+                .create(MINCONTIG));
 
         parameter.addOption(OptionBuilder.withArgName("re-partition number")
                 .hasArg().withDescription("re generate N number of partitions")
@@ -215,6 +245,10 @@ public class Parameter {
                 }
             }
 
+            if (cl.hasOption(BUBBLE)){
+                param.bubble =false;
+            }
+
             if ((value = cl.getOptionValue(MINITERATIONS)) != null){
                 if (Integer.decode(value) >= 0 ) {
                     param.minimumIteration = Integer.decode(value);
@@ -229,7 +263,25 @@ public class Parameter {
                     param.maximumIteration = Integer.decode(value);
                 }else{
                     throw new RuntimeException("Parameter " + MAXITERATIONS +
-                            " should be larger than 100000");
+                            " should be smaller than 100000");
+                }
+            }
+
+            if ((value = cl.getOptionValue(FRONTCLIP)) != null){
+                if (Integer.decode(value) >0 ) {
+                    param.frontClip = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + FRONTCLIP +
+                            " should be larger than 1");
+                }
+            }
+
+            if ((value = cl.getOptionValue(ENDCLIP)) != null){
+                if (Integer.decode(value) > 0 ) {
+                    param.endClip = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + ENDCLIP +
+                            " should be larger than 1");
                 }
             }
 
@@ -242,7 +294,25 @@ public class Parameter {
                 }
             }
 
+            if ((value = cl.getOptionValue(MAXCOVER)) != null){
+                if (Integer.decode(value) >= 0 ) {
+                    param.maxKmerCoverage = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + MAXCOVER+
+                            " should be smaller than 1000000");
+                }
+            }
+
             if ((value = cl.getOptionValue(MINLENGTH)) != null){
+                if (Integer.decode(value) >= 0 ){
+                    param.minReadSize = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + MINLENGTH +
+                            " should be larger than 0");
+                }
+            }
+
+            if ((value = cl.getOptionValue(MINCONTIG)) != null){
                 if (Integer.decode(value) >= 0 ){
                     param.minReadSize = Integer.decode(value);
                 }else{

@@ -73,10 +73,10 @@ public class HelpParam {
         formatter.printOptions(new PrintWriter(err, true), 85, parameter, 2, 3); /* print formatted parameters */
         err.println();
         err.println("Usage:");
-        err.println("\trun fragment recruitment : ");
-        err.println(executable + " [parameters] -fastq query.fq -kmer 63 -outfile output_file");
-        err.println(executable + " [parameters] -fasta query.txt -kmer 63 -outfile output_file");
-        err.println(executable2 + " [parameters] -fastq query.fq -kmer 63 -outfile output_file\"");
+        err.println("\trun de novo genome assembly : ");
+        err.println(executable + " [parameters] -fastq input.fq -kmer 63 -outfile output_file");
+        err.println(executable + " [parameters] -fasta input.txt -kmer 63 -outfile output_file");
+        err.println(executable2 + " [parameters] -fastq input.fq -kmer 63 -outfile output_file\"");
         err.println();
     }
 }
