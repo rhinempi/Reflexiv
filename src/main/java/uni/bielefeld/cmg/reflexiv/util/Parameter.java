@@ -314,9 +314,9 @@ public class Parameter {
 
             if ((value = cl.getOptionValue(MINCONTIG)) != null){
                 if (Integer.decode(value) >= 0 ){
-                    param.minReadSize = Integer.decode(value);
+                    param.minContig = Integer.decode(value);
                 }else{
-                    throw new RuntimeException("Parameter " + MINLENGTH +
+                    throw new RuntimeException("Parameter " + MINCONTIG +
                             " should be larger than 0");
                 }
             }
