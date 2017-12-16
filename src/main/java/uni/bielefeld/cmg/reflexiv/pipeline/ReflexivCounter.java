@@ -188,6 +188,10 @@ public class ReflexivCounter implements Serializable{
 
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
+        BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
+
+        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + 0);
 
         /**
          * Step 8: connect and extend overlap kmers
@@ -204,33 +208,38 @@ public class ReflexivCounter implements Serializable{
         /**
          * first three extensions fit in one Long 1 2 4 8 16 32(x)
          */
+        int iterations = 0;
         for (int i = 0; i < 4; i++) {
+            iterations++;
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+
+            ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
         }
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
-        BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
-        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + 0);
 
         /**
          * first extension to array
          */
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+
+        iterations++;
+        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
         ExtendReflexivKmerToArrayFirstTime KmerExtentionToArrayFirst = new ExtendReflexivKmerToArrayFirstTime();
         ReflexivLongSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtentionToArrayFirst);
 
         BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
-        ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + 1);
 
         /**
          * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
          */
+        ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
 
-        /*
         int partitionNumber = ReflexivSubKmerRDD.getNumPartitions();
-        int iterations = 0;
         long contigNumber = 0;
         while (iterations <= param.maximumIteration) {
             iterations++;
@@ -253,11 +262,16 @@ public class ReflexivCounter implements Serializable{
                 }
             }
 
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-      //      ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + iterations);
-      //      KmerExtention = new ExtendReflexivKmer();
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
- //           ReflexivSubKmerRDD = ReflexivSubKmerRDD.filter(KmerExtendedFilter);
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+
+            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
+
+            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
+
         }
 
         /**
@@ -435,7 +449,7 @@ public class ReflexivCounter implements Serializable{
 
                 for (int i = 0; i < s._2._2().length; i++) {
                     if (i == 0) {
-                        for (int j = 1; j <= firstSuffixBlockLength; j++) {
+                        for (int j = 1; j <= firstSuffixBlockLength; j++) { // j=0 including the C marker; for debug
                             Long currentNucleotideBinary = s._2._2()[i] >>> 2 * (firstSuffixBlockLength - j);
                             currentNucleotideBinary &= 3L;
                             char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
@@ -443,12 +457,17 @@ public class ReflexivCounter implements Serializable{
                         }
                     } else {
                         for (int j = 1; j <= 31; j++) {
+                            if (s._2._2()[i] == null){
+                                System.out.println(subKmer + "\t" + subString);
+                                continue;
+                            }
                             Long currentNucleotideBinary = s._2._2()[i] >>> 2 * (31 - j);
                             currentNucleotideBinary &= 3L;
                             char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
                             subString += currentNucleotide;
                         }
                     }
+                    subString += ">----<";
                 }
 
                 reflexivKmerStringList.add(
@@ -486,7 +505,8 @@ public class ReflexivCounter implements Serializable{
 
         /* 1 stands for forward sub-kmer */
         /* 2 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+       // private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+        private int randomReflexivMarker = 2;
 
         long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
         long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
@@ -731,23 +751,23 @@ public class ReflexivCounter implements Serializable{
                         }
 
                         // the last block
-                        newReflexivLong = currentSubKmer._2._2()[blockSize-1] << 2*(31-param.subKmerSize);
+                        newReflexivLong = currentSubKmer._2._2()[blockSize - 1] << 2 * param.subKmerSize;
                         newReflexivLong |= currentSubKmer._1;
                         newReflexivLong &= maxBlockBinary;
-                        newReflexivLongArray[blockSize-1] = newReflexivLong;
+                        newReflexivLongArray[blockSize - 1] = newReflexivLong;
 
                         // 2nd and so on
                         for (int i=blockSize-2; i>=1;i--){
-                            newReflexivLong = currentSubKmer._2._2()[i] << 2*(31-param.subKmerSize);
-                            newReflexivLong |= (currentSubKmer._2._2()[i+1] >>> 2*param.subKmerSize);
+                            newReflexivLong = currentSubKmer._2._2()[i] << 2*param.subKmerSize;
+                            newReflexivLong |= (currentSubKmer._2._2()[i+1] >>> 2*(31- param.subKmerSize));
                             newReflexivLong &=maxBlockBinary;
                             newReflexivLongArray[i] = newReflexivLong;
                         }
 
                         // 1st
-                        newReflexivLong = currentSubKmer._2._2()[1] >>> 2*param.subKmerSize;
+                        newReflexivLong = currentSubKmer._2._2()[1] >>> 2*(31-param.subKmerSize);
                         if (firstPrefixLength >= param.subKmerSize) {
-                            newReflexivLong |= (currentSubKmer._2._2()[0] << 2 * (31 - param.subKmerSize));
+                            newReflexivLong |= (currentSubKmer._2._2()[0] << 2 * param.subKmerSize);
                         }
                         newReflexivLong &= maxPrefixLengthBinary;
                         newReflexivLong |= (1L << 2*firstPrefixLength); // add C marker
@@ -816,9 +836,9 @@ public class ReflexivCounter implements Serializable{
             int reflexedFirstPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(reflexedSubKmer._2._2()[0])/2 + 1);
             int reflexedBlockSize = reflexedSubKmer._2._2().length;
             int reflexedKmerLength=(reflexedSubKmer._2._2().length -1)*31 + reflexedFirstPrefixLength;
-            int concatenateLength = forwardFirstSuffixLength + reflexedFirstPrefixLength;
-            int concatBlockSize = (concatenateLength-param.subKmerSize)/31;
-            if ((concatenateLength-param.subKmerSize)%31 !=0 ){
+            int concatenateLength = forwardKmerLength + reflexedKmerLength;
+            int concatBlockSize = concatenateLength/31;
+            if (concatenateLength%31 !=0 ){
                 concatBlockSize++;
             }
 
@@ -876,15 +896,15 @@ public class ReflexivCounter implements Serializable{
 
                 if (forwardFirstSuffixLength < 31) {  // well, current version forwardFirstSuffixLength will not be larger than 31
                     if (reflexedBlockSize > 1) {
-                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedFirstPrefixLength - 1] << 2 * forwardFirstSuffixLength);
+                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedBlockSize - 1] << 2 * forwardFirstSuffixLength);
                         newReflexivLong &= maxBlockBinary;
                         newReflexivLongArray[concatBlockSize - forwardBlockSize] = newReflexivLong;
                     } else if (reflexedFirstPrefixLength > (31 - forwardFirstSuffixLength) && reflexedBlockSize == 1) {
-                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedFirstPrefixLength - 1] << 2 * forwardFirstSuffixLength);
+                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedBlockSize - 1] << 2 * forwardFirstSuffixLength);
                         newReflexivLong &= maxBlockBinary;
                         newReflexivLongArray[concatBlockSize - forwardBlockSize] = newReflexivLong;
                     } else { //reflexedFirstPrefixLength <= (31-forwardFirstSuffixLength)
-                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedFirstPrefixLength - 1] << 2 * forwardFirstSuffixLength);
+                        newReflexivLong |= (reflexedSubKmer._2._2()[reflexedBlockSize - 1] << 2 * forwardFirstSuffixLength);
                         newReflexivLong &= maxBlockBinary;
                         newReflexivLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength)); // add C marker
                         newReflexivLongArray[concatBlockSize - forwardBlockSize] = newReflexivLong;
@@ -912,7 +932,7 @@ public class ReflexivCounter implements Serializable{
 
                         //reflexedFirstPrefixLength + forwardFirstSuffixLength <= 31
                         if (reflexedFirstPrefixLength <= (31 - forwardFirstSuffixLength)) {
-                            newReflexivLong |= (1L << 2 * (31 - forwardFirstSuffixLength)); // add C marker
+                            newReflexivLong |= (1L << 2 * (forwardFirstSuffixLength + reflexedFirstPrefixLength)); // add C marker
                             newReflexivLongArray[0] = newReflexivLong;
                         } else {
                             newReflexivLongArray[1] = newReflexivLong;
@@ -1066,19 +1086,56 @@ public class ReflexivCounter implements Serializable{
                     }
 
                 } else if (forwardFirstSuffixLength < 31 && forwardFirstSuffixLength + param.subKmerSize >= 31) {
-                    newForwardLong = (forwardSubKmer._2._2()[0] & maxSuffixLengthBinary);
-                    newForwardLong |= (forwardSubKmer._1 << 2 * (forwardFirstSuffixLength));
-                    newForwardLong &= maxBlockBinary;
-                    newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong;
+                    if (reflexedBlockSize >1) {
+                        newForwardLong = (forwardSubKmer._2._2()[0] & maxSuffixLengthBinary);
+                        newForwardLong |= (forwardSubKmer._1 << 2 * (forwardFirstSuffixLength));
+                        newForwardLong &= maxBlockBinary;
+                        newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong;
 
-                    newForwardLong = forwardSubKmer._1 >>> 2 * (31 - forwardFirstSuffixLength);
-                    newForwardLong |= (reflexedSubKmer._2._2()[reflexedBlockSize - 1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
-                    newForwardLong &= maxBlockBinary;
-                    newForwardLongArray[concatBlockSize - forwardBlockSize - 1] = newForwardLong;
+                        newForwardLong = forwardSubKmer._1 >>> 2 * (31 - forwardFirstSuffixLength);
+                        newForwardLong |= (reflexedSubKmer._2._2()[reflexedBlockSize - 1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
+                        if (reflexedBlockSize == 2 && forwardFirstSuffixLength + reflexedFirstPrefixLength <= 31){
+                            Long maxFirstBlockRestBinary=  ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength));
+                            newForwardLong &= maxFirstBlockRestBinary;
+                            newForwardLong |= (1L << 2*(forwardFirstSuffixLength + reflexedFirstPrefixLength));
+                        }else {
+                            newForwardLong &= maxBlockBinary;
+                        }
+                        newForwardLongArray[concatBlockSize - forwardBlockSize - 1] = newForwardLong;
+                    }else if (reflexedBlockSize == 1 && reflexedFirstPrefixLength >param.subKmerSize){ // forwardFirstSuffixLength + reflexedFirstPrefixLength >31
+                        newForwardLong = (forwardSubKmer._2._2()[0] & maxSuffixLengthBinary);
+                        newForwardLong |= (forwardSubKmer._1 << 2 * (forwardFirstSuffixLength));
+                        newForwardLong &= maxBlockBinary;
+                        newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong; // concatBlockSize - forwardBlockSize = 1
+
+                        newForwardLong = forwardSubKmer._1 >>> 2 * (31 - forwardFirstSuffixLength);
+                        Long maxFirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength - param.subKmerSize));
+                        newForwardLong |= ((reflexedSubKmer._2._2()[0] & maxFirstBlockRestBinary) << 2*(param.subKmerSize + forwardFirstSuffixLength -31));
+                        newForwardLong |= (1L << 2*(forwardFirstSuffixLength+reflexedFirstPrefixLength -31));
+                        newForwardLongArray[concatBlockSize - forwardBlockSize -1] = newForwardLong; // concateBlockSize - forwardBlockSize = 0
+                    }else if (reflexedBlockSize == 1 && reflexedFirstPrefixLength <= param.subKmerSize && forwardFirstSuffixLength + reflexedFirstPrefixLength > 31){ // reflexedBlockSize == 1 && reflexedFirstPrefixLength <= param.subKmerSize
+                        newForwardLong = (forwardSubKmer._2._2()[0] & maxSuffixLengthBinary);
+                        newForwardLong |= (forwardSubKmer._1 << 2 * (forwardFirstSuffixLength));
+                        newForwardLong &= maxBlockBinary;
+                        newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong;
+
+                        newForwardLong = forwardSubKmer._1 >>> 2*(31 - forwardFirstSuffixLength);
+                        Long maxFirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength -31));
+                        newForwardLong &= maxFirstBlockRestBinary;
+                        newForwardLong |= (1L << 2*(forwardFirstSuffixLength+reflexedFirstPrefixLength-31));
+                        newForwardLongArray[concatBlockSize - forwardBlockSize -1] =newForwardLong;
+                    } else {
+                        newForwardLong = (forwardSubKmer._2._2()[0] & maxSuffixLengthBinary);
+                        newForwardLong |= (forwardSubKmer._1 << 2 * (forwardFirstSuffixLength));
+                        Long maxFirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength));
+                        newForwardLong &= maxFirstBlockRestBinary;
+                        newForwardLong |= (1L << 2*(reflexedFirstPrefixLength + forwardFirstSuffixLength));
+                        newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong; // concatBlockSize - forwardBlockSize = 0
+                    }
 
                     // reflected 3rd or 2nd and so on
                     int k = concatBlockSize - forwardBlockSize - 1; // concatenate array index
-                    for (int i = reflexedBlockSize - 1; i > 1; i--) {
+                    for (int i = reflexedBlockSize - 1; i > 2; i--) {
                         k--;
                         newForwardLong = reflexedSubKmer._2._2()[i] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
                         newForwardLong |= (reflexedSubKmer._2._2()[i - 1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
@@ -1086,97 +1143,87 @@ public class ReflexivCounter implements Serializable{
                         newForwardLongArray[k] = newForwardLong;
                     }
 
-                    if (reflexedFirstPrefixLength >= param.subKmerSize) { // && param.subKmerSize - reflexedFirstPrefixLength + (param.subKmerSize + forwardFirstSuffixLength -31) > 31 is impossible
-                        newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
-                        newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
-                        newForwardLong &= maxBlockBinary;
-                        newForwardLongArray[1] = newForwardLong;
+                    if (reflexedBlockSize >1) {
+                        if (reflexedFirstPrefixLength >= param.subKmerSize) { // && param.subKmerSize - reflexedFirstPrefixLength + (param.subKmerSize + forwardFirstSuffixLength -31) > 31 is impossible
+                            if (reflexedBlockSize > 2) {
+                                newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
+                                newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
+                                newForwardLong &= maxBlockBinary;
+                                newForwardLongArray[1] = newForwardLong;
+                            }
 
-                        newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
-                        Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength - param.subKmerSize));
-                        newForwardLong |= ((reflexedSubKmer._1 & maxfirstBlockRestBinary) << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));  // also removed C marker
-                        newForwardLong |= 1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31); // add C marker
-                        newForwardLongArray[0] = newForwardLong;
-                    } else if (reflexedFirstPrefixLength < param.subKmerSize && forwardFirstSuffixLength + reflexedFirstPrefixLength >= 31) {
-                        newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
-                        newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
-                        newForwardLong &= maxBlockBinary;
-                        newForwardLongArray[1] = newForwardLong;
+                            newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
+                            Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength - param.subKmerSize));
+                            newForwardLong |= ((reflexedSubKmer._1 & maxfirstBlockRestBinary) << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));  // also removed C marker
+                            newForwardLong |= 1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31); // add C marker
+                            newForwardLongArray[0] = newForwardLong;
+                        } else if (reflexedFirstPrefixLength < param.subKmerSize && forwardFirstSuffixLength + reflexedFirstPrefixLength > 31) {
+                            if (reflexedBlockSize >2) {
+                                newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
+                                newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
+                                newForwardLong &= maxBlockBinary;
+                                newForwardLongArray[1] = newForwardLong;
+                            }
 
-                        newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
-                        newForwardLong |= 1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31);
-                        newForwardLongArray[0] = newForwardLong;
-                    } else { // forwardFirstSuffixLength+reflexedFirstPrefixLength < 31
-                        newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
-                        newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
-                        Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength));
-                        newForwardLong &= maxfirstBlockRestBinary;
-                        newForwardLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength)); // add C marker
-                        newForwardLongArray[0] = newForwardLong;
+                            newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
+                            Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31));
+                            newForwardLong &= maxfirstBlockRestBinary;
+                            newForwardLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31));
+                            newForwardLongArray[0] = newForwardLong;
+                        } else { // forwardFirstSuffixLength+reflexedFirstPrefixLength <= 31
+                            if (reflexedBlockSize >= 3) {
+                                newForwardLong = reflexedSubKmer._2._2()[2] >>> 2 * (62 - param.subKmerSize - forwardFirstSuffixLength);
+                                newForwardLong |= (reflexedSubKmer._2._2()[1] << 2 * (param.subKmerSize + forwardFirstSuffixLength - 31));
+                                Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength));
+                                newForwardLong &= maxfirstBlockRestBinary;
+                                newForwardLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength)); // add C marker
+                                newForwardLongArray[0] = newForwardLong;
+                            }
+                        }
                     }
-
 
                 } else {// forwardFirstSuffixLength == 31
                     newForwardLong = forwardSubKmer._2._2()[0] & maxBlockBinary; // remove C marker
                     newForwardLongArray[concatBlockSize - forwardBlockSize] = newForwardLong;
 
-                    newForwardLong = forwardSubKmer._1;
-                    newForwardLongArray[concatBlockSize - forwardBlockSize - 1] = newForwardLong;
+                    if (reflexedBlockSize >1) {
+                        newForwardLong = forwardSubKmer._1;
+                        newForwardLong |= (reflexedSubKmer._2._2()[reflexedBlockSize-1] << 2*param.subKmerSize);
+                        newForwardLong &= maxBlockBinary;
+                        newForwardLongArray[concatBlockSize - forwardBlockSize - 1] = newForwardLong;
+                    }else{
+                        newForwardLong = forwardSubKmer._1;
+                        Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength -31));
+                        newForwardLong &= maxfirstBlockRestBinary;
+                        newForwardLongArray[0] = newForwardLong;
+                    }
 
                     int k = concatBlockSize - forwardBlockSize - 1; // concatenate array index
                     for (int i = reflexedBlockSize - 1; i > 1; i--) {
                         k--;
-                        newForwardLong = reflexedSubKmer._2._2()[i];
+                        newForwardLong = reflexedSubKmer._2._2()[i] >>> 2*(31-param.subKmerSize);
+                        newForwardLong |= reflexedSubKmer._2._2()[i-1] << 2*param.subKmerSize;
+                        newForwardLong &= maxBlockBinary;
                         newForwardLongArray[k] = newForwardLong;
                     }
 
-                    if (reflexedFirstPrefixLength >= param.subKmerSize) {
-                        newForwardLong = reflexedSubKmer._2._2()[1];
-                        newForwardLongArray[1] = newForwardLong;
-
-                        newForwardLong = reflexedSubKmer._2._2()[0];
-                        Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength - param.subKmerSize));
-                        newForwardLong &= maxfirstBlockRestBinary;
-                        newForwardLong |= (1L << 2 * (param.subKmerSize - reflexedFirstPrefixLength)); // add C marker
-                        newForwardLongArray[0] = newForwardLong;
-                    } else { // (reflexedFirstPrefixLength < param.subKmerSize){
-                        newForwardLong = reflexedSubKmer._2._2()[1];
-                        Long maxfirstBlockRestBinary = ~((~0L) << 2 * (31 - param.subKmerSize + reflexedFirstPrefixLength));
-                        newForwardLong &= maxfirstBlockRestBinary;
-                        newForwardLong |= (1L << 2 * (31 - param.subKmerSize + reflexedFirstPrefixLength)); // add C marker
-                        newForwardLongArray[0] = newForwardLong;
+                    if (reflexedBlockSize >1) {
+                        if (reflexedFirstPrefixLength >= param.subKmerSize) {
+                            newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (31 - param.subKmerSize);
+                            newForwardLong |= (reflexedSubKmer._2._2()[0] << 2 * param.subKmerSize);
+                            Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31));
+                            newForwardLong &= maxfirstBlockRestBinary;
+                            newForwardLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31)); // add C marker
+                            newForwardLongArray[0] = newForwardLong;
+                        } else { // reflexedFirstPrefixLength < param.subKmerSize
+                            newForwardLong = reflexedSubKmer._2._2()[1] >>> 2 * (31 - param.subKmerSize);
+                            Long maxfirstBlockRestBinary = ~((~0L) << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31));
+                            newForwardLong &= maxfirstBlockRestBinary;
+                            newForwardLong |= (1L << 2 * (reflexedFirstPrefixLength + forwardFirstSuffixLength - 31)); // add C marker
+                            newForwardLongArray[0] = newForwardLong;
+                        }
                     }
                 }
-
-                //} else { /* reflexedBlockSize == 1 */
-                /*
-                newForwardSubKmer = (reflexedSubKmer._2._2()[0] & maxPrefixLengthBinary) << (2 * (param.subKmerSize - reflexedFirstPrefixLength));
-                newForwardSubKmer |= reflexedSubKmer._1 >>> 2 * reflexedFirstPrefixLength;
-
-                if (concatenateLength > 31) {
-                    Long newForwardLonghead = forwardSubKmer._1 & maxPrefixLengthBinary;
-                    newForwardLonghead >>>= 2 * (31 - forwardFirstSuffixLength);
-                    newForwardLonghead |= (1L << 2 * (concatenateLength - 31)); // add the C maker
-
-                    newForwardLong = forwardSubKmer._1 << 2 * forwardFirstSuffixLength;
-                    newForwardLong |= forwardSubKmer._2._2()[0];
-                    newForwardLong &= maxBlockBinary;
-
-                    newForwardLongArray = new Long[concatenateLength / 31 + 1];
-                    newForwardLongArray[0] = newForwardLonghead;
-                    newForwardLongArray[1] = newForwardLong;
-                } else {
-                    newForwardLong = reflexedSubKmer._1 & maxPrefixLengthBinary;
-                    newForwardLong |= (1L << (2 * reflexedFirstPrefixLength)); // add the C marker
-                    newForwardLong <<= (2 * forwardFirstSuffixLength);
-                    newForwardLong |= forwardSubKmer._2._2()[0];
-
-                    // the first time only one element
-                    newForwardLongArray = new Long[1];
-                    newForwardLongArray[0] = newForwardLong;
-                }
-                */
-                //}
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -1263,7 +1310,8 @@ public class ReflexivCounter implements Serializable{
 
         /* 1 stands for forward sub-kmer */
         /* 2 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+ //       private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+        private int randomReflexivMarker =2;
 
         long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
         long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
@@ -1627,7 +1675,7 @@ public class ReflexivCounter implements Serializable{
                         newForwardLonghead |= (1L << 2*(concatenateLength -31)); // add the C maker
 
                         newForwardLong = forwardSubKmer._1 << 2*forwardSuffixLength;
-                        newForwardLong |= forwardSubKmer._2._2();
+                        newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
                         newForwardLong &= maxBlockBinary;
 
                         newForwardLongArray = new Long[concatenateLength/31+1];
@@ -1637,7 +1685,7 @@ public class ReflexivCounter implements Serializable{
                         newForwardLong = reflexedSubKmer._1 & maxPrefixLengthBinary;
                         newForwardLong |= (1L << (2 * reflexedPrefixLength)); // add the C marker
                         newForwardLong <<= (2 * forwardSuffixLength);
-                        newForwardLong |= forwardSubKmer._2._2();
+                        newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
 
                         // the first time only one element
                         newForwardLongArray = new Long[1];
@@ -1730,7 +1778,8 @@ public class ReflexivCounter implements Serializable{
 
         /* 1 stands for forward sub-kmer */
         /* 2 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+   //     private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+        private int randomReflexivMarker=2;
 
         long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
 
@@ -2042,7 +2091,7 @@ public class ReflexivCounter implements Serializable{
                      newForwardLong = reflexedSubKmer._1 & maxPrefixLengthBinary;
                      newForwardLong |= (1L << (2*reflexedPrefixLength)); // add the C marker
                      newForwardLong <<= (2*forwardSuffixLength);
-                     newForwardLong |= forwardSubKmer._2._2();
+                     newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
                  }
 
                  if (bubbleDistance <0) {

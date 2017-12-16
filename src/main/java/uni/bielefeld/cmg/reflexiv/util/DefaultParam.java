@@ -53,7 +53,7 @@ public class DefaultParam implements Serializable{
     public boolean cache = false;
     public int partitions = 0;
     public int maximumIteration = 100;
-    public int minimumIteration = 20;
+    public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)
     public int frontClip = 0;
     public int endClip = 0;
 

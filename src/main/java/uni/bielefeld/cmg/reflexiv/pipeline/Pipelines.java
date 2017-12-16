@@ -61,6 +61,12 @@ public class Pipelines implements Pipeline, Serializable{
         rflPipe.assembly();
     }
 
+    public void reflexivCounterPipe(){
+        ReflexivCounter rflPipe = new ReflexivCounter();
+        rflPipe.setParam(param);
+        rflPipe.assembly();
+    }
+
     public void setParameter (DefaultParam param) {
         this.param = param;
     }
