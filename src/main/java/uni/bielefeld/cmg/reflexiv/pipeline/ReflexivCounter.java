@@ -150,16 +150,22 @@ public class ReflexivCounter implements Serializable{
             KmerBinaryRDD = KmerBinaryRDD.filter(RDDKmerFilter);
         }
 
+        BinaryKmerToString KmerStringOutput = new BinaryKmerToString();
+
+        KmerRDD = KmerBinaryRDD.mapPartitionsToPair(KmerStringOutput);
+        KmerRDD.saveAsTextFile(param.outputPath);
+
         /**
          * Generate reverse complement Kmers
          */
+/*
         KmerReverseComplement RDDRCKmer = new KmerReverseComplement();
         KmerBinaryRDD = KmerBinaryRDD.mapPartitionsToPair(RDDRCKmer);
 
         /**
          * Step : filter forks
          */
-
+/*
         ForwardSubKmerExtraction RDDextractForwardSubKmer = new ForwardSubKmerExtraction();
         ReflexivSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardSubKmer);   // all forward
 
@@ -179,13 +185,14 @@ public class ReflexivCounter implements Serializable{
         /**
          * Step 6: extract sub-kmers from each K-mer
          */
+/*
         kmerRandomReflection RDDrandomizeSubKmer = new kmerRandomReflection();
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDrandomizeSubKmer);
 
         /**
          * Step 7: sort all sub-kmers
          */
-
+/*
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
@@ -196,7 +203,7 @@ public class ReflexivCounter implements Serializable{
         /**
          * Step 8: connect and extend overlap kmers
          */
-
+/*
         ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
 
@@ -208,6 +215,7 @@ public class ReflexivCounter implements Serializable{
         /**
          * first three extensions fit in one Long 1 2 4 8 16 32(x)
          */
+/*
         int iterations = 0;
         for (int i = 0; i < 4; i++) {
             iterations++;
@@ -223,6 +231,7 @@ public class ReflexivCounter implements Serializable{
         /**
          * first extension to array
          */
+/*
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         iterations++;
@@ -237,6 +246,7 @@ public class ReflexivCounter implements Serializable{
         /**
          * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
          */
+/*
         ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
 
         int partitionNumber = ReflexivSubKmerRDD.getNumPartitions();
@@ -246,7 +256,7 @@ public class ReflexivCounter implements Serializable{
             if (iterations >= param.minimumIteration){
                 if (iterations % 3 == 0) {
 
-                    long currentContigNumber = ReflexivSubKmerRDD.count();
+                    long currentContigNumber = ReflexivLongSubKmerRDD.count();
                     if (contigNumber == currentContigNumber) {
                         break;
                     } else {
@@ -373,6 +383,43 @@ public class ReflexivCounter implements Serializable{
         public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> sIterator) {
             List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
             return reflexivKmerConcatList.iterator();
+        }
+    }
+
+    class BinaryKmerToString implements PairFlatMapFunction<Iterator<Tuple2<Long, Integer>>, String, Integer>, Serializable{
+        List<Tuple2<String, Integer>> reflexivKmerStringList = new ArrayList<Tuple2<String, Integer>>();
+
+        public Iterator<Tuple2<String, Integer>> call(Iterator<Tuple2<Long, Integer>> sIterator){
+            while (sIterator.hasNext()){
+                String subKmer = "";
+                String subString ="";
+                Tuple2<Long, Integer> s = sIterator.next();
+                for (int i=1; i<=param.kmerSize;i++){
+                    Long currentNucleotideBinary = s._1 >>> 2*(param.kmerSize - i);
+                    currentNucleotideBinary &= 3L;
+                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
+                    subKmer += currentNucleotide;
+                }
+
+                reflexivKmerStringList.add (
+                        new Tuple2<String, Integer>(subString, s._2)
+                );
+            }
+            return reflexivKmerStringList.iterator();
+        }
+
+        private char BinaryToNucleotide (Long twoBits){
+            char nucleotide;
+            if (twoBits == 0){
+                nucleotide = 'A';
+            }else if (twoBits == 1){
+                nucleotide = 'C';
+            }else if (twoBits == 2){
+                nucleotide = 'G';
+            }else{
+                nucleotide = 'T';
+            }
+            return nucleotide;
         }
     }
 
