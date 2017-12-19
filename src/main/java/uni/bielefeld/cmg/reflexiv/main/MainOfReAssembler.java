@@ -1,13 +1,14 @@
 package uni.bielefeld.cmg.reflexiv.main;
 
 
+import org.apache.commons.cli.ParseException;
 import uni.bielefeld.cmg.reflexiv.pipeline.Pipelines;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import uni.bielefeld.cmg.reflexiv.util.Parameter;
+import uni.bielefeld.cmg.reflexiv.util.ParameterOfReAssembler;
 
 import java.io.IOException;
-import org.apache.commons.cli.ParseException;
 
 /**
  * Created by Liren Huang on 24.08.17.
@@ -33,16 +34,16 @@ import org.apache.commons.cli.ParseException;
  */
 
 
-public class Main {
+public class MainOfReAssembler {
 
     public static void main(String[] args){
         InfoDumper info = new InfoDumper();
-        info.readParagraphedMessages("Reflexiv main initiating ... \ninterpreting parameters.");
+        info.readParagraphedMessages("Reflexiv ReAssembler initiating ... \ninterpreting parameters.");
         info.screenDump();
 
-        Parameter parameter = null;
+        ParameterOfReAssembler parameter = null;
         try{
-            parameter = new Parameter(args);
+            parameter = new ParameterOfReAssembler(args);
         } catch (IOException e) {
             e.fillInStackTrace();
         } catch (ParseException e){
@@ -52,6 +53,6 @@ public class Main {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivMainPipe();
+        pipes.reflexivReAssemblerPipe();
     }
 }
