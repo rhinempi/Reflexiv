@@ -1,6 +1,7 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -115,13 +116,18 @@ public class ReflexivReAssembler implements Serializable{
         contigReader.setParameter(param);
         contigReader.loadRef(param.inputContigPath);
         reflexivContigList = contigReader.getReflexivContigList();
-        ReflexivLongContigRDD = sc.parallelizePairs(reflexivContigList);
+
+        int partitions = reflexivContigList.size() / 2000 + 1;
+        if (partitions > 50) {
+            partitions = 50;
+        }
+
+        ReflexivLongContigRDD = sc.parallelizePairs(reflexivContigList, partitions);
 
         BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
         ReflexivSubKmerStringRDD = ReflexivLongContigRDD.mapPartitionsToPair(ArrayStringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath);
+        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + "-Contig");
 
-        sc.stop();
         /**
          * Step 1: filter and check input fastq file
          */
@@ -146,6 +152,8 @@ public class ReflexivReAssembler implements Serializable{
          * Step 3: extract kmers from sequencing reads and
          *          and build <kmer, count> tuples.
          */
+
+        LoadCountedKmerToLongArray kmerLoader = new LoadCountedKmerToLongArray();
 
         ReverseComplementKmerBinaryExtraction RDDExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtraction();
         KmerBinaryRDD = FastqRDD.mapPartitionsToPair(RDDExtractRCKmerBinaryFromFastq);
@@ -175,6 +183,25 @@ public class ReflexivReAssembler implements Serializable{
          * Step : filter forks
          */
 
+        ForwardSubKmerLongExtraction RDDextractForwardLongSubKmer = new ForwardSubKmerLongExtraction();
+        ReflexivLongSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardLongSubKmer);
+
+        ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.union(ReflexivLongContigRDD);
+
+        if (param.bubble == true) {
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+            FilterForkSubKmerLong RDDhighCoverageLongSelector = new FilterForkSubKmerLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDhighCoverageLongSelector);
+
+            ReflectedSubKmerExtractionFromForwardLong RDDreflectionExtractorLong = new ReflectedSubKmerExtractionFromForwardLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDreflectionExtractorLong);
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+            FilterForkReflectedSubKmerLong RDDhighCoverageReflectedLongSelector = new FilterForkReflectedSubKmerLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedLongSelector);
+
+        }
+/*
         ForwardSubKmerExtraction RDDextractForwardSubKmer = new ForwardSubKmerExtraction();
         ReflexivSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardSubKmer);   // all forward
 
@@ -194,13 +221,14 @@ public class ReflexivReAssembler implements Serializable{
         /**
          * Step 6: extract sub-kmers from each K-mer
          */
+/*
         kmerRandomReflection RDDrandomizeSubKmer = new kmerRandomReflection();
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDrandomizeSubKmer);
 
         /**
          * Step 7: sort all sub-kmers
          */
-
+/*
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
@@ -211,7 +239,7 @@ public class ReflexivReAssembler implements Serializable{
         /**
          * Step 8: connect and extend overlap kmers
          */
-
+/*
         ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
 
@@ -223,7 +251,9 @@ public class ReflexivReAssembler implements Serializable{
         /**
          * first three extensions fit in one Long 1 2 4 8 16 32(x)
          */
+
         int iterations = 0;
+/*
         for (int i = 1; i < 4; i++) {
             iterations++;
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
@@ -238,6 +268,7 @@ public class ReflexivReAssembler implements Serializable{
         /**
          * first extension to array
          */
+/*
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         iterations++;
@@ -254,7 +285,7 @@ public class ReflexivReAssembler implements Serializable{
          */
         ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
 
-        int partitionNumber = ReflexivSubKmerRDD.getNumPartitions();
+        int partitionNumber = ReflexivLongSubKmerRDD.getNumPartitions();
         long contigNumber = 0;
         while (iterations <= param.maximumIteration) {
             iterations++;
@@ -271,7 +302,7 @@ public class ReflexivReAssembler implements Serializable{
                     if (partitionNumber >= 16) {
                         if (currentContigNumber / partitionNumber <= 20) {
                             partitionNumber = partitionNumber / 4 + 1;
-                            ReflexivSubKmerRDD = ReflexivSubKmerRDD.coalesce(partitionNumber);
+                            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.coalesce(partitionNumber);
                         }
                     }
                 }
@@ -279,16 +310,18 @@ public class ReflexivReAssembler implements Serializable{
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
 
-            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
 
-            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
 
         }
 
+        ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath);
         /**
          * Step 11: change reflexiv kmers to contig
          */
@@ -2196,6 +2229,311 @@ public class ReflexivReAssembler implements Serializable{
     /**
      *  choose one kmer from a fork with higher coverage.
      */
+    class FilterForkSubKmerLong implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
+        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+//        Tuple2<String, Tuple4<Integer, String, Integer, Integer>> HighCoverKmer=null;
+//                new Tuple2<String, Tuple4<Integer, String, Integer, Integer>>("",
+        //                       new Tuple4<Integer, String, Integer, Integer>(0, "", 0, 0));
+
+        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call(Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> s) {
+            while (s.hasNext()) {
+                Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> subKmer = s.next();
+                if (HighCoverageSubKmer.size() == 0) {
+                    if (subKmer._2._4() >= 1000000000) {
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                )
+                        );
+                    }else if (subKmer._2._4() <= -1000000000) {
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                )
+                        );
+                    }else {
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -1)
+                                )
+                        );
+                    }
+                } else {
+                    if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._1)) {
+                        if (subKmer._2._3().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3()) > 0) {
+                            if (subKmer._2._4() >= 1000000000) {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                        )
+                                );
+                            }else if (subKmer._2._4() <= -1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
+                                        )
+                                );
+                            }
+                        } else if (subKmer._2._3().equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3())) {
+                            int subKmerFirstSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(subKmer._2._2()[0])/2 + 1);
+                            int HighCoverageSubKmerFirstSuffixLength = Long.SIZE/2 - ((Long.numberOfLeadingZeros(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._2()[0]))/2 + 1);
+                            Long subKmerFirstSuffix = subKmer._2._2()[0] >>> 2*(subKmerFirstSuffixLength-1);
+                            Long HighCoverageSubKmerFirstSuffix = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2()[0] >>> 2*(HighCoverageSubKmerFirstSuffixLength);
+
+                            if (subKmerFirstSuffix.compareTo(HighCoverageSubKmerFirstSuffix) > 0) {
+                                if (subKmer._2._4() >= 1000000000) {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                            )
+                                    );
+                                }else if (subKmer._2._4() <= -1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
+                                            )
+                                    );
+                                }
+                            } else {
+                                subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
+                                if (subKmer._2._4() >= 1000000000) {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                            )
+                                    );
+                                }else if (subKmer._2._4() <= -1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
+                                            )
+                                    );
+                                }
+                            }
+                        } else {
+                            subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
+                            if (subKmer._2._4() >= 1000000000) {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                        )
+                                );
+                            }else if (subKmer._2._4() <= -1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
+                                        )
+                                );
+                            }
+                        }
+                    } else {
+                        if (subKmer._2._4() >= 1000000000) {
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -subKmer._2._4())
+                                    )
+                            );
+                        }else if (subKmer._2._4() <= -1000000000) {
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                    )
+                            );
+                        }else {
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -1)
+                                    )
+                            );
+                        }
+                    }
+                }
+            }
+
+            return HighCoverageSubKmer.iterator();
+        }
+    }
+
+    class FilterForkReflectedSubKmerLong implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable{
+        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+        Integer HighCoverLastCoverage = 0;
+//        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> HighCoverKmer=null;
+//                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>("",
+        //                       new Tuple4<Integer, Long, Integer, Integer>(0, "", 0, 0));
+
+        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> s){
+            while (s.hasNext()){
+                Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> subKmer = s.next();
+                if (HighCoverageSubKmer.size() == 0){
+                    HighCoverLastCoverage = subKmer._2._3();
+                    if (subKmer._2._3() >= 1000000000){
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                )
+                        );
+                    }else if (subKmer._2._3() <= -1000000000){
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                )
+                        );
+                    }else {
+                        HighCoverageSubKmer.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
+                                )
+                        );
+                    }
+                }else {
+                    if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._1)) {
+                        if (subKmer._2._3().compareTo(HighCoverLastCoverage) >0) {
+                            HighCoverLastCoverage = subKmer._2._3();
+                            if (subKmer._2._3() >= 1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else if (subKmer._2._3() <= -1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
+                                        )
+                                );
+                            }
+                        } else if (subKmer._2._3().equals(HighCoverLastCoverage)){
+                            int subKmerFirstSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(subKmer._2._2()[0])/2 + 1);
+                            int HighCoverageSubKmerFirstSuffixLength = Long.SIZE/2 - ((Long.numberOfLeadingZeros(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._2()[0]))/2 + 1);
+                            Long subKmerFirstSuffix = subKmer._2._2()[0] >>> 2*(subKmerFirstSuffixLength-1);
+                            Long HighCoverageSubKmerFirstSuffix = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2()[0] >>> 2*(HighCoverageSubKmerFirstSuffixLength);
+
+                            if (subKmerFirstSuffix.compareTo(HighCoverageSubKmerFirstSuffix) >0){
+                                if (subKmer._2._3() >= 1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else if (subKmer._2._3() <= -1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
+                                            )
+                                    );
+                                }
+                            }else{
+                                subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1); // re assign
+                                if (subKmer._2._3() >= 1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else if (subKmer._2._3() <= -1000000000){
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                            )
+                                    );
+                                }else {
+                                    HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                    new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
+                                            )
+                                    );
+                                }
+                            }
+                        } else {
+                            subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1);
+                            if (subKmer._2._3() >= 1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else if (subKmer._2._3() <= -1000000000){
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                        )
+                                );
+                            }else {
+                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
+                                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                                new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
+                                        )
+                                );
+                            }
+                        }
+                    }else{
+                        HighCoverLastCoverage = subKmer._2._3();
+                        if (subKmer._2._3() >= 1000000000){
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -subKmer._2._3(), subKmer._2._4())
+                                    )
+                            );
+                        }else if (subKmer._2._3() <= -1000000000){
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), subKmer._2._4())
+                                    )
+                            );
+                        }else {
+                            HighCoverageSubKmer.add(
+                                    new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(subKmer._1,
+                                            new Tuple4<Integer, Long[], Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
+                                    )
+                            );
+                        }
+                    }
+                }
+            }
+
+            return HighCoverageSubKmer.iterator();
+        }
+    }
+
+    /**
+     *  choose one kmer from a fork with higher coverage.
+     */
     class FilterForkSubKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable {
         List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
 //        Tuple2<String, Tuple4<Integer, String, Integer, Integer>> HighCoverKmer=null;
@@ -2258,6 +2596,7 @@ public class ReflexivReAssembler implements Serializable{
 
     class FilterForkReflectedSubKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable{
         List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
+        Integer HighCoverLastCoverage = 0;
 //        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> HighCoverKmer=null;
 //                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>("",
         //                       new Tuple4<Integer, Long, Integer, Integer>(0, "", 0, 0));
@@ -2266,6 +2605,7 @@ public class ReflexivReAssembler implements Serializable{
             while (s.hasNext()){
                 Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> subKmer = s.next();
                 if (HighCoverageSubKmer.size() == 0){
+                    HighCoverLastCoverage = subKmer._2._3();
                     HighCoverageSubKmer.add(
                             new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                     new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
@@ -2273,13 +2613,14 @@ public class ReflexivReAssembler implements Serializable{
                     );
                 }else {
                     if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._1)) {
-                        if (subKmer._2._3().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._3()) >0) {
+                        if (subKmer._2._3().compareTo(HighCoverLastCoverage) >0) {
+                            HighCoverLastCoverage = subKmer._2._3();
                             HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
                                     new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                             new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
                                     )
                             );
-                        } else if (subKmer._2._3().equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3())){
+                        } else if (subKmer._2._3().equals(HighCoverLastCoverage)){
                             if (subKmer._2._2().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2()) >0){
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
                                         new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
@@ -2303,6 +2644,7 @@ public class ReflexivReAssembler implements Serializable{
                             );
                         }
                     }else{
+                        HighCoverLastCoverage = subKmer._2._3();
                         HighCoverageSubKmer.add(
                                 new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                         new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
@@ -2316,6 +2658,43 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
+    /**
+     *
+     */
+    class ForwardSubKmerLongExtraction implements PairFlatMapFunction<Iterator<Tuple2<Long, Integer>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
+        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> TupleList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+        Long suffixBinary;
+        Long prefixBinary;
+        Tuple2<Long, Integer> kmerTuple;
+
+        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call(Iterator<Tuple2<Long, Integer>> s) {
+
+            while (s.hasNext()) {
+                kmerTuple = s.next();
+                /**
+                 * normal Sub-kmer
+                 *        Kmer      ATGCACGTTATG
+                 *        Sub-Kmer  ATGCACGTTAT         marked as Integer 1 in Tuple2
+                 *        Left      -----------G
+                 */
+                suffixBinary = kmerTuple._1 & 3L;
+                suffixBinary |= (1L << 2); // add C marker
+                Long[] suffixBinaryLong = new Long[1];
+                suffixBinaryLong[0] = suffixBinary;
+
+                prefixBinary = kmerTuple._1 >>> 2;
+
+
+                TupleList.add(
+                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(
+                                prefixBinary, new Tuple4<Integer, Long[], Integer, Integer>(1, suffixBinaryLong, kmerTuple._2, kmerTuple._2)
+                        )
+                );
+            }
+
+            return TupleList.iterator();
+        }
+    }
 
     /**
      *
@@ -2350,6 +2729,173 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
+    class ReflectedSubKmerExtractionFromForwardLong implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
+
+        /* 1 stands for forward sub-kmer */
+        /* 2 stands for reflexiv sub-kmer */
+        // private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+        private int randomReflexivMarker = 2;
+
+        long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
+        long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
+
+        /* return capsule of extend Tuples for next iteration*/
+        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+
+        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call(Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> s){
+
+            while (s.hasNext()) {
+                Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> currentSubKmer = s.next();
+
+                int blockSize = currentSubKmer._2._2().length;
+                Long[] newReflexivLongArray = new Long[blockSize];
+
+                if (currentSubKmer._2._1() == 1) {
+                    int firstSuffixBlockLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2()[0]) / 2 + 1);
+                    long maxSuffixLengthBinary = ~((~0L) << (2 * firstSuffixBlockLength));
+                    Long newReflexivSubKmer;
+                    Long newReflexivLong;
+
+                    if (randomReflexivMarker == 2) {
+                        if (blockSize > 1) {
+                            newReflexivSubKmer = currentSubKmer._2._2()[blockSize - 1] & maxSubKmerBinary;
+
+                            // 3rd block and so on
+                            for (int i = blockSize - 1; i > 1; i--) {
+                                newReflexivLong = currentSubKmer._2._2()[i] >>> 2 * param.subKmerSize;
+                                newReflexivLong |= (currentSubKmer._2._2()[i - 1] << 2 * (31 - param.subKmerSize));
+                                newReflexivLong &= maxBlockBinary;
+                                newReflexivLongArray[i] = newReflexivLong;
+                            }
+
+                            // 2nd block
+                            newReflexivLong = currentSubKmer._2._2()[1] >>> 2 * param.subKmerSize;
+                            newReflexivLong |= ((currentSubKmer._2._2()[0] & maxSuffixLengthBinary) << 2 * (31 - param.subKmerSize));
+                            if (firstSuffixBlockLength < param.subKmerSize) {
+                                newReflexivLong |= (currentSubKmer._1 << 2 * (31 - param.subKmerSize + firstSuffixBlockLength));
+                            }
+                            newReflexivLong &= maxBlockBinary;
+                            newReflexivLongArray[1] = newReflexivLong;
+
+                            // 1st block
+                            if (firstSuffixBlockLength < param.subKmerSize) {
+                                newReflexivLong = currentSubKmer._1 >>> 2 * (param.subKmerSize - firstSuffixBlockLength);
+                                newReflexivLong |= (1L << 2 * firstSuffixBlockLength);
+                            } else {
+                                newReflexivLong = currentSubKmer._2._2()[0] & maxSuffixLengthBinary; //remove C marker
+                                newReflexivLong >>>= 2 * param.subKmerSize;
+                                newReflexivLong |= (currentSubKmer._1 << 2 * (firstSuffixBlockLength - param.subKmerSize));
+                                newReflexivLong |= (1L << 2 * firstSuffixBlockLength); // add C marker
+                            }
+                            newReflexivLongArray[0] = newReflexivLong;
+                        } else {
+                            if (firstSuffixBlockLength >= param.subKmerSize) {
+                                newReflexivSubKmer = currentSubKmer._2._2()[0] & maxSubKmerBinary;
+
+                                newReflexivLong = currentSubKmer._2._2()[0] & maxSuffixLengthBinary;
+                                newReflexivLong >>>= 2 * param.subKmerSize;
+                                newReflexivLong |= (currentSubKmer._1 << 2 * (firstSuffixBlockLength - param.subKmerSize));
+                                newReflexivLong |= (1L << (2 * firstSuffixBlockLength)); // add C marker in the front
+                            } else {
+                                newReflexivSubKmer = currentSubKmer._1 << (firstSuffixBlockLength * 2);
+                                newReflexivSubKmer &= maxSubKmerBinary;
+                                newReflexivSubKmer |= (currentSubKmer._2._2()[0] & maxSuffixLengthBinary);
+
+                                newReflexivLong = currentSubKmer._1 >>> (2 * (param.subKmerSize - firstSuffixBlockLength));
+                                newReflexivLong |= (1L << (2 * firstSuffixBlockLength)); // add C marker in the front
+                            }
+
+                            newReflexivLongArray[0] = newReflexivLong;
+                        }
+
+                        reflexivKmerConcatList.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(
+                                                randomReflexivMarker, newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
+                                        )
+                                )
+                        );
+                    } else {
+                        reflexivKmerConcatList.add(currentSubKmer);
+                    }
+                } else { /* currentSubKmer._2._1() == 2 */
+                    int firstPrefixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2()[0]) / 2 + 1);
+                    long maxPrefixLengthBinary = ~((~0L) << (2 * firstPrefixLength));
+
+                    Long newReflexivSubKmer;
+                    Long newReflexivLong;
+
+                    if (randomReflexivMarker == 2) {
+                        reflexivKmerConcatList.add(currentSubKmer);
+                    } else { /* randomReflexivMarker == 1 */
+                        if (blockSize > 1) {
+                            // the subKmer
+                            if (firstPrefixLength >= param.subKmerSize) {
+                                newReflexivSubKmer = (currentSubKmer._2._2()[0] & maxPrefixLengthBinary) >>> 2 * (firstPrefixLength - param.subKmerSize); // also removed C marker
+                            } else {
+                                newReflexivSubKmer = currentSubKmer._2._2()[0] & maxPrefixLengthBinary; // remove C marker
+                                newReflexivSubKmer <<= 2 * (param.subKmerSize - firstPrefixLength);
+                                newReflexivSubKmer |= (currentSubKmer._2._2()[1] >>> 2 * (31 - param.subKmerSize + firstPrefixLength));
+                            }
+
+                            // the last block
+                            newReflexivLong = currentSubKmer._2._2()[blockSize - 1] << 2 * param.subKmerSize;
+                            newReflexivLong |= currentSubKmer._1;
+                            newReflexivLong &= maxBlockBinary;
+                            newReflexivLongArray[blockSize - 1] = newReflexivLong;
+
+                            // 2nd and so on
+                            for (int i = blockSize - 2; i >= 1; i--) {
+                                newReflexivLong = currentSubKmer._2._2()[i] << 2 * param.subKmerSize;
+                                newReflexivLong |= (currentSubKmer._2._2()[i + 1] >>> 2 * (31 - param.subKmerSize));
+                                newReflexivLong &= maxBlockBinary;
+                                newReflexivLongArray[i] = newReflexivLong;
+                            }
+
+                            // 1st
+                            newReflexivLong = currentSubKmer._2._2()[1] >>> 2 * (31 - param.subKmerSize);
+                            if (firstPrefixLength >= param.subKmerSize) {
+                                newReflexivLong |= ((currentSubKmer._2._2()[0] & maxPrefixLengthBinary) << 2 * param.subKmerSize);
+                            }
+                            newReflexivLong &= maxPrefixLengthBinary;
+                            newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker
+                            newReflexivLongArray[0] = newReflexivLong;
+
+                        } else { /* blockSize = 1)*/
+                            if (firstPrefixLength >= param.subKmerSize) {
+                                newReflexivSubKmer = (currentSubKmer._2._2()[0] & maxPrefixLengthBinary) >>> 2 * (firstPrefixLength - param.subKmerSize);
+                                newReflexivSubKmer &= maxSubKmerBinary; // remove header, including C marker
+
+                                newReflexivLong = (currentSubKmer._2._2()[0] & maxPrefixLengthBinary) << 2 * param.subKmerSize;
+                                newReflexivLong |= currentSubKmer._1;
+                                newReflexivLong &= maxPrefixLengthBinary; // remove header, including C marker
+                                newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker
+                            } else {
+                                newReflexivSubKmer = (currentSubKmer._2._2()[0] & maxPrefixLengthBinary) << (2 * (param.subKmerSize - firstPrefixLength));
+                                newReflexivSubKmer |= (currentSubKmer._1 >>> (2 * firstPrefixLength));
+
+                                newReflexivLong = currentSubKmer._1 & maxPrefixLengthBinary;
+                                newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker in the front
+                            }
+
+                            newReflexivLongArray[0] = newReflexivLong;
+                        }
+
+                        reflexivKmerConcatList.add(
+                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
+                                        new Tuple4<Integer, Long[], Integer, Integer>(
+                                                randomReflexivMarker, newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
+                                        )
+                                )
+                        );
+                    }
+                }
+
+            }
+
+            return reflexivKmerConcatList.iterator();
+        }
+    }
 
     class ReflectedSubKmerExtractionFromForward implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable {
         List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> TupleList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
@@ -2628,6 +3174,70 @@ public class ReflexivReAssembler implements Serializable{
 
             return kmerList.iterator();
         }
+    }
+
+    class LoadCountedKmerToLongArray implements PairFlatMapFunction<Iterator<String>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
+
+        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> kmerList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+        String[] units;
+        String kmer;
+        int cover;
+        char nucleotide;
+        long nucleotideInt;
+        Long suffixBinary;
+        Long[] suffixBinaryArray;
+
+        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call(Iterator<String> s) {
+
+            while (s.hasNext()) {
+                units = s.next().split(",");
+
+                kmer = units[1].substring(1);
+
+                cover = Integer.parseInt(StringUtils.chop(units[1]));
+
+                Long nucleotideBinary = 0L;
+
+                for (int i = 0; i < param.subKmerSize; i++) {
+                    nucleotide = kmer.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinary <<= 2;
+                    nucleotideBinary |= nucleotideInt;
+                }
+
+                nucleotide = kmer.charAt(param.subKmerSize);
+                if (nucleotide >= 256) nucleotide = 255;
+                nucleotideInt = nucleotideValue(nucleotide);
+                suffixBinary = (nucleotideInt | (1L << 2));
+
+                suffixBinaryArray = new Long[1];
+                suffixBinaryArray[0] = suffixBinary;
+
+                kmerList.add(
+                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(
+                                nucleotideBinary, new Tuple4<Integer, Long[], Integer, Integer>(1, suffixBinaryArray, cover, cover)
+                        )
+                );
+            }
+            return kmerList.iterator();
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
     }
 
     class ReverseComplementKmerBinaryExtraction implements PairFlatMapFunction<Iterator<String>, Long, Integer>, Serializable{

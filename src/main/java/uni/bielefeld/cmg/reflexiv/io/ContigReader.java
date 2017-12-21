@@ -120,7 +120,9 @@ public class ContigReader implements Serializable{
 
                     name = line.substring(1);
                 }else{
+                    if (!line.isEmpty()) {
                         seqBuilder.append(line);
+                    }
                 }
             }
         } catch (IOException e) {
@@ -153,6 +155,9 @@ public class ContigReader implements Serializable{
         int suffixLength = length - param.subKmerSize;
         int suffixBlockSize = (suffixLength-1)/31 + 1;
         int firstSuffixLength =suffixLength%31;
+        if (firstSuffixLength == 0){
+            firstSuffixLength = 31;
+        }
 
         Long[] suffixLongArray = new Long[suffixBlockSize];
         for (int i = 0; i< suffixBlockSize ; i++){
@@ -226,6 +231,10 @@ public class ContigReader implements Serializable{
 
     public ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> getReflexivContigList(){
         return reflexivContigList;
+    }
+
+    public HashMap<Integer, String> getContigIDTable(){
+        return contigIDTable;
     }
 
 }

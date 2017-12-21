@@ -239,7 +239,7 @@ public class ReflexivMain implements Serializable{
          */
         ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
 
-        int partitionNumber = ReflexivSubKmerRDD.getNumPartitions();
+        int partitionNumber = ReflexivLongSubKmerRDD.getNumPartitions();
         long contigNumber = 0;
         while (iterations <= param.maximumIteration) {
             iterations++;
@@ -256,7 +256,7 @@ public class ReflexivMain implements Serializable{
                     if (partitionNumber >= 16) {
                         if (currentContigNumber / partitionNumber <= 20) {
                             partitionNumber = partitionNumber / 4 + 1;
-                            ReflexivSubKmerRDD = ReflexivSubKmerRDD.coalesce(partitionNumber);
+                            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.coalesce(partitionNumber);
                         }
                     }
                 }
