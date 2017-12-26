@@ -10,6 +10,7 @@ import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
+import org.apache.spark.broadcast.Broadcast;
 import scala.Tuple2;
 import scala.Tuple4;
 import uni.bielefeld.cmg.reflexiv.io.ContigReader;
@@ -47,6 +48,7 @@ import java.util.*;
 public class ReflexivReAssembler implements Serializable{
     private long time;
     private DefaultParam param;
+    Broadcast<String[]> broadcastedContigIDArray;
 
     private InfoDumper info = new InfoDumper();
 
@@ -93,6 +95,7 @@ public class ReflexivReAssembler implements Serializable{
         ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivContigList;
 
         JavaRDD<String> FastqRDD;
+        JavaRDD<String> InputKmerRDD;
         JavaPairRDD<String, Integer> KmerRDD;
         JavaPairRDD<Long, Integer> KmerBinaryRDD;
 
@@ -108,7 +111,7 @@ public class ReflexivReAssembler implements Serializable{
         JavaPairRDD<String, String> ContigTuple2RDD;
         JavaPairRDD<Tuple2<String, String>, Long> ContigTuple2IndexRDD;
         JavaRDD<String> ContigRDD;
-
+        JavaRDD<String> ReConstructedContigRDD;
 
         FastqRDD = sc.textFile(param.inputFqPath);
 
@@ -116,6 +119,8 @@ public class ReflexivReAssembler implements Serializable{
         contigReader.setParameter(param);
         contigReader.loadRef(param.inputContigPath);
         reflexivContigList = contigReader.getReflexivContigList();
+        String[] contigIDArray = contigReader.getContigIDArray();
+        broadcastedContigIDArray = sc.broadcast(contigIDArray);
 
         int partitions = reflexivContigList.size() / 2000 + 1;
         if (partitions > 50) {
@@ -126,7 +131,6 @@ public class ReflexivReAssembler implements Serializable{
 
         BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
         ReflexivSubKmerStringRDD = ReflexivLongContigRDD.mapPartitionsToPair(ArrayStringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + "-Contig");
 
         /**
          * Step 1: filter and check input fastq file
@@ -201,84 +205,12 @@ public class ReflexivReAssembler implements Serializable{
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedLongSelector);
 
         }
-/*
-        ForwardSubKmerExtraction RDDextractForwardSubKmer = new ForwardSubKmerExtraction();
-        ReflexivSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardSubKmer);   // all forward
-
-        if (param.bubble == true) {
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-            FilterForkSubKmer RDDhighCoverageSelector = new FilterForkSubKmer();
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageSelector);
-
-            ReflectedSubKmerExtractionFromForward RDDreflectionExtractor =  new ReflectedSubKmerExtractionFromForward();
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDreflectionExtractor); // all reflected
-
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-            FilterForkReflectedSubKmer RDDhighCoverageReflectedSelector = new FilterForkReflectedSubKmer();
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedSelector);
-        }
-
-        /**
-         * Step 6: extract sub-kmers from each K-mer
-         */
-/*
-        kmerRandomReflection RDDrandomizeSubKmer = new kmerRandomReflection();
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDrandomizeSubKmer);
-
-        /**
-         * Step 7: sort all sub-kmers
-         */
-/*
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-
-        BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
-
-        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + 0);
-
-        /**
-         * Step 8: connect and extend overlap kmers
-         */
-/*
-        ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
-
-        /**
-         * Step 9: filter extended Kmers
-         */
-
 
         /**
          * first three extensions fit in one Long 1 2 4 8 16 32(x)
          */
 
         int iterations = 0;
-/*
-        for (int i = 1; i < 4; i++) {
-            iterations++;
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-
-            ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
-
-            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
-        }
-
-
-        /**
-         * first extension to array
-         */
-/*
-        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
-
-        iterations++;
-        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
-
-        ExtendReflexivKmerToArrayFirstTime KmerExtentionToArrayFirst = new ExtendReflexivKmerToArrayFirstTime();
-        ReflexivLongSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtentionToArrayFirst);
-
-   //     BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
 
         /**
          * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
@@ -320,24 +252,231 @@ public class ReflexivReAssembler implements Serializable{
 
         }
 
+
+        /**
+         * Binary to string
+         */
         ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath);
         /**
          * Step 11: change reflexiv kmers to contig
          */
-        /*
+
         KmerToContig contigformater = new KmerToContig();
-        ContigTuple2RDD = ReflexivSubKmerRDD.flatMapToPair(contigformater);
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
 
         ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
 
         TagContigID IdLabeling = new TagContigID();
         ContigRDD = ContigTuple2IndexRDD.flatMap(IdLabeling);
 
+        ExtractReContig ReContigfilter = new ExtractReContig();
+        ReConstructedContigRDD = ContigRDD.filter(ReContigfilter);
+
         /**
          * Step N: save result
          */
-        /*
+
+        ReConstructedContigRDD.saveAsTextFile(param.outputPath + ".extended");
+        ContigRDD.saveAsTextFile(param.outputPath);
+
+        /**
+         * Step N+1: Stop
+         */
+        sc.stop();
+    }
+
+    public void assemblyFromKmer(){
+        SparkConf conf = setSparkConfiguration();
+        info.readMessage("Initiating Spark context ...");
+        info.screenDump();
+        info.readMessage("Start Spark framework");
+        info.screenDump();
+        JavaSparkContext sc = new JavaSparkContext(conf);
+
+        ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivContigList;
+
+        JavaRDD<String> FastqRDD;
+        JavaRDD<String> InputKmerRDD;
+        JavaPairRDD<String, Integer> KmerRDD;
+        JavaPairRDD<Long, Integer> KmerBinaryRDD;
+
+        /* Tuple4 data struct (reflexiv marker, rest of the string, coverage of prefix, coverage of suffix)*/
+        JavaPairRDD<Long, Tuple4<Integer, Long, Integer, Integer>> ReflexivSubKmerRDD; // both
+        JavaPairRDD<Long, Tuple4<Integer, Long[], Integer, Integer>> ReflexivLongSubKmerRDD;
+        JavaPairRDD<Long, Tuple4<Integer, Long[], Integer, Integer>> ReflexivLongContigRDD;
+
+        JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflexivSubKmerStringRDD; // Generates strings, for testing
+        //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ForwardSubKmerRDD;
+        //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflectedSubKmerRDD;
+
+        JavaPairRDD<String, String> ContigTuple2RDD;
+        JavaPairRDD<Tuple2<String, String>, Long> ContigTuple2IndexRDD;
+        JavaRDD<String> ContigRDD;
+        JavaRDD<String> ReConstructedContigRDD;
+
+        InputKmerRDD = sc.textFile(param.inputKmerPath);
+
+        ContigReader contigReader = new ContigReader();
+        contigReader.setParameter(param);
+        contigReader.loadRef(param.inputContigPath);
+        reflexivContigList = contigReader.getReflexivContigList();
+        String[] contigIDArray = contigReader.getContigIDArray();
+        broadcastedContigIDArray = sc.broadcast(contigIDArray);
+
+        int partitions = reflexivContigList.size() / 2000 + 1;
+        if (partitions > 50) {
+            partitions = 50;
+        }
+
+        ReflexivLongContigRDD = sc.parallelizePairs(reflexivContigList, partitions);
+
+        BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
+        ReflexivSubKmerStringRDD = ReflexivLongContigRDD.mapPartitionsToPair(ArrayStringOutput);
+
+        /**
+         * Step 1: filter and check input fastq file
+         */
+
+        /**
+         * Step 2: filter null units introduced in the above step
+         */
+        if (param.partitions > 0) {
+            InputKmerRDD = InputKmerRDD.repartition(param.partitions);
+        }
+        if (param.cache) {
+            InputKmerRDD.cache();
+        }
+
+        /**
+         * Step 3: extract kmers from sequencing reads and
+         *          and build <kmer, count> tuples.
+         */
+
+        LoadCountedKmerToLongArray kmerLoader = new LoadCountedKmerToLongArray();
+
+ //       ReverseComplementKmerBinaryExtraction RDDExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtraction();
+        KmerBinaryRDD = InputKmerRDD.mapPartitionsToPair(kmerLoader);
+
+        /**
+         * Step 4: counting kmer frequencies with reduceByKey function
+         */
+
+   //     KmerCounting RDDCountingKmerFreq = new KmerCounting();
+   //     KmerBinaryRDD = KmerBinaryRDD.reduceByKey(RDDCountingKmerFreq);
+
+        /**
+         * Step 5: filter kmers by coverage
+         */
+        if (param.minKmerCoverage >1) {
+            KmerCoverageFilter RDDKmerFilter = new KmerCoverageFilter();
+            KmerBinaryRDD = KmerBinaryRDD.filter(RDDKmerFilter);
+        }
+
+        /**
+         * Generate reverse complement Kmers
+         */
+        KmerReverseComplement RDDRCKmer = new KmerReverseComplement();
+        KmerBinaryRDD = KmerBinaryRDD.mapPartitionsToPair(RDDRCKmer);
+
+        /**
+         * Step : filter forks
+         */
+
+        ForwardSubKmerLongExtraction RDDextractForwardLongSubKmer = new ForwardSubKmerLongExtraction();
+        ReflexivLongSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardLongSubKmer);
+
+        ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.union(ReflexivLongContigRDD);
+
+        if (param.bubble == true) {
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+            FilterForkSubKmerLong RDDhighCoverageLongSelector = new FilterForkSubKmerLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDhighCoverageLongSelector);
+
+            ReflectedSubKmerExtractionFromForwardLong RDDreflectionExtractorLong = new ReflectedSubKmerExtractionFromForwardLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDreflectionExtractorLong);
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+            FilterForkReflectedSubKmerLong RDDhighCoverageReflectedLongSelector = new FilterForkReflectedSubKmerLong();
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedLongSelector);
+
+        }
+
+        /**
+         * Step 9: filter extended Kmers
+         */
+
+
+        /**
+         * first three extensions fit in one Long 1 2 4 8 16 32(x)
+         */
+
+        int iterations = 0;
+
+        /**
+         * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
+         */
+        ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
+
+        int partitionNumber = ReflexivLongSubKmerRDD.getNumPartitions();
+        long contigNumber = 0;
+        while (iterations <= param.maximumIteration) {
+            iterations++;
+            if (iterations >= param.minimumIteration){
+                if (iterations % 3 == 0) {
+
+                    long currentContigNumber = ReflexivLongSubKmerRDD.count();
+                    if (contigNumber == currentContigNumber) {
+                        break;
+                    } else {
+                        contigNumber = currentContigNumber;
+                    }
+
+                    if (partitionNumber >= 16) {
+                        if (currentContigNumber / partitionNumber <= 20) {
+                            partitionNumber = partitionNumber / 4 + 1;
+                            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.coalesce(partitionNumber);
+                        }
+                    }
+                }
+            }
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
+
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
+
+        }
+
+        /**
+         * Binary to string
+         */
+        ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+
+        /**
+         * Step 11: change reflexiv kmers to contig
+         */
+
+        KmerToContig contigformater = new KmerToContig();
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
+
+        ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
+
+        TagContigID IdLabeling = new TagContigID();
+        ContigRDD = ContigTuple2IndexRDD.flatMap(IdLabeling);
+
+        ExtractReContig ReContigfilter = new ExtractReContig();
+        ReConstructedContigRDD = ContigRDD.filter(ReContigfilter);
+
+        /**
+         * Step N: save result
+         */
+
+        ReConstructedContigRDD.saveAsTextFile(param.outputPath + ".extended");
         ContigRDD.saveAsTextFile(param.outputPath);
 
         /**
@@ -347,9 +486,9 @@ public class ReflexivReAssembler implements Serializable{
     }
 
 
-    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long[]>, String>, Serializable {
+    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long>, String>, Serializable {
 
-        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long[]> s) {
+        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long> s) {
 
 
             List<String> contigList = new ArrayList<String>();
@@ -360,11 +499,23 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
+    class ExtractReContig implements Function<String, Boolean>, Serializable{
+        public Boolean call (String contig){
+            if (contig.startsWith(">ReCon")) {
+                return true;
+            }else{
+                return false;
+            }
+        }
+    }
+
+
 
     /**
      * interface class for RDD implementation, used in step 5
      */
     class KmerToContig implements PairFlatMapFunction<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>, String, String>, Serializable{
+        String[] contigIDArray = broadcastedContigIDArray.value();
 
         public Iterator<Tuple2<String, String>> call (Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s){
 
@@ -373,7 +524,22 @@ public class ReflexivReAssembler implements Serializable{
                 String contig= s._1 + s._2._2();
                 int length = contig.length();
                 if (length >= param.minContig) {
-                    String ID = ">Contig-" + length;
+                    String ID=">ReCon-";
+                    if (s._2._3() >= 1000000000) {
+                        ID += contigIDArray[s._2._3() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._3()<= -1000000000) {
+                        ID += contigIDArray[ -s._2._3() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._4() >= 1000000000) {
+                        ID += contigIDArray[s._2._4() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._4() <=-1000000000) {
+                        ID += contigIDArray[-s._2._4() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else {
+                        ID = ">Contig-" + length + "-";
+                    }
                     String formatedContig = changeLine(contig, length, 100);
                     contigList.add(new Tuple2<String, String>(ID, formatedContig));
                 }
@@ -383,7 +549,22 @@ public class ReflexivReAssembler implements Serializable{
                 String contig= s._2._2() + s._1;
                 int length = contig.length();
                 if (length >= param.minContig){
-                    String ID = ">Contig-" + length;
+                    String ID=">ReCon-";
+                    if (s._2._3() >= 1000000000) {
+                        ID += contigIDArray[s._2._3() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._3()<= -1000000000) {
+                        ID += contigIDArray[-s._2._3() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._4() >= 1000000000) {
+                        ID += contigIDArray[s._2._4() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else if (s._2._4() <=-1000000000) {
+                        ID += contigIDArray[-s._2._4() - 1000000000-1];
+                        ID += "-" + length + "-";
+                    } else {
+                        ID = ">Contig-" + length + "-";
+                    }
                     String formatedContig = changeLine(contig, length, 100);
                     contigList.add(new Tuple2<String, String>(ID, formatedContig));
                 }
@@ -3176,29 +3357,29 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
-    class LoadCountedKmerToLongArray implements PairFlatMapFunction<Iterator<String>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
+    class LoadCountedKmerToLongArray implements PairFlatMapFunction<Iterator<String>, Long, Integer>, Serializable {
 
-        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> kmerList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
+        List<Tuple2<Long, Integer>> kmerList = new ArrayList<Tuple2<Long, Integer>>();
         String[] units;
         String kmer;
         int cover;
         char nucleotide;
         long nucleotideInt;
-        Long suffixBinary;
-        Long[] suffixBinaryArray;
+   //     Long suffixBinary;
+   //     Long[] suffixBinaryArray;
 
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call(Iterator<String> s) {
+        public Iterator<Tuple2<Long, Integer >> call(Iterator<String> s) {
 
             while (s.hasNext()) {
                 units = s.next().split(",");
 
-                kmer = units[1].substring(1);
+                kmer = units[0].substring(1);
 
                 cover = Integer.parseInt(StringUtils.chop(units[1]));
 
                 Long nucleotideBinary = 0L;
 
-                for (int i = 0; i < param.subKmerSize; i++) {
+                for (int i = 0; i < param.kmerSize; i++) {
                     nucleotide = kmer.charAt(i);
                     if (nucleotide >= 256) nucleotide = 255;
                     nucleotideInt = nucleotideValue(nucleotide);
@@ -3207,20 +3388,21 @@ public class ReflexivReAssembler implements Serializable{
                     nucleotideBinary |= nucleotideInt;
                 }
 
-                nucleotide = kmer.charAt(param.subKmerSize);
-                if (nucleotide >= 256) nucleotide = 255;
-                nucleotideInt = nucleotideValue(nucleotide);
-                suffixBinary = (nucleotideInt | (1L << 2));
+ //               nucleotide = kmer.charAt(param.subKmerSize);
+ //               if (nucleotide >= 256) nucleotide = 255;
+ //               nucleotideInt = nucleotideValue(nucleotide);
+ //               suffixBinary = (nucleotideInt | (1L << 2)); // add C marker
 
-                suffixBinaryArray = new Long[1];
-                suffixBinaryArray[0] = suffixBinary;
+ //               suffixBinaryArray = new Long[1];
+ //               suffixBinaryArray[0] = suffixBinary;
 
                 kmerList.add(
-                        new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(
-                                nucleotideBinary, new Tuple4<Integer, Long[], Integer, Integer>(1, suffixBinaryArray, cover, cover)
+                        new Tuple2<Long, Integer>(
+                                nucleotideBinary, cover
                         )
                 );
             }
+
             return kmerList.iterator();
         }
 

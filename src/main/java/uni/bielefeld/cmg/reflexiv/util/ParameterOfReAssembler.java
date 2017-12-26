@@ -46,6 +46,7 @@ public class ParameterOfReAssembler {
 
     private static final String
             INPUT_FASTQ = "fastq",
+            INPUT_KMER= "kmerc",
             INPUT_FASTA = "fasta",
             INPUT_FRAG = "frag",
             OUTPUT_FILE = "outfile",
@@ -72,6 +73,7 @@ public class ParameterOfReAssembler {
         int o = 0;
 
         parameterMap.put(INPUT_FASTQ, o++);
+        parameterMap.put(INPUT_KMER, o++);
         parameterMap.put(INPUT_FASTA, o++);
         parameterMap.put(INPUT_FRAG, o++);
         parameterMap.put(OUTPUT_FILE, o++);
@@ -100,6 +102,10 @@ public class ParameterOfReAssembler {
         parameter.addOption(OptionBuilder.withArgName("input fastq file")
                 .hasArg().withDescription("Input NGS data, fastq file format, four line per unit")
                 .create(INPUT_FASTQ));
+
+        parameter.addOption(OptionBuilder.withArgName("input Kmer file")
+                .hasArg().withDescription("Input counted kmer file, tabular file format or spark RDD pair text file")
+                .create(INPUT_KMER));
 
         parameter.addOption(OptionBuilder.withArgName("input fasta file")
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
@@ -327,7 +333,9 @@ public class ParameterOfReAssembler {
                 param.inputFqPath = value;
             } else if ((value = cl.getOptionValue(INPUT_FASTA)) != null){
                 param.inputFaPath = value;
-            } else{
+            } else if ((value = cl.getOptionValue(INPUT_KMER)) != null){
+                param.inputKmerPath = value;
+            }else{
                 help.printHelp();
                 System.exit(0);
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");

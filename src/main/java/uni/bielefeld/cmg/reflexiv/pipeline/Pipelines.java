@@ -70,7 +70,11 @@ public class Pipelines implements Pipeline, Serializable{
     public void reflexivReAssemblerPipe(){
         ReflexivReAssembler rflPipe = new ReflexivReAssembler();
         rflPipe.setParam(param);
-        rflPipe.assembly();
+        if (param.inputKmerPath != null){
+            rflPipe.assemblyFromKmer();
+        }else {
+            rflPipe.assembly();
+        }
     }
 
     public void setParameter (DefaultParam param) {

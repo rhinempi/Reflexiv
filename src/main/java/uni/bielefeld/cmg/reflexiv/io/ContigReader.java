@@ -38,6 +38,7 @@ import java.util.HashMap;
 public class ContigReader implements Serializable{
     public DefaultParam param;
     public HashMap<Integer, String> contigIDTable = new HashMap<Integer, String>();
+    public String[] contigIDArray;
 
     public ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivContigList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
 
@@ -207,6 +208,13 @@ public class ContigReader implements Serializable{
         return value;
     }
 
+    private void buildContigIDArray(){
+        contigIDArray = new String[totalNum];
+        for (int i=0; i< totalNum; i++){
+            contigIDArray[i] = contigIDTable.get(i+1);
+        }
+    }
+
     /**
      * This method load the genome sequences from the input reference file.
      *
@@ -227,6 +235,7 @@ public class ContigReader implements Serializable{
         }
 
         logLastContig();
+        buildContigIDArray();
     }
 
     public ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> getReflexivContigList(){
@@ -235,6 +244,10 @@ public class ContigReader implements Serializable{
 
     public HashMap<Integer, String> getContigIDTable(){
         return contigIDTable;
+    }
+
+    public String[] getContigIDArray (){
+        return this.contigIDArray;
     }
 
 }

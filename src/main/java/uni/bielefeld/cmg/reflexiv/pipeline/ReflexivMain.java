@@ -191,7 +191,6 @@ public class ReflexivMain implements Serializable{
         BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
 
         ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + 0);
 
         /**
          * Step 8: connect and extend overlap kmers
@@ -213,8 +212,8 @@ public class ReflexivMain implements Serializable{
             iterations++;
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
-            ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+ //           ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+ //           ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
         }
@@ -226,8 +225,8 @@ public class ReflexivMain implements Serializable{
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         iterations++;
-        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+//        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+//        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
         ExtendReflexivKmerToArrayFirstTime KmerExtentionToArrayFirst = new ExtendReflexivKmerToArrayFirstTime();
         ReflexivLongSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtentionToArrayFirst);
@@ -264,22 +263,24 @@ public class ReflexivMain implements Serializable{
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
 
-            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
 
-            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
 
         }
 
         /**
          * Step 11: change reflexiv kmers to contig
          */
-        /*
+
+        ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+
         KmerToContig contigformater = new KmerToContig();
-        ContigTuple2RDD = ReflexivSubKmerRDD.flatMapToPair(contigformater);
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
 
         ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
 
@@ -289,7 +290,7 @@ public class ReflexivMain implements Serializable{
         /**
          * Step N: save result
          */
-        /*
+
         ContigRDD.saveAsTextFile(param.outputPath);
 
         /**
@@ -299,9 +300,9 @@ public class ReflexivMain implements Serializable{
     }
 
 
-    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long[]>, String>, Serializable {
+    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long>, String>, Serializable {
 
-        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long[]> s) {
+        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long> s) {
 
 
             List<String> contigList = new ArrayList<String>();
@@ -2243,6 +2244,7 @@ public class ReflexivMain implements Serializable{
 
     class FilterForkReflectedSubKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable{
         List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
+        Integer HighCoverLastCoverage = 0;
 //        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> HighCoverKmer=null;
 //                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>("",
         //                       new Tuple4<Integer, Long, Integer, Integer>(0, "", 0, 0));
@@ -2251,6 +2253,7 @@ public class ReflexivMain implements Serializable{
             while (s.hasNext()){
                 Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> subKmer = s.next();
                 if (HighCoverageSubKmer.size() == 0){
+                    HighCoverLastCoverage = subKmer._2._3();
                     HighCoverageSubKmer.add(
                             new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                     new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
@@ -2258,14 +2261,20 @@ public class ReflexivMain implements Serializable{
                     );
                 }else {
                     if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._1)) {
-                        if (subKmer._2._3().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._3()) >0) {
+                        if (subKmer._2._3().compareTo(HighCoverLastCoverage) >0) {
+                            HighCoverLastCoverage = subKmer._2._3();
                             HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
                                     new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                             new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
                                     )
                             );
-                        } else if (subKmer._2._3().equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3())){
-                            if (subKmer._2._2().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2()) >0){
+                        } else if (subKmer._2._3().equals(HighCoverLastCoverage)){
+                            int subKmerFirstSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(subKmer._2._2())/2 + 1);
+                            int HighCoverageSubKmerFirstSuffixLength = Long.SIZE/2 - ((Long.numberOfLeadingZeros(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._2()))/2 + 1);
+                            Long subKmerFirstSuffix = subKmer._2._2() >>> 2*(subKmerFirstSuffixLength-1);
+                            Long HighCoverageSubKmerFirstSuffix = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2() >>> 2*(HighCoverageSubKmerFirstSuffixLength);
+
+                            if (subKmerFirstSuffix.compareTo(HighCoverageSubKmerFirstSuffix) >0){
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
                                         new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                                 new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
@@ -2288,6 +2297,7 @@ public class ReflexivMain implements Serializable{
                             );
                         }
                     }else{
+                        HighCoverLastCoverage = subKmer._2._3();
                         HighCoverageSubKmer.add(
                                 new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
                                         new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())

@@ -37,6 +37,7 @@ public class DefaultParam implements Serializable{
 
     public String mightyName = "Reflexiv";
     public String inputFqPath;
+    public String inputKmerPath;
     public String inputFaPath;
     public String inputContigPath;
     public String outputPath;
