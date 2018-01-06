@@ -38,7 +38,9 @@ import java.util.HashMap;
 public class ContigReader implements Serializable{
     public DefaultParam param;
     public HashMap<Integer, String> contigIDTable = new HashMap<Integer, String>();
+    public HashMap<String, String> contigPrimerTable= new HashMap<String, String>();
     public String[] contigIDArray;
+    public String[] primerArray;
 
     public ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivContigList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
 
@@ -76,8 +78,8 @@ public class ContigReader implements Serializable{
                     info.readMessage("Input reference file is not fasta format");
                     info.screenDump();
                 }else{
-                 //   String[] head = line.split("\\s+");
-                    name = line.substring(1);
+                    String[] head = line.split("\\s+");
+                    name = head[0].substring(1);
                  //   contigIDTable.put(0, name);
 
                     contigId++;
@@ -100,16 +102,30 @@ public class ContigReader implements Serializable{
      */
     private void loadContig(BufferedReader fasta){
         String line;
+        String forwardSubKmer;
+        String reflectedSubKmer;
+        String primer;
         try {
             while((line = fasta.readLine()) != null){
                 if (line.startsWith(">")){
                     contigIDTable.put(contigId, name);     /* these are information of former contig */
 
                     seq = seqBuilder.toString();
+
                     if (seq.length() < param.kmerSize){
                         info.readMessage("Contig : " + name + "is shorter than a Kmer, skip it.");
                         info.screenDump();
                     }else{
+                        forwardSubKmer = seq.substring(0,param.subKmerSize);
+                        reflectedSubKmer =seq.substring(seq.length()-param.subKmerSize);
+                        primer = forwardSubKmer+reflectedSubKmer;
+
+                        if (contigPrimerTable.containsKey(primer)) {
+                            contigPrimerTable.put(primer, contigPrimerTable.get(primer)+ "|" + name);
+                        }else{
+                            contigPrimerTable.put(primer, name);
+                        }
+
                         Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> subKmerSuffixBinary = getBinaryReflexivKmer(seq, contigId);
                         reflexivContigList.add(subKmerSuffixBinary);
                     }
@@ -119,7 +135,8 @@ public class ContigReader implements Serializable{
                     contigId++;
                     totalNum++;
 
-                    name = line.substring(1);
+                    String[] head = line.split("\\s+");
+                    name = head[0].substring(1);
                 }else{
                     if (!line.isEmpty()) {
                         seqBuilder.append(line);
@@ -139,10 +156,21 @@ public class ContigReader implements Serializable{
         contigIDTable.put(contigId, name);
 
         seq = seqBuilder.toString();
+
         if (seq.length() < param.kmerSize){
             info.readMessage("Contig : " + name + "is shorter than a Kmer, skip it.");
             info.screenDump();
         }else{
+            String forwardSubKmer = seq.substring(0,param.subKmerSize);
+            String reflectedSubKmer =seq.substring(seq.length()-param.subKmerSize);
+            String primer = forwardSubKmer+reflectedSubKmer;
+
+            if (contigPrimerTable.containsKey(primer)) {
+                contigPrimerTable.put(primer, contigPrimerTable.get(primer)+ "|" + name);
+            }else{
+                contigPrimerTable.put(primer, name);
+            }
+
             Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>  subKmerSuffixBinary = getBinaryReflexivKmer(seq, contigId);
             reflexivContigList.add(subKmerSuffixBinary);
         }
@@ -215,6 +243,15 @@ public class ContigReader implements Serializable{
         }
     }
 
+    private void buildPrimerArray(){
+        primerArray = new String[contigPrimerTable.size()];
+        int i=0;
+        for (String key : contigPrimerTable.keySet()){
+            primerArray[i] = key + contigPrimerTable.get(key);
+            i++;
+        }
+    }
+
     /**
      * This method load the genome sequences from the input reference file.
      *
@@ -235,7 +272,8 @@ public class ContigReader implements Serializable{
         }
 
         logLastContig();
-        buildContigIDArray();
+  //      buildContigIDArray();
+        buildPrimerArray();
     }
 
     public ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> getReflexivContigList(){
@@ -246,8 +284,12 @@ public class ContigReader implements Serializable{
         return contigIDTable;
     }
 
-    public String[] getContigIDArray (){
+    public String[] getContigIDArray () {
         return this.contigIDArray;
+    }
+
+    public String[] getPrimerArray(){
+        return this.primerArray;
     }
 
 }

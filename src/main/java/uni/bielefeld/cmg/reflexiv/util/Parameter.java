@@ -60,6 +60,7 @@ public class Parameter {
             ENDCLIP = "clipe",
             MINCOVER= "cover",
             MAXCOVER= "maxcov",
+            MINERROR= "error",
             BUBBLE = "bubble",
             MINLENGTH = "minlength",
             MINCONTIG = "mincontig",
@@ -85,6 +86,7 @@ public class Parameter {
         parameterMap.put(ENDCLIP, o++);
         parameterMap.put(MINCOVER, o++);
         parameterMap.put(MAXCOVER, o++);
+        parameterMap.put(MINERROR, o++);
         parameterMap.put(MINLENGTH, o++);
         parameterMap.put(MINCONTIG, o++);
         parameterMap.put(PARTITIONS, o++);
@@ -146,6 +148,10 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("maximal kmer coverage")
                 .hasArg().withDescription("Maximal coverage to filter high freq kmers")
                 .create(MAXCOVER));
+
+        parameter.addOption(OptionBuilder.withArgName("minimum error correction cover")
+                .hasArg().withDescription("Minimum coverage for correcting sequencing errors. Used for low coverage sequencing. Should be higher than minimal kmer coverage -cover")
+                .create(MINERROR));
 
         parameter.addOption(OptionBuilder.withArgName("minimal read length")
                 .hasArg().withDescription("Minimal read length required for assembly")
@@ -288,6 +294,7 @@ public class Parameter {
             if ((value = cl.getOptionValue(MINCOVER)) != null){
                 if (Integer.decode(value) >= 0 ) {
                     param.minKmerCoverage = Integer.decode(value);
+                    param.setMinErrorCoverage(param.minKmerCoverage); // default minErrorCoverage is equal to minKmerCoverage
                 }else{
                     throw new RuntimeException("Parameter " + MINCOVER+
                             " should be larger than 0");
@@ -300,6 +307,15 @@ public class Parameter {
                 }else{
                     throw new RuntimeException("Parameter " + MAXCOVER+
                             " should be smaller than 1000000");
+                }
+            }
+
+            if ((value = cl.getOptionValue(MINERROR)) != null){
+                if (Integer.decode(value) >= 0 ) {
+                    param.minErrorCoverage = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + MINERROR+
+                            " should be larger than 0");
                 }
             }
 

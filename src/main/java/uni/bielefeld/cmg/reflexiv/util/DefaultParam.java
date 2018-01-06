@@ -42,13 +42,14 @@ public class DefaultParam implements Serializable{
     public String inputContigPath;
     public String outputPath;
 
-    public int kmerSize = 63;
+    public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
-    public int minKmerCoverage = 1;
+    public int minKmerCoverage = 2;
     public int maxKmerCoverage = 100000;
+    public int minErrorCoverage = minKmerCoverage; // equal to minKmerCoverage
     public int minContig = 100;
     public boolean bubble= true;
 
@@ -105,6 +106,10 @@ public class DefaultParam implements Serializable{
 
     public void setSubKmerSize(int s){
         subKmerSize = s;
+    }
+
+    public void setMinErrorCoverage(int s){
+        minErrorCoverage = s;
     }
 
     public void setKmerOverlap(int o){

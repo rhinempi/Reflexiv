@@ -65,7 +65,7 @@ public class HelpParam {
         });
 
         final String executable = System.getProperty("executable", "spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.Main reflexiv.jar");
-        final String executable2 = System.getProperty("executable2", "reflexiv mapper [spark parameter]");
+        final String executable2 = System.getProperty("executable2", "reflexiv run [spark parameter]");
         err.println("Name:");
         err.println("\tReflexiv Main");
         err.println();
@@ -74,9 +74,65 @@ public class HelpParam {
         err.println();
         err.println("Usage:");
         err.println("\trun de novo genome assembly : ");
-        err.println(executable + " [parameters] -fastq input.fq -kmer 63 -outfile output_file");
-        err.println(executable + " [parameters] -fasta input.txt -kmer 63 -outfile output_file");
-        err.println(executable2 + " [parameters] -fastq input.fq -kmer 63 -outfile output_file\"");
+        err.println(executable + " [parameters] -fastq input.fq -kmer 31 -outfile output_file");
+        err.println(executable + " [parameters] -fasta input.txt -kmer 31 -outfile output_file");
+        err.println(executable2 + " [parameters] -fastq input.fq -kmer 31 -outfile output_file");
+        err.println();
+    }
+
+    /**
+     * print out help info with parameters
+     */
+    public void printHelpOfCounter(){
+        HelpFormatter formatter =new HelpFormatter();
+        formatter.setOptionComparator(new Comparator<Option>(){
+            public int compare(Option o1, Option o2){
+                return Integer.compare(parameterMap.get(o1.getOpt()),
+                        parameterMap.get(o2.getOpt()));
+            }
+        });
+
+        final String executable = System.getProperty("executable", "spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfCounter reflexiv.jar");
+        final String executable2 = System.getProperty("executable2", "reflexiv counter [spark parameter]");
+        err.println("Name:");
+        err.println("\tReflexiv Kmer Counter");
+        err.println();
+        err.println("Options:");
+        formatter.printOptions(new PrintWriter(err, true), 85, parameter, 2, 3); /* print formatted parameters */
+        err.println();
+        err.println("Usage:");
+        err.println("\trun de novo genome assembly : ");
+        err.println(executable + " [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out");
+        err.println(executable + " [parameters] -fasta input.txt -kmer 31 -outfile kmerCount.out");
+        err.println(executable2 + " [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out");
+        err.println();
+    }
+
+    /**
+     * print out help info with parameters
+     */
+    public void printHelpOfReAssembler(){
+        HelpFormatter formatter =new HelpFormatter();
+        formatter.setOptionComparator(new Comparator<Option>(){
+            public int compare(Option o1, Option o2){
+                return Integer.compare(parameterMap.get(o1.getOpt()),
+                        parameterMap.get(o2.getOpt()));
+            }
+        });
+
+        final String executable = System.getProperty("executable", "spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfReAssembler reflexiv.jar");
+        final String executable2 = System.getProperty("executable2", "reflexiv reassembler [spark parameter]");
+        err.println("Name:");
+        err.println("\tReflexiv Re-Assembler");
+        err.println();
+        err.println("Options:");
+        formatter.printOptions(new PrintWriter(err, true), 85, parameter, 2, 3); /* print formatted parameters */
+        err.println();
+        err.println("Usage:");
+        err.println("\trun de novo genome assembly : ");
+        err.println(executable + " [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
+        err.println(executable + " [parameters] -fasta input.txt -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
+        err.println(executable2 + " [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
         err.println();
     }
 }

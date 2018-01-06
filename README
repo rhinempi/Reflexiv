@@ -1,0 +1,10 @@
+Please visit: https://rhinempi.github.io/Reflexiv/
+
+
+To start using sparkhit, change sparkhit executable permission:
+    $ chmod 755 ./bin/reflexiv
+
+To see options:
+    $ ./bin/reflexiv
+
+

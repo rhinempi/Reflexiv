@@ -207,12 +207,12 @@ public class ParameterOfReAssembler {
 			/* Set Object cl of CommandLine class for Parameter storage */
             CommandLine cl = parser.parse(parameter, arguments, true);
             if (cl.hasOption(HELP)) {
-                help.printHelp();
+                help.printHelpOfReAssembler();
                 System.exit(0);
             }
 
             if (cl.hasOption(HELP2)) {
-                help.printHelp();
+                help.printHelpOfReAssembler();
                 System.exit(0);
             }
 
@@ -336,7 +336,7 @@ public class ParameterOfReAssembler {
             } else if ((value = cl.getOptionValue(INPUT_KMER)) != null){
                 param.inputKmerPath = value;
             }else{
-                help.printHelp();
+                help.printHelpOfReAssembler();
                 System.exit(0);
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");
             }
@@ -344,7 +344,7 @@ public class ParameterOfReAssembler {
             if ((value = cl.getOptionValue(INPUT_FRAG)) != null) {
                 param.inputContigPath = value;
             } else {
-                help.printHelp();
+                help.printHelpOfReAssembler();
                 System.exit(0);
             }
 

@@ -195,12 +195,12 @@ public class ParameterOfCounter {
 			/* Set Object cl of CommandLine class for Parameter storage */
             CommandLine cl = parser.parse(parameter, arguments, true);
             if (cl.hasOption(HELP)) {
-                help.printHelp();
+                help.printHelpOfCounter();
                 System.exit(0);
             }
 
             if (cl.hasOption(HELP2)) {
-                help.printHelp();
+                help.printHelpOfCounter();
                 System.exit(0);
             }
 
@@ -322,7 +322,7 @@ public class ParameterOfCounter {
             } else if ((value = cl.getOptionValue(INPUT_FASTA)) != null){
                 param.inputFaPath = value;
             } else{
-                help.printHelp();
+                help.printHelpOfCounter();
                 System.exit(0);
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");
             }

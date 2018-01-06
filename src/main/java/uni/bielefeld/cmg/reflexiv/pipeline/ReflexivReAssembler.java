@@ -12,6 +12,7 @@ import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.broadcast.Broadcast;
 import scala.Tuple2;
+import scala.Tuple3;
 import scala.Tuple4;
 import uni.bielefeld.cmg.reflexiv.io.ContigReader;
 import uni.bielefeld.cmg.reflexiv.io.ReadFasta;
@@ -48,7 +49,8 @@ import java.util.*;
 public class ReflexivReAssembler implements Serializable{
     private long time;
     private DefaultParam param;
-    Broadcast<String[]> broadcastedContigIDArray;
+  //  Broadcast<String[]> broadcastedContigIDArray;
+    Broadcast<String[]> broadcastedPrimerArray;
 
     private InfoDumper info = new InfoDumper();
 
@@ -119,8 +121,8 @@ public class ReflexivReAssembler implements Serializable{
         contigReader.setParameter(param);
         contigReader.loadRef(param.inputContigPath);
         reflexivContigList = contigReader.getReflexivContigList();
-        String[] contigIDArray = contigReader.getContigIDArray();
-        broadcastedContigIDArray = sc.broadcast(contigIDArray);
+        String[] primerArray = contigReader.getPrimerArray();
+        broadcastedPrimerArray = sc.broadcast(primerArray);
 
         int partitions = reflexivContigList.size() / 2000 + 1;
         if (partitions > 50) {
@@ -262,7 +264,7 @@ public class ReflexivReAssembler implements Serializable{
          */
 
         KmerToContig contigformater = new KmerToContig();
-        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.mapPartitionsToPair(contigformater);
 
         ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
 
@@ -320,8 +322,8 @@ public class ReflexivReAssembler implements Serializable{
         contigReader.setParameter(param);
         contigReader.loadRef(param.inputContigPath);
         reflexivContigList = contigReader.getReflexivContigList();
-        String[] contigIDArray = contigReader.getContigIDArray();
-        broadcastedContigIDArray = sc.broadcast(contigIDArray);
+        String[] primerArray = contigReader.getPrimerArray();
+        broadcastedPrimerArray = sc.broadcast(primerArray);
 
         int partitions = reflexivContigList.size() / 2000 + 1;
         if (partitions > 50) {
@@ -462,7 +464,7 @@ public class ReflexivReAssembler implements Serializable{
          */
 
         KmerToContig contigformater = new KmerToContig();
-        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.mapPartitionsToPair(contigformater);
 
         ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
 
@@ -510,66 +512,58 @@ public class ReflexivReAssembler implements Serializable{
     }
 
 
-
     /**
      * interface class for RDD implementation, used in step 5
      */
-    class KmerToContig implements PairFlatMapFunction<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>, String, String>, Serializable{
-        String[] contigIDArray = broadcastedContigIDArray.value();
+    class KmerToContig implements PairFlatMapFunction<Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>, String, String>, Serializable{
+        String[] primerArray = broadcastedPrimerArray.value();
 
-        public Iterator<Tuple2<String, String>> call (Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s){
+
+        public Iterator<Tuple2<String, String>> call (Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> sIterator){
+            String[][] primerArrayTuple3 = new String[primerArray.length][3];
+
+            for (int j=0; j< primerArray.length ; j++){
+                primerArrayTuple3[j][0] = primerArray[j].substring(0,param.subKmerSize);
+                primerArrayTuple3[j][1] = primerArray[j].substring(param.subKmerSize, 2*param.subKmerSize);
+                primerArrayTuple3[j][2] = primerArray[j].substring(2*param.subKmerSize);
+            }
 
             List<Tuple2<String, String>> contigList = new ArrayList<Tuple2<String, String>>();
-            if (s._2._1() == 1) {
-                String contig= s._1 + s._2._2();
+            while(sIterator.hasNext()) {
+                Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s = sIterator.next();
+                String contig;
+
+                if (s._2._1() == 1) {
+                    contig = s._1 + s._2._2();
+                } else {
+                    contig = s._2._2() + s._1;
+                }
+
                 int length = contig.length();
                 if (length >= param.minContig) {
-                    String ID=">ReCon-";
-                    if (s._2._3() >= 1000000000) {
-                        ID += contigIDArray[s._2._3() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._3()<= -1000000000) {
-                        ID += contigIDArray[ -s._2._3() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._4() >= 1000000000) {
-                        ID += contigIDArray[s._2._4() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._4() <=-1000000000) {
-                        ID += contigIDArray[-s._2._4() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else {
-                        ID = ">Contig-" + length + "-";
+                    String ID = ">ReCon-length:" + length;
+
+                    boolean reAssembleMarker = false;
+                    for (int i = 0; i < primerArray.length; i++) {
+                        int begin = contig.indexOf(primerArrayTuple3[i][0]);
+                        int end = contig.indexOf(primerArrayTuple3[i][1]);
+                        if (begin >= 0 && end >= 0) {
+                            reAssembleMarker = true;
+                            end+=param.subKmerSize;
+                            ID += "-begin:" + begin + "-end:" + end + "-" + primerArrayTuple3[i][2];
+                        } else {
+
+                        }
                     }
+
+                    if (!reAssembleMarker) {
+                        ID = ">Contig-length:" + length + "-";
+                    }
+
                     String formatedContig = changeLine(contig, length, 100);
                     contigList.add(new Tuple2<String, String>(ID, formatedContig));
                 }
             }
-
-            else{ // (randomReflexivMarker == 2) {
-                String contig= s._2._2() + s._1;
-                int length = contig.length();
-                if (length >= param.minContig){
-                    String ID=">ReCon-";
-                    if (s._2._3() >= 1000000000) {
-                        ID += contigIDArray[s._2._3() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._3()<= -1000000000) {
-                        ID += contigIDArray[-s._2._3() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._4() >= 1000000000) {
-                        ID += contigIDArray[s._2._4() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else if (s._2._4() <=-1000000000) {
-                        ID += contigIDArray[-s._2._4() - 1000000000-1];
-                        ID += "-" + length + "-";
-                    } else {
-                        ID = ">Contig-" + length + "-";
-                    }
-                    String formatedContig = changeLine(contig, length, 100);
-                    contigList.add(new Tuple2<String, String>(ID, formatedContig));
-                }
-            }
-
             return contigList.iterator();
         }
 
@@ -594,64 +588,6 @@ public class ReflexivReAssembler implements Serializable{
             }
 
             return blockLine;
-        }
-    }
-
-
-    class ReflexivExtensionToArray implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable{
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> sIterator) {
-            List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
-            return reflexivKmerConcatList.iterator();
-        }
-    }
-
-    /**
-     *
-     */
-    class BinaryReflexivKmerToString implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, String, Tuple4<Integer, String, Integer, Integer>>, Serializable{
-        List<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> reflexivKmerStringList = new ArrayList<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>();
-
-        public Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> call(Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> sIterator){
-            while (sIterator.hasNext()){
-                String subKmer = "";
-                String subString ="";
-                Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> s = sIterator.next();
-                int currentSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2())/2 + 1);
-                for (int i=1; i<=param.subKmerSize;i++){
-                    Long currentNucleotideBinary = s._1 >>> 2*(param.subKmerSize - i);
-                    currentNucleotideBinary &= 3L;
-                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
-                }
-
-                for (int i=1; i<=currentSuffixLength; i++){
-                    Long currentNucleotideBinary = s._2._2() >>> 2*(currentSuffixLength - i);
-                    currentNucleotideBinary &= 3L;
-                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subString += currentNucleotide;
-                }
-
-                reflexivKmerStringList.add (
-                        new Tuple2<String, Tuple4<Integer, String, Integer, Integer>>(
-                                subKmer, new Tuple4<Integer, String, Integer, Integer>(s._2._1(), subString, s._2._3(), s._2._4())
-                        )
-                );
-            }
-            return reflexivKmerStringList.iterator();
-        }
-
-        private char BinaryToNucleotide (Long twoBits){
-            char nucleotide;
-            if (twoBits == 0){
-                nucleotide = 'A';
-            }else if (twoBits == 1){
-                nucleotide = 'C';
-            }else if (twoBits == 2){
-                nucleotide = 'G';
-            }else{
-                nucleotide = 'T';
-            }
-            return nucleotide;
         }
     }
 
@@ -761,32 +697,20 @@ public class ReflexivReAssembler implements Serializable{
 
             while (sIterator.hasNext()) {
                 Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> s = sIterator.next();
-            /* receive the first sub-kmer, set new units */
+
+                /* receive the first sub-kmer, set new units */
                 if (lineMarker == 1) {
                     resetSubKmerGroup(s);
 
                     // return reflexivKmerConcatList.iterator();
                 }
 
-            /* removal condition */
+                /* removal condition */
                 /**
                  * Deprecated function for killer k-mers
                  */
-/*
- *           else if (lineMarker == -1){
- *               if (s._2._1() == 0) {
- *                   reflexivKmerConcatList.add(s);
- *                   return reflexivKmerConcatList.iterator();
- *               } else if (s._1 == tmpReflexivKmerExtendList.get(0)._1()) { /* the same Sub-kmer, than kill
- *
- *                   return null;
- *               } else { /* not the sam Sub-kmer, than reset to new sub-kmer group
- *                   resetSubKmerGroup(s);
- *                   return null;
- *               }
- *           }
-*/
-            /* next element of RDD */
+
+                /* next element of RDD */
                 else {/* if (lineMarker >= 2){ */
                 /* initiate a new capsule for the current sub-kmer group */
                     //      reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
@@ -798,28 +722,28 @@ public class ReflexivReAssembler implements Serializable{
                             if (s._1.equals(tmpReflexivKmerExtendList.get(i)._1)) {
                                 if (s._2._1() == 1) {
                                     if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2()[0])/2 + 1);
-                                        int tmpBlockSize = (tmpReflexivKmerExtendList.get(i)._2._2().length - 1)*31 + tmpReflexivKmerSuffixLength;
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2()[0])/2 + 1);
-                                        int currentBlockSize = (s._2._2().length -1)*31 + currentReflexivKmerSuffixLength;
+                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2()[0]) / 2 + 1);
+                                        int tmpBlockSize = (tmpReflexivKmerExtendList.get(i)._2._2().length - 1) * 31 + tmpReflexivKmerSuffixLength;
+                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(s._2._2()[0]) / 2 + 1);
+                                        int currentBlockSize = (s._2._2().length - 1) * 31 + currentReflexivKmerSuffixLength;
 
                                         if (s._2._3() < 0 && tmpReflexivKmerExtendList.get(i)._2._4() < 0) {
                                             reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (s._2._3()>=0 && tmpReflexivKmerExtendList.get(i)._2._4()>=0) {
+                                        } else if (s._2._3() >= 0 && tmpReflexivKmerExtendList.get(i)._2._4() >= 0) {
                                             reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (s._2._3()>=0 && s._2._3()-tmpBlockSize>=0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), s._2._3()-tmpBlockSize);
+                                        } else if (s._2._3() >= 0 && s._2._3() - tmpBlockSize >= 0) {
+                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), s._2._3() - tmpBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._4() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentBlockSize>=0){
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), tmpReflexivKmerExtendList.get(i)._2._4()-currentBlockSize);
+                                        } else if (tmpReflexivKmerExtendList.get(i)._2._4() >= 0 && tmpReflexivKmerExtendList.get(i)._2._4() - currentBlockSize >= 0) {
+                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), tmpReflexivKmerExtendList.get(i)._2._4() - currentBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else{
+                                        } else {
                                             singleKmerRandomizer(s);
                                             break;
                                         }
@@ -834,27 +758,27 @@ public class ReflexivReAssembler implements Serializable{
                                         //directKmerComparison(s);
                                         break;
                                     } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2()[0])/2 + 1);
-                                        int tmpBlockSize = (tmpReflexivKmerExtendList.get(i)._2._2().length - 1)*31 + tmpReflexivKmerSuffixLength;
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2()[0])/2 + 1);
-                                        int currentBlockSize = (s._2._2().length -1)*31 + currentReflexivKmerSuffixLength;
+                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2()[0]) / 2 + 1);
+                                        int tmpBlockSize = (tmpReflexivKmerExtendList.get(i)._2._2().length - 1) * 31 + tmpReflexivKmerSuffixLength;
+                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros(s._2._2()[0]) / 2 + 1);
+                                        int currentBlockSize = (s._2._2().length - 1) * 31 + currentReflexivKmerSuffixLength;
                                         if (s._2._4() < 0 && tmpReflexivKmerExtendList.get(i)._2._3() < 0) {
                                             reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (s._2._4()>=0 && tmpReflexivKmerExtendList.get(i)._2._3()>=0) {
+                                        } else if (s._2._4() >= 0 && tmpReflexivKmerExtendList.get(i)._2._3() >= 0) {
                                             reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (s._2._4()>=0 && s._2._4()-tmpBlockSize>=0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s._2._4()-tmpBlockSize);
+                                        } else if (s._2._4() >= 0 && s._2._4() - tmpBlockSize >= 0) {
+                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s._2._4() - tmpBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._3() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentBlockSize >=0){
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i)._2._4()-currentBlockSize);
+                                        } else if (tmpReflexivKmerExtendList.get(i)._2._3() >= 0 && tmpReflexivKmerExtendList.get(i)._2._4() - currentBlockSize >= 0) {
+                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i)._2._4() - currentBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        }else{
+                                        } else {
                                             singleKmerRandomizer(s);
                                             break;
                                         }
@@ -1509,886 +1433,11 @@ public class ReflexivReAssembler implements Serializable{
             }else {
                 lineMarker = 3; /* reset to new sub-kmer group */
             }
-            /* re-reflex all single kmers in the sub-kmer group */
-//            if (tmpReflexivKmerExtendList.size() != 0) {
-//                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
-            //                   singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-            //               }
-            //          }
 
             tmpReflexivKmerExtendList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
             tmpReflexivKmerExtendList.add(
                     new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(S._1,
                             new Tuple4<Integer, Long[], Integer, Integer>(
-                                    S._2._1(), S._2._2(), S._2._3(), S._2._4()
-                            )
-                    )
-            );
-        }
-
-        /**
-         *
-         */
-        public void tmpKmerRandomizer(){
-            if (tmpReflexivKmerExtendList.size() != 0) {
-                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
-                    singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-                }
-            }
-        }
-    }
-
-
-    /**
-     *
-     */
-    class ExtendReflexivKmerToArrayFirstTime implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable{
-
-        /* marker to identify similar SubKmers in the loop sequence */
-        private int lineMarker=1;
-
-        /* 1 stands for forward sub-kmer */
-        /* 2 stands for reflexiv sub-kmer */
-        //       private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
-        private int randomReflexivMarker =2;
-
-        long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
-        long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
-
-
-        /* temporary capsule to store identical SubKmer units */
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> tmpReflexivKmerExtendList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-
-        /* return capsule of extend Tuples for next iteration*/
-        List<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>();
-
-        /**
-         *
-         * @param sIterator is the input data structure Tuple2<SubKmer, Tuple2<Marker, TheRestSequence>>
-         *          s._1 represents sub kmer sequence
-         *          s._2._1 represents sub kmer marker: 1, for forward sub kmer;
-         *                                              2, for reverse (reflexiv) sub kmer;
-         *          s._2._2 represents the rest sequence.
-         *          s._2._2 represents the coverage of the K-mer
-         * @return a list of extended Tuples for next iteration
-         */
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> sIterator) {
-
-            while (sIterator.hasNext()) {
-                Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> s = sIterator.next();
-            /* receive the first sub-kmer, set new units */
-                if (lineMarker == 1) {
-                    resetSubKmerGroup(s);
-
-                    // return reflexivKmerConcatList.iterator();
-                }
-
-            /* removal condition */
-                /**
-                 * Deprecated function for killer k-mers
-                 */
-/*
- *           else if (lineMarker == -1){
- *               if (s._2._1() == 0) {
- *                   reflexivKmerConcatList.add(s);
- *                   return reflexivKmerConcatList.iterator();
- *               } else if (s._1 == tmpReflexivKmerExtendList.get(0)._1()) { /* the same Sub-kmer, than kill
- *
- *                   return null;
- *               } else { /* not the sam Sub-kmer, than reset to new sub-kmer group
- *                   resetSubKmerGroup(s);
- *                   return null;
- *               }
- *           }
-*/
-            /* next element of RDD */
-                else {/* if (lineMarker >= 2){ */
-                /* initiate a new capsule for the current sub-kmer group */
-                    //      reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-
-                    if (tmpReflexivKmerExtendList.size() == 0) {
-                        directKmerComparison(s);
-                    } else { /* tmpReflexivKmerExtendList.size() != 0 */
-                        for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) { // the tmpReflexivKmerExtendList is changing dynamically
-                            if (s._1.equals(tmpReflexivKmerExtendList.get(i)._1)) {
-                                if (s._2._1() == 1) {
-                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2())/2 + 1);
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2())/2 + 1);
-                                        if (s._2._3() < 0 && tmpReflexivKmerExtendList.get(i)._2._4() < 0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._3()>=0 && tmpReflexivKmerExtendList.get(i)._2._4()>=0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._3()>=0 && s._2._3()-tmpReflexivKmerSuffixLength>=0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), s._2._3()-tmpReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._4() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength>=0){
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else{
-                                            singleKmerRandomizer(s);
-                                            break;
-                                        }
-                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                        singleKmerRandomizer(s);
-                                        //directKmerComparison(s);
-                                        break;
-                                    }
-                                } else { /* if (s._2._1() == 2) { */
-                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                        singleKmerRandomizer(s);
-                                        //directKmerComparison(s);
-                                        break;
-                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2())/2 + 1);
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2())/2 + 1);
-                                        if (s._2._4() < 0 && tmpReflexivKmerExtendList.get(i)._2._3() < 0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._4()>=0 && tmpReflexivKmerExtendList.get(i)._2._3()>=0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._4()>=0 && s._2._4()-tmpReflexivKmerSuffixLength>=0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s._2._4()-tmpReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._3() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength >=0){
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else{
-                                            singleKmerRandomizer(s);
-                                            break;
-                                        }
-                                    }
-                                }
-                            /* return reflexivKmerConcatList.iterator(); */
-                            }
-
-                        /* new Sub-kmer group section */
-                            else { /* s._1 != tmpReflexivKmerExtendList.get(i)._1()*/
-                                //  if (lineMarker == 2) { // lineMarker == 2 represents the second line of the partition
-                                //     singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-                                // }
-                                //  singleKmerRandomizer(s);
-                                tmpKmerRandomizer();
-                                resetSubKmerGroup(s);
-                                break;
-                            }
-                        } /* end of the while loop */
-                    }// end of else condition
-
-                    lineMarker++;
-                    // return reflexivKmerConcatList.iterator();
-                }
-            } // while loop
-            tmpKmerRandomizer();
-            return reflexivKmerConcatList.iterator();
-        }
-
-        /**
-         *
-         * @param currentSubKmer
-         */
-        public void singleKmerRandomizer(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> currentSubKmer){
-
-
-            if (currentSubKmer._2._1() == 1){
-                int currentSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~((~0L) << (2*currentSuffixLength));
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-                Long[] newReflexivLongArray;
-
-                if (randomReflexivMarker == 2) {
-                    if (currentSuffixLength > param.subKmerSize) {
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-                        newReflexivLongArray = new Long[1];
-                    }else if (currentSuffixLength == param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-                        newReflexivLongArray = new Long[1];
-                    }else{
-                        newReflexivSubKmer = currentSubKmer._1 << (currentSuffixLength*2);
-                        newReflexivSubKmer &= maxSubKmerBinary;
-                        newReflexivSubKmer |= (currentSubKmer._2._2() & maxSuffixLengthBinary);
-
-
-                        newReflexivLong = currentSubKmer._1 >>> (2*(param.subKmerSize- currentSuffixLength));
-                        newReflexivLong |= (1L<<(2*currentSuffixLength)); // add C marker in the front
-                        /**
-                         * to array
-                         */
-                        newReflexivLongArray = new Long[1];
-                        newReflexivLongArray[0]=newReflexivLong;
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else{
-                    newReflexivLongArray = new Long[1];
-                    newReflexivLongArray[0] = currentSubKmer._2._2();
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(currentSubKmer._1,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            currentSubKmer._2._1(), newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }
-            }else{ /* currentSubKmer._2._1() == 2 */
-                int currentPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~((~0L) << (2*currentPrefixLength));
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-                Long[] newReflexivLongArray;
-                if (randomReflexivMarker == 2) {
-                    newReflexivLongArray = new Long[1];
-                    newReflexivLongArray[0] = currentSubKmer._2._2();
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(currentSubKmer._1,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            currentSubKmer._2._1(), newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else{ /* randomReflexivMarker == 1 */
-                    if (currentPrefixLength > param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-                        newReflexivLongArray = new Long[1];
-                    }else if (currentPrefixLength == param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-                        newReflexivLongArray = new Long[1];
-                    }else{ /* currentPreffixLength < param.subKmerSize */
-                        newReflexivSubKmer = (currentSubKmer._2._2() & maxSuffixLengthBinary) << (2*(param.subKmerSize - currentPrefixLength));;
-                        //newReflexivSubKmer <<= (2*(param.subKmerSize - currentPrefixLength));
-                        newReflexivSubKmer |=(currentSubKmer._1 >>> (2*currentPrefixLength));
-
-                        newReflexivLong = currentSubKmer._1 & maxSuffixLengthBinary;
-                        newReflexivLong |= (1L<<2*currentPrefixLength); // add C marker in the front
-                        /**
-                         * to array
-                         */
-                        newReflexivLongArray = new Long[1];
-                        newReflexivLongArray[0]=newReflexivLong;
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLongArray, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }
-
-            }
-
-            /* an action of randomization */
-
-            if (randomReflexivMarker == 1 ){
-                randomReflexivMarker = 2;
-            }else { /* randomReflexivMarker == 2 */
-                randomReflexivMarker = 1;
-            }
-        }
-        /**
-         *
-         * @param currentSubKmer
-         */
-        public void directKmerComparison(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> currentSubKmer){
-            tmpReflexivKmerExtendList.add(currentSubKmer);
-        }
-
-        /**
-         *
-         * @param forwardSubKmer
-         * @param reflexedSubKmer
-         */
-        public void reflexivExtend(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> forwardSubKmer, Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> reflexedSubKmer, int bubbleDistance) {
-
-             /* forward   ATCGATCG, 1, ------ */
-             /* reflexed  ------, 2, ATCGATCG */
-
-            int forwardSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(forwardSubKmer._2._2())/2 + 1);
-            int reflexedPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(reflexedSubKmer._2._2())/2 + 1);
-            int concatenateLength = forwardSuffixLength + reflexedPrefixLength;
-            long maxSuffixLengthBinary = ~((~0L) << 2*forwardSuffixLength);
-            long maxPrefixLengthBinary = ~((~0L) << 2*reflexedPrefixLength);
-
-
-            if (randomReflexivMarker == 2) {
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-                Long[] newReflexivLongArray;
-
-                if (forwardSuffixLength > param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                    newReflexivLongArray = new Long[1];
-                } else if (forwardSuffixLength == param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                    newReflexivLongArray = new Long[1];
-                } else { /* forwardSuffixLength < param.subKmerSize */
-
-                    newReflexivSubKmer = forwardSubKmer._1 << (2*forwardSuffixLength);
-                    newReflexivSubKmer &= maxSubKmerBinary;
-                    newReflexivSubKmer |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
-                    if (concatenateLength > 31){ // 31 for one block
-                        Long newReflexivLonghead = reflexedSubKmer._2._2() >>> (2*(31-forwardSuffixLength)); // do not remove the C maker
-                        newReflexivLong= reflexedSubKmer._2._2() << (2*forwardSuffixLength);
-                        newReflexivLong &= maxBlockBinary;
-                        newReflexivLong |= (forwardSubKmer._1 >>> 2*(param.subKmerSize - forwardSuffixLength));
-
-                        newReflexivLongArray = new Long[concatenateLength/31+1];
-                        newReflexivLongArray[0] = newReflexivLonghead;
-                        newReflexivLongArray[1] = newReflexivLong;
-                    }else {
-                        newReflexivLong = reflexedSubKmer._2._2() << (2 * forwardSuffixLength); // do not remove the C marker as it will be used again
-                        newReflexivLong |= (forwardSubKmer._1 >>> (2 * (param.subKmerSize - forwardSuffixLength))); // do not have to add the C marker
-
-                        // the first time only one element in the array
-                        newReflexivLongArray = new Long[1];
-                        newReflexivLongArray[0] = newReflexivLong;
-                    }
-                }
-
-                if (bubbleDistance <0) {
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLongArray, reflexedSubKmer._2._3(), forwardSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else {
-                    if (forwardSubKmer._2._3() > 0) {
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
-                                        new Tuple4<Integer, Long[], Integer, Integer>(
-                                                randomReflexivMarker, newReflexivLongArray, bubbleDistance, forwardSubKmer._2._4()
-                                        )
-                                )
-                        );
-                    }else{
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newReflexivSubKmer,
-                                        new Tuple4<Integer, Long[], Integer, Integer>(
-                                                randomReflexivMarker, newReflexivLongArray, reflexedSubKmer._2._3(), bubbleDistance
-                                        )
-                                )
-                        );
-                    }
-                }
-
-                randomReflexivMarker = 1; /* an action of randomization */
-            }else { /* randomReflexivMarker == 1 */
-                Long newForwardSubKmer=0L;
-                Long newForwardLong=0L;
-                Long[] newForwardLongArray;
-
-                if (reflexedPrefixLength > param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                    newForwardLongArray = new Long[1];
-                } else if (reflexedPrefixLength == param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                    newForwardLongArray = new Long[1];
-                } else { /* reflexedPreffixLength < param.subKmerSize */
-                    newForwardSubKmer = (reflexedSubKmer._2._2() & maxPrefixLengthBinary) << (2*(param.subKmerSize - reflexedPrefixLength));
-                    newForwardSubKmer |= reflexedSubKmer._1 >>> 2*reflexedPrefixLength;
-
-                    if (concatenateLength>31){
-                        Long newForwardLonghead = forwardSubKmer._1 & maxPrefixLengthBinary;
-                        newForwardLonghead >>>= 2*(31 - forwardSuffixLength);
-                        newForwardLonghead |= (1L << 2*(concatenateLength -31)); // add the C maker
-
-                        newForwardLong = forwardSubKmer._1 << 2*forwardSuffixLength;
-                        newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
-                        newForwardLong &= maxBlockBinary;
-
-                        newForwardLongArray = new Long[concatenateLength/31+1];
-                        newForwardLongArray[0] = newForwardLonghead;
-                        newForwardLongArray[1] = newForwardLong;
-                    }else {
-                        newForwardLong = reflexedSubKmer._1 & maxPrefixLengthBinary;
-                        newForwardLong |= (1L << (2 * reflexedPrefixLength)); // add the C marker
-                        newForwardLong <<= (2 * forwardSuffixLength);
-                        newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
-
-                        // the first time only one element
-                        newForwardLongArray = new Long[1];
-                        newForwardLongArray[0] = newForwardLong;
-                    }
-                }
-
-                if (bubbleDistance <0) {
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newForwardSubKmer,
-                                    new Tuple4<Integer, Long[], Integer, Integer>(
-                                            randomReflexivMarker, newForwardLongArray, reflexedSubKmer._2._3(), forwardSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else {
-                    if (forwardSubKmer._2._3() > 0) {
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newForwardSubKmer,
-                                        new Tuple4<Integer, Long[], Integer, Integer>(
-                                                randomReflexivMarker, newForwardLongArray, bubbleDistance, forwardSubKmer._2._4()
-                                        )
-                                )
-                        );
-                    }else{ // reflexedSubKmer._2._4() >0
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>(newForwardSubKmer,
-                                        new Tuple4<Integer, Long[], Integer, Integer>(
-                                                randomReflexivMarker, newForwardLongArray, reflexedSubKmer._2._3(), bubbleDistance
-                                        )
-                                )
-                        );
-                    }
-                }
-
-                randomReflexivMarker = 2;
-            }
-
-             /* add current sub kmer to temporal storage */
-            // tmpReflexivKmerExtendList.add(reflexedSubKmer);
-        }
-
-        /**
-         *
-         * @param S
-         */
-        public void resetSubKmerGroup(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> S) {
-            if (lineMarker == 1) {
-                lineMarker = 2;
-            }else {
-                lineMarker = 3; /* reset to new sub-kmer group */
-            }
-            /* re-reflex all single kmers in the sub-kmer group */
-//            if (tmpReflexivKmerExtendList.size() != 0) {
-//                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
-            //                   singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-            //               }
-            //          }
-
-            tmpReflexivKmerExtendList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-            tmpReflexivKmerExtendList.add(
-                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(S._1,
-                            new Tuple4<Integer, Long, Integer, Integer>(
-                                    S._2._1(), S._2._2(), S._2._3(), S._2._4()
-                            )
-                    )
-            );
-        }
-
-        /**
-         *
-         */
-        public void tmpKmerRandomizer(){
-            if (tmpReflexivKmerExtendList.size() != 0) {
-                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
-                    singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-                }
-            }
-        }
-    }
-
-
-    /**
-     *
-     */
-    class ExtendReflexivKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable{
-
-        /* marker to identify similar SubKmers in the loop sequence */
-        private int lineMarker=1;
-
-        /* 1 stands for forward sub-kmer */
-        /* 2 stands for reflexiv sub-kmer */
-        //     private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
-        private int randomReflexivMarker=2;
-
-        long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
-
-
-        /* temporary capsule to store identical SubKmer units */
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> tmpReflexivKmerExtendList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-
-        /* return capsule of extend Tuples for next iteration*/
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-
-        /**
-         *
-         * @param sIterator is the input data structure Tuple2<SubKmer, Tuple2<Marker, TheRestSequence>>
-         *          s._1 represents sub kmer sequence
-         *          s._2._1 represents sub kmer marker: 1, for forward sub kmer;
-         *                                              2, for reverse (reflexiv) sub kmer;
-         *          s._2._2 represents the rest sequence.
-         *          s._2._2 represents the coverage of the K-mer
-         * @return a list of extended Tuples for next iteration
-         */
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> sIterator) {
-
-            while (sIterator.hasNext()) {
-                Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> s = sIterator.next();
-            /* receive the first sub-kmer, set new units */
-                if (lineMarker == 1) {
-                    resetSubKmerGroup(s);
-
-                    // return reflexivKmerConcatList.iterator();
-                }
-
-            /* removal condition */
-                /**
-                 * Deprecated function for killer k-mers
-                 */
-/*
- *           else if (lineMarker == -1){
- *               if (s._2._1() == 0) {
- *                   reflexivKmerConcatList.add(s);
- *                   return reflexivKmerConcatList.iterator();
- *               } else if (s._1 == tmpReflexivKmerExtendList.get(0)._1()) { /* the same Sub-kmer, than kill
- *
- *                   return null;
- *               } else { /* not the sam Sub-kmer, than reset to new sub-kmer group
- *                   resetSubKmerGroup(s);
- *                   return null;
- *               }
- *           }
-*/
-            /* next element of RDD */
-                else {/* if (lineMarker >= 2){ */
-                /* initiate a new capsule for the current sub-kmer group */
-                    //      reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-
-                    if (tmpReflexivKmerExtendList.size() == 0) {
-                        directKmerComparison(s);
-                    } else { /* tmpReflexivKmerExtendList.size() != 0 */
-                        for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) { // the tmpReflexivKmerExtendList is changing dynamically
-                            if (s._1.equals(tmpReflexivKmerExtendList.get(i)._1)) {
-                                if (s._2._1() == 1) {
-                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2())/2 + 1);
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2())/2 + 1);
-                                        if (s._2._3() < 0 && tmpReflexivKmerExtendList.get(i)._2._4() < 0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._3()>=0 && tmpReflexivKmerExtendList.get(i)._2._4()>=0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._3()>=0 && s._2._3()-tmpReflexivKmerSuffixLength>=0) {
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), s._2._3()-tmpReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._4() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength>=0){
-                                            reflexivExtend(s, tmpReflexivKmerExtendList.get(i), tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else{
-                                            singleKmerRandomizer(s);
-                                            break;
-                                        }
-                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                        singleKmerRandomizer(s);
-                                        //directKmerComparison(s);
-                                        break;
-                                    }
-                                } else { /* if (s._2._1() == 2) { */
-                                    if (tmpReflexivKmerExtendList.get(i)._2._1() == 2) {
-                                        singleKmerRandomizer(s);
-                                        //directKmerComparison(s);
-                                        break;
-                                    } else if (tmpReflexivKmerExtendList.get(i)._2._1() == 1) {
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(tmpReflexivKmerExtendList.get(i)._2._2())/2 + 1);
-                                        int currentReflexivKmerSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s._2._2())/2 + 1);
-                                        if (s._2._4() < 0 && tmpReflexivKmerExtendList.get(i)._2._3() < 0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._4()>=0 && tmpReflexivKmerExtendList.get(i)._2._3()>=0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, -1);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (s._2._4()>=0 && s._2._4()-tmpReflexivKmerSuffixLength>=0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s._2._4()-tmpReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else if (tmpReflexivKmerExtendList.get(i)._2._3() >=0 && tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength >=0){
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i)._2._4()-currentReflexivKmerSuffixLength);
-                                            tmpReflexivKmerExtendList.remove(i); /* already extended */
-                                            break;
-                                        }else{
-                                            singleKmerRandomizer(s);
-                                            break;
-                                        }
-                                    }
-                                }
-                            /* return reflexivKmerConcatList.iterator(); */
-                            }
-
-                        /* new Sub-kmer group section */
-                            else { /* s._1 != tmpReflexivKmerExtendList.get(i)._1()*/
-                                //  if (lineMarker == 2) { // lineMarker == 2 represents the second line of the partition
-                                //     singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-                                // }
-                                //  singleKmerRandomizer(s);
-                                tmpKmerRandomizer();
-                                resetSubKmerGroup(s);
-                                break;
-                            }
-                        } /* end of the while loop */
-                    }// end of else condition
-
-                    lineMarker++;
-                    // return reflexivKmerConcatList.iterator();
-                }
-            } // while loop
-            tmpKmerRandomizer();
-            return reflexivKmerConcatList.iterator();
-        }
-
-        /**
-         *
-         * @param currentSubKmer
-         */
-        public void singleKmerRandomizer(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> currentSubKmer){
-
-
-            if (currentSubKmer._2._1() == 1){
-                int currentSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~((~0L) << (2*currentSuffixLength));
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-
-                if (randomReflexivMarker == 2) {
-                    if (currentSuffixLength > param.subKmerSize) {
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-
-                    }else if (currentSuffixLength == param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-
-                    }else{
-                        newReflexivSubKmer = currentSubKmer._1 << (currentSuffixLength*2);
-                        newReflexivSubKmer &= maxSubKmerBinary;
-                        newReflexivSubKmer |= (currentSubKmer._2._2() & maxSuffixLengthBinary);
-
-
-                        newReflexivLong = currentSubKmer._1 >>> (2*(param.subKmerSize- currentSuffixLength));
-                        newReflexivLong |= (1L<<(2*currentSuffixLength)); // add C marker in the front
-
-
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLong, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else{
-                    reflexivKmerConcatList.add(currentSubKmer);
-                }
-            }else{ /* currentSubKmer._2._1() == 2 */
-                int currentPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~((~0L) << (2*currentPrefixLength));
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-                if (randomReflexivMarker == 2) {
-                    reflexivKmerConcatList.add(currentSubKmer);
-                }else{ /* randomReflexivMarker == 1 */
-                    if (currentPrefixLength > param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-
-                    }else if (currentPrefixLength == param.subKmerSize){
-                        System.out.println("what? not possible. Tell the author to check his program. He knows");
-
-                    }else{ /* currentPreffixLength < param.subKmerSize */
-                        newReflexivSubKmer = (currentSubKmer._2._2() & maxSuffixLengthBinary) << (2*(param.subKmerSize - currentPrefixLength));;
-                        //newReflexivSubKmer <<= (2*(param.subKmerSize - currentPrefixLength));
-                        newReflexivSubKmer |=(currentSubKmer._1 >>> (2*currentPrefixLength));
-
-                        newReflexivLong = currentSubKmer._1 & maxSuffixLengthBinary;
-                        newReflexivLong |= (1L<<2*currentPrefixLength); // add C marker in the front
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLong, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }
-
-            }
-
-            /* an action of randomization */
-
-            if (randomReflexivMarker == 1 ){
-                randomReflexivMarker = 2;
-            }else { /* randomReflexivMarker == 2 */
-                randomReflexivMarker = 1;
-            }
-        }
-        /**
-         *
-         * @param currentSubKmer
-         */
-        public void directKmerComparison(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> currentSubKmer){
-            tmpReflexivKmerExtendList.add(currentSubKmer);
-        }
-
-        /**
-         *
-         * @param forwardSubKmer
-         * @param reflexedSubKmer
-         */
-        public void reflexivExtend(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> forwardSubKmer, Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> reflexedSubKmer, int bubbleDistance) {
-
-             /* forward   ATCGATCG, 1, ------ */
-             /* reflexed  ------, 2, ATCGATCG */
-
-            int forwardSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(forwardSubKmer._2._2())/2 + 1);
-            int reflexedPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(reflexedSubKmer._2._2())/2 + 1);
-            long maxSuffixLengthBinary = ~((~0L) << 2*forwardSuffixLength);
-            long maxPrefixLengthBinary = ~((~0L) << 2*reflexedPrefixLength);
-
-
-            if (randomReflexivMarker == 2) {
-                Long newReflexivSubKmer=0L;
-                Long newReflexivLong=0L;
-
-                if (forwardSuffixLength > param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                } else if (forwardSuffixLength == param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                } else { /* forwardSuffixLength < param.subKmerSize */
-                    newReflexivSubKmer = forwardSubKmer._1 << (2*forwardSuffixLength);
-                    newReflexivSubKmer &= maxSubKmerBinary;
-                    newReflexivSubKmer |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
-
-                    newReflexivLong = reflexedSubKmer._2._2() << (2*forwardSuffixLength); // do not remove the C marker as it will be used again
-                    newReflexivLong |= (forwardSubKmer._1 >>> (2*(param.subKmerSize - forwardSuffixLength))); // do not have to add the C marker
-                }
-
-                if (bubbleDistance <0) {
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLong, reflexedSubKmer._2._3(), forwardSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else {
-                    if (forwardSubKmer._2._3() > 0) {
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                        new Tuple4<Integer, Long, Integer, Integer>(
-                                                randomReflexivMarker, newReflexivLong, bubbleDistance, forwardSubKmer._2._4()
-                                        )
-                                )
-                        );
-                    }else{
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                        new Tuple4<Integer, Long, Integer, Integer>(
-                                                randomReflexivMarker, newReflexivLong, reflexedSubKmer._2._3(), bubbleDistance
-                                        )
-                                )
-                        );
-                    }
-                }
-
-                randomReflexivMarker = 1; /* an action of randomization */
-            }else { /* randomReflexivMarker == 1 */
-                Long newForwardSubKmer=0L;
-                Long newForwardLong=0L;
-
-                if (reflexedPrefixLength > param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                } else if (reflexedPrefixLength == param.subKmerSize) {
-                    System.out.println("what? not possible. Tell the author to check his program. He knows");
-                } else { /* reflexedPreffixLength < param.subKmerSize */
-                    newForwardSubKmer = (reflexedSubKmer._2._2() & maxPrefixLengthBinary) << (2*(param.subKmerSize - reflexedPrefixLength));
-                    newForwardSubKmer |= reflexedSubKmer._1 >>> 2*reflexedPrefixLength;
-
-                    newForwardLong = reflexedSubKmer._1 & maxPrefixLengthBinary;
-                    newForwardLong |= (1L << (2*reflexedPrefixLength)); // add the C marker
-                    newForwardLong <<= (2*forwardSuffixLength);
-                    newForwardLong |= (forwardSubKmer._2._2() & maxSuffixLengthBinary);
-                }
-
-                if (bubbleDistance <0) {
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newForwardSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newForwardLong, reflexedSubKmer._2._3(), forwardSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else {
-                    if (forwardSubKmer._2._3() > 0) {
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newForwardSubKmer,
-                                        new Tuple4<Integer, Long, Integer, Integer>(
-                                                randomReflexivMarker, newForwardLong, bubbleDistance, forwardSubKmer._2._4()
-                                        )
-                                )
-                        );
-                    }else{ // reflexedSubKmer._2._4() >0
-                        reflexivKmerConcatList.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newForwardSubKmer,
-                                        new Tuple4<Integer, Long, Integer, Integer>(
-                                                randomReflexivMarker, newForwardLong, reflexedSubKmer._2._3(), bubbleDistance
-                                        )
-                                )
-                        );
-                    }
-                }
-
-                randomReflexivMarker = 2;
-            }
-
-             /* add current sub kmer to temporal storage */
-            // tmpReflexivKmerExtendList.add(reflexedSubKmer);
-        }
-
-        /**
-         *
-         * @param S
-         */
-        public void resetSubKmerGroup(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> S) {
-            if (lineMarker == 1) {
-                lineMarker = 2;
-            }else {
-                lineMarker = 3; /* reset to new sub-kmer group */
-            }
-            /* re-reflex all single kmers in the sub-kmer group */
-//            if (tmpReflexivKmerExtendList.size() != 0) {
-//                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
-            //                   singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
-            //               }
-            //          }
-
-            tmpReflexivKmerExtendList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-            tmpReflexivKmerExtendList.add(
-                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(S._1,
-                            new Tuple4<Integer, Long, Integer, Integer>(
                                     S._2._1(), S._2._2(), S._2._3(), S._2._4()
                             )
                     )
@@ -2713,133 +1762,6 @@ public class ReflexivReAssembler implements Serializable{
     }
 
     /**
-     *  choose one kmer from a fork with higher coverage.
-     */
-    class FilterForkSubKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable {
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-//        Tuple2<String, Tuple4<Integer, String, Integer, Integer>> HighCoverKmer=null;
-//                new Tuple2<String, Tuple4<Integer, String, Integer, Integer>>("",
-        //                       new Tuple4<Integer, String, Integer, Integer>(0, "", 0, 0));
-
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call(Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> s) {
-            while (s.hasNext()) {
-                Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> subKmer = s.next();
-                if (HighCoverageSubKmer.size() == 0) {
-                    HighCoverageSubKmer.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                    new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -1)
-                            )
-                    );
-                } else {
-                    if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._1)) {
-                        if (subKmer._2._3().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3()) > 0) {
-                            HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                            new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
-                                    )
-                            );
-                        } else if (subKmer._2._3().equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._3())) {
-                            if (subKmer._2._2().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1)._2._2()) > 0) {
-                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                                new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
-                                        )
-                                );
-                            } else {
-                                subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
-                                HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                                new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
-                                        )
-                                );
-                            }
-                        } else {
-                            subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
-                            HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                            new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), param.subKmerSize)
-                                    )
-                            );
-                        }
-                    } else {
-                        HighCoverageSubKmer.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                        new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), subKmer._2._3(), -1)
-                                )
-                        );
-                    }
-                }
-            }
-
-            return HighCoverageSubKmer.iterator();
-        }
-    }
-
-    class FilterForkReflectedSubKmer implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable{
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> HighCoverageSubKmer = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-        Integer HighCoverLastCoverage = 0;
-//        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> HighCoverKmer=null;
-//                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>("",
-        //                       new Tuple4<Integer, Long, Integer, Integer>(0, "", 0, 0));
-
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> s){
-            while (s.hasNext()){
-                Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> subKmer = s.next();
-                if (HighCoverageSubKmer.size() == 0){
-                    HighCoverLastCoverage = subKmer._2._3();
-                    HighCoverageSubKmer.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                    new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
-                            )
-                    );
-                }else {
-                    if (subKmer._1.equals(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._1)) {
-                        if (subKmer._2._3().compareTo(HighCoverLastCoverage) >0) {
-                            HighCoverLastCoverage = subKmer._2._3();
-                            HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
-                                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                            new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
-                                    )
-                            );
-                        } else if (subKmer._2._3().equals(HighCoverLastCoverage)){
-                            if (subKmer._2._2().compareTo(HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1)._2._2()) >0){
-                                HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
-                                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                                new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
-                                        )
-                                );
-                            }else{
-                                subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1); // re assign
-                                HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
-                                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                                new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
-                                        )
-                                );
-                            }
-                        } else {
-                            subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1);
-                            HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
-                                    new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                            new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), param.subKmerSize, subKmer._2._4())
-                                    )
-                            );
-                        }
-                    }else{
-                        HighCoverLastCoverage = subKmer._2._3();
-                        HighCoverageSubKmer.add(
-                                new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(subKmer._1,
-                                        new Tuple4<Integer, Long, Integer, Integer>(subKmer._2._1(), subKmer._2._2(), -1, subKmer._2._4())
-                                )
-                        );
-                    }
-                }
-            }
-
-            return HighCoverageSubKmer.iterator();
-        }
-    }
-
-    /**
      *
      */
     class ForwardSubKmerLongExtraction implements PairFlatMapFunction<Iterator<Tuple2<Long, Integer>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
@@ -2880,35 +1802,6 @@ public class ReflexivReAssembler implements Serializable{
     /**
      *
      */
-    class ForwardSubKmerExtraction implements PairFlatMapFunction<Iterator<Tuple2<Long, Integer>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable {
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> TupleList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-        Long suffixBinary;
-        Long prefixBinary;
-        Tuple2<Long, Integer> kmerTuple;
-
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call(Iterator<Tuple2<Long, Integer>> s) {
-
-            while (s.hasNext()) {
-                kmerTuple = s.next();
-                /**
-                 * normal Sub-kmer
-                 *        Kmer      ATGCACGTTATG
-                 *        Sub-Kmer  ATGCACGTTAT         marked as Integer 1 in Tuple2
-                 *        Left      -----------G
-                 */
-                suffixBinary = kmerTuple._1 & 3L;
-                prefixBinary = kmerTuple._1 >>> 2;
-
-                TupleList.add(
-                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(
-                                prefixBinary, new Tuple4<Integer, Long, Integer, Integer>(1, suffixBinary, kmerTuple._2, kmerTuple._2)
-                        )
-                );
-            }
-
-            return TupleList.iterator();
-        }
-    }
 
     class ReflectedSubKmerExtractionFromForwardLong implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>>, Long, Tuple4<Integer, Long[], Integer, Integer>>, Serializable {
 
@@ -3078,209 +1971,9 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
-    class ReflectedSubKmerExtractionFromForward implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable {
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> TupleList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-        Long suffixBinary;
-        Long prefixBinary;
-        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> kmerTuple;
-        int shift =(2*(param.subKmerSize-1));
-        Long maxSubKmerBinary = ~((~0L)<<2*param.subKmerSize);
-
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call(Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> s) {
-
-            while (s.hasNext()) {
-                kmerTuple = s.next();
-                /**
-                 * reflected Sub-kmer
-                 *        Kmer      ATGCACGTTATG
-                 *        Sub-Kmer  ATGCACGTTAT         marked as Integer 1 in Tuple2
-                 *        Left      -----------G
-                 */
-                suffixBinary = 3L << shift;
-                suffixBinary = kmerTuple._1 & suffixBinary;
-                suffixBinary >>>= shift;
-                suffixBinary |=4L; // add C marker in the front 0100 = 4L
-
-                prefixBinary = kmerTuple._1 <<2 & maxSubKmerBinary;
-                prefixBinary |= kmerTuple._2._2();
-
-                TupleList.add(
-                        new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(
-                                prefixBinary, new Tuple4<Integer, Long, Integer, Integer>(2, suffixBinary, kmerTuple._2._3(), kmerTuple._2._4())
-                        )
-                );
-            }
-
-            return TupleList.iterator();
-        }
-    }
-
-    /**
-     *
-     */
-    class kmerRandomReflection implements PairFlatMapFunction<Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>, Long, Tuple4<Integer, Long, Integer, Integer>>, Serializable{
-        /* 0 stands for forward sub-kmer */
-        /* 1 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = 2;
-
-        List<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
-        Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> kmerTuple;
-        long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
-
-        public Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> call (Iterator<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>> s){
-            while (s.hasNext()) {
-                kmerTuple = s.next();
-
-                singleKmerRandomizer(kmerTuple);
-            }
-            return reflexivKmerConcatList.iterator();
-        }
-
-        public void singleKmerRandomizer(Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>> currentSubKmer){
-
-            if (currentSubKmer._2._1() == 1){
-                /**
-                 * 00000000000000110010111010010   Long.SIZE
-                 * --------------C-G-G-G-T-C-A-G   Long.SIZE - (Long.numberOfLeadingZeros / 2 + 1)
-                 * --------------^-Length marker
-                 */
-                int currentSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~(~0L << 2*currentSuffixLength);
-                Long newReflexivSubKmer;
-                Long newReflexivLong;
-
-                if (randomReflexivMarker == 2) {
-                    if (currentSuffixLength > param.subKmerSize) { // not possible in the first five (include initial) rounds
-                        newReflexivSubKmer = currentSubKmer._1 << currentSuffixLength*2 & maxSubKmerBinary;
-                        newReflexivSubKmer |= (currentSubKmer._2._2() & maxSuffixLengthBinary);
-
-                        newReflexivLong = currentSubKmer._1 >>> 2*currentSuffixLength;
-                        newReflexivLong |= (1L<<2*currentSuffixLength); // add C marker in front
-                        // not finished
-                    }else if (currentSuffixLength == param.subKmerSize){ // not possible in the first five (include initial) rounds
-                        newReflexivSubKmer = currentSubKmer._1 << currentSuffixLength*2 & maxSubKmerBinary;
-                        newReflexivSubKmer |= (currentSubKmer._2._2() & maxSuffixLengthBinary);
-
-                        newReflexivLong = currentSubKmer._1 >>> 2*currentSuffixLength;
-                        newReflexivLong |= (1L<<2*currentSuffixLength); // add C marker in front
-                        // not finished
-                    }else{ // now this is possible in the first five
-                        newReflexivSubKmer = currentSubKmer._1 << currentSuffixLength*2;
-                        newReflexivSubKmer &= maxSubKmerBinary;
-                        newReflexivSubKmer |= (currentSubKmer._2._2() & maxSuffixLengthBinary);
-
-                        newReflexivLong = currentSubKmer._1 >>> 2*(param.subKmerSize - currentSuffixLength);
-                        newReflexivLong |= (1L<<2*currentSuffixLength); // add C marker in the front
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLong, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }else{
-                    reflexivKmerConcatList.add(currentSubKmer);
-                }
-            }else{ /* currentSubKmer._2._1() == 2 */
-                int currentPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(currentSubKmer._2._2())/2 + 1);
-                long maxSuffixLengthBinary = ~((~0L) << (2*currentPrefixLength));
-                Long newReflexivSubKmer;
-                Long newReflexivLong;
-
-                if (randomReflexivMarker == 2) {
-                    reflexivKmerConcatList.add(currentSubKmer);
-                }else{ /* randomReflexivMarker == 1 */
-                    if (currentPrefixLength > param.subKmerSize){ //
-                        newReflexivSubKmer = currentSubKmer._2._2() << 2*(param.subKmerSize - currentPrefixLength);
-
-                        newReflexivLong = currentSubKmer._1 & maxSuffixLengthBinary;
-                        newReflexivLong |= (1L<<2*currentPrefixLength); // add C marker in the front
-                    }else if (currentPrefixLength == param.subKmerSize){ //
-                        newReflexivSubKmer = currentSubKmer._2._2() << 2*(param.subKmerSize - currentPrefixLength);
-
-                        newReflexivLong = currentSubKmer._1 & maxSuffixLengthBinary;
-                        newReflexivLong |= (1L<<2*currentPrefixLength); // add C marker in the front
-                    }else{ /* currentPreffixLength < param.subKmerSize */
-                        newReflexivSubKmer = (currentSubKmer._2._2() & maxSuffixLengthBinary) << (2*(param.subKmerSize - currentPrefixLength));;
-                        //newReflexivSubKmer <<= (2*(param.subKmerSize - currentPrefixLength));
-                        newReflexivSubKmer |=(currentSubKmer._1 >>> (2*currentPrefixLength));
-
-                        newReflexivLong = currentSubKmer._1 & maxSuffixLengthBinary;
-                        newReflexivLong |= (1L<<2*currentPrefixLength); // add C marker in the front
-                    }
-
-                    reflexivKmerConcatList.add(
-                            new Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>(newReflexivSubKmer,
-                                    new Tuple4<Integer, Long, Integer, Integer>(
-                                            randomReflexivMarker, newReflexivLong, currentSubKmer._2._3(), currentSubKmer._2._4()
-                                    )
-                            )
-                    );
-                }
-
-            }
-
-            /* an action of randomization */
-
-            if (randomReflexivMarker == 1 ){
-                randomReflexivMarker = 2;
-            }else { /* randomReflexivMarker == 2 */
-                randomReflexivMarker = 1;
-            }
-        }
-    }
-
     /**
      * interface class for RDD implementation, used in step 5
      */
-    class SubKmerExtraction implements PairFlatMapFunction<Tuple2<String, Integer>, String, Tuple4<Integer, String, Integer, Integer>>, Serializable{
-        /* 0 stands for forward sub-kmer */
-        /* 1 stands for reflexiv sub-kmer */
-        private int randomReflexivMarker = 2;
-
-        public Iterator<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> call (Tuple2<String, Integer> s){
-
-            List<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>> subKmerList = new ArrayList<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>>();
-            int stringLength = s._1.length();
-            /**
-             * normal Sub-kmer
-             *        Kmer      ATGCACGTTATG
-             *        Sub-Kmer  ATGCACGTTAT         marked as Integer 1 in Tuple2
-             *        Left      -----------G
-             */
-            if (randomReflexivMarker == 1) {
-                String kmerPrefix = s._1.substring(0, param.subKmerSize);
-                String stringSuffix = s._1.substring(param.subKmerSize, stringLength);
-                subKmerList.add(
-                        new Tuple2<String, Tuple4<Integer, String, Integer, Integer>>(
-                                kmerPrefix, new Tuple4<Integer, String, Integer, Integer>(1, stringSuffix, s._2, s._2)
-                        )
-                );
-                randomReflexivMarker = 2;
-            }
-
-            /**
-             * reflexiv Sub-kmer
-             *          Kmer        ATGCACGTTATG
-             * reflexiv Sub-kmer     TGCACGTTATG      marked as Integer 2 in Tuple2
-             *          Left        A-----------
-             */
-            else{ // (randomReflexivMarker == 2) {
-                String kmerSuffix = s._1.substring(stringLength - param.subKmerSize, stringLength);
-                String stringPrefix = s._1.substring(0, stringLength - param.subKmerSize);
-                subKmerList.add(
-                        new Tuple2<String, Tuple4<Integer, String, Integer, Integer>>(
-                                kmerSuffix, new Tuple4<Integer, String, Integer, Integer>(2, stringPrefix, s._2, s._2)
-                        )
-                );
-                randomReflexivMarker = 1;
-            }
-
-            return subKmerList.iterator();
-        }
-    }
 
     /**
      * interface class for RDD implementation, used in step 4
@@ -3333,29 +2026,6 @@ public class ReflexivReAssembler implements Serializable{
      *          ------
      *           ------
      */
-    class KmerExtraction implements PairFlatMapFunction<String, String, Integer>, Serializable{
-        public Iterator<Tuple2<String, Integer>> call(String s){
-
-            /* a capsule for all Kmers */
-            List<Tuple2<String, Integer>> kmerList = new ArrayList<Tuple2<String, Integer>>();
-
-            String[] units = s.split("\\n");
-            String read = units[1];
-            int readlength = read.length();
-
-            if (readlength- param.kmerSize - param.endClip <= 1 || param.frontClip > readlength - param.kmerSize){
-                return kmerList.iterator();
-            }
-
-            for (int i=param.frontClip ; i<readlength- param.kmerSize - param.endClip; i++){
-                String kmer = read.substring(i, param.kmerSize + i);
-                Tuple2<String, Integer> kmerTuple = new Tuple2<String, Integer>(kmer, 1);
-                kmerList.add(kmerTuple);
-            }
-
-            return kmerList.iterator();
-        }
-    }
 
     class LoadCountedKmerToLongArray implements PairFlatMapFunction<Iterator<String>, Long, Integer>, Serializable {
 
@@ -3387,14 +2057,6 @@ public class ReflexivReAssembler implements Serializable{
                     nucleotideBinary <<= 2;
                     nucleotideBinary |= nucleotideInt;
                 }
-
- //               nucleotide = kmer.charAt(param.subKmerSize);
- //               if (nucleotide >= 256) nucleotide = 255;
- //               nucleotideInt = nucleotideValue(nucleotide);
- //               suffixBinary = (nucleotideInt | (1L << 2)); // add C marker
-
- //               suffixBinaryArray = new Long[1];
- //               suffixBinaryArray[0] = suffixBinary;
 
                 kmerList.add(
                         new Tuple2<Long, Integer>(
@@ -3497,191 +2159,6 @@ public class ReflexivReAssembler implements Serializable{
         }
     }
 
-    class ReverseComplementKmerExtraction implements PairFlatMapFunction<String, String, Integer>, Serializable{
-        public Iterator<Tuple2<String, Integer>> call(String s){
-
-            List<Tuple2<String, Integer>> kmerList = new ArrayList<Tuple2<String, Integer>>();
-
-            String[] units = s.split("\\n");
-            String read = units[1];
-            int readlength = read.length();
-
-            if (readlength - param.kmerSize - param.endClip <= 1 || param.frontClip > readlength){
-                return kmerList.iterator();
-            }
-
-            for (int i = param.frontClip; i < readlength - param.kmerSize - param.endClip; i++){
-                String Kmer = read.substring(i, param.kmerSize + i);
-                String reverseKmer="";
-                long forwardValue = 0;
-                long reverseValue = 0;
-                boolean forwardMarker = false;
-                for (int j = 0 ; j < param.kmerSize ; j++) {
-                    char nucleotide = Kmer.charAt(j);
-                    char reverseComplement = complement(Kmer.charAt(param.kmerSize - 1 -j));
-                    forwardValue += nucleotideValue(nucleotide, param.kmerSize - 1 - j);
-                    reverseValue += nucleotideValue(reverseComplement, param.kmerSize - 1 - j);
-                    if (forwardValue < reverseValue){
-                        Tuple2<String, Integer> kmerTuple2 = new Tuple2<String, Integer>(Kmer, 1);
-                        kmerList.add(kmerTuple2);
-                        forwardMarker = true;
-                        break;
-                    } else { // forwardValue >= reverseValue
-                        reverseKmer += reverseComplement;
-                    }
-                }
-
-                if (!forwardMarker) {
-                    kmerList.add(new Tuple2<String, Integer>(reverseKmer, 1)); // 10000 is a marker for reverse Complement Kmer
-                }
-            }
-
-            return kmerList.iterator();
-        }
-
-        public char complement(char a){
-            if (a == 'A') {
-                return 'T';
-            } else if (a == 'C') {
-                return 'G';
-            } else if (a == 'G') {
-                return 'C';
-            } else { // T
-                return 'A';
-            }
-        }
-
-        /**
-         *
-         * @param a
-         * @param c
-         * @return
-         */
-        public long nucleotideValue(char a, int c){
-            long value;
-            if (a == 'A') {
-                value = 0;
-            } else if (a == 'C') {
-                value = 1;
-            } else if (a == 'G') {
-                value = 2;
-            } else { // T
-                value = 3;
-            }
-
-            value = value << (2*c);
-            return value;
-        }
-    }
-
-    class ReverseComplementHashTableKmerExtraction implements PairFlatMapFunction<Iterator<String>, String, Integer>, Serializable{
-        HashMap<String, Integer> kmerHash = new HashMap<String, Integer>();
-
-        public Iterator<Tuple2<String, Integer>> call(Iterator<String> k){
-            List<Tuple2<String, Integer>> kmerList = new ArrayList<Tuple2<String, Integer>>();
-
-            while (k.hasNext()) {
-                String s = k.next();
-
-                String[] units = s.split("\\n");
-                String read = units[1];
-                int readlength = read.length();
-
-                if (readlength - param.kmerSize - param.endClip <= 1 || param.frontClip > readlength) {
-                    return kmerList.iterator();
-                }
-
-                for (int i = param.frontClip; i < readlength - param.kmerSize - param.endClip; i++) {
-                    String Kmer = read.substring(i, param.kmerSize + i);
-                    String reverseKmer = "";
-                    long forwardValue = 0;
-                    long reverseValue = 0;
-                    boolean forwardMarker = false;
-                    for (int j = 0; j < param.kmerSize; j++) {
-                        char nucleotide = Kmer.charAt(j);
-                        char reverseComplement = complement(Kmer.charAt(param.kmerSize - 1 - j));
-                        forwardValue += nucleotideValue(nucleotide, param.kmerSize - 1 - j);
-                        reverseValue += nucleotideValue(reverseComplement, param.kmerSize - 1 - j);
-                        if (forwardValue < reverseValue) {
-                            Tuple2<String, Integer> kmerTuple2 = new Tuple2<String, Integer>(Kmer, 1);
-                            int oldValue;
-                            if (kmerHash.containsKey(Kmer)){
-                                oldValue = kmerHash.get(Kmer);
-                            }else{
-                                oldValue = 0;
-                            }
-                            kmerHash.put(Kmer, oldValue + 1);
-                            forwardMarker = true;
-                            break;
-                        } else { // forwardValue >= reverseValue
-                            reverseKmer += reverseComplement;
-                        }
-                    }
-
-                    if (!forwardMarker) {
-                        int oldReverseValue;
-                        if (kmerHash.containsKey(reverseKmer)){
-                            oldReverseValue = kmerHash.get(reverseKmer);
-                        }else{
-                            oldReverseValue = 0;
-                        }
-
-                        kmerHash.put(reverseKmer, oldReverseValue + 1); // 10000 is a marker for reverse Complement Kmer
-                    }
-                }
-            }
-
-            Set<String> keys = kmerHash.keySet();
-
-            Iterator<String> itr = keys.iterator();
-
-            String distinctKmer;
-
-            while(itr.hasNext()){
-                distinctKmer = itr.next();
-                kmerList.add(new Tuple2<String, Integer>(distinctKmer, kmerHash.get(distinctKmer)));
-
-            }
-            kmerHash.clear();
-
-            return kmerList.iterator();
-        }
-
-        public char complement(char a){
-            if (a == 'A') {
-                return 'T';
-            } else if (a == 'C') {
-                return 'G';
-            } else if (a == 'G') {
-                return 'C';
-            } else { // T
-                return 'A';
-            }
-        }
-
-        /**
-         *
-         * @param a
-         * @param c
-         * @return
-         */
-        public long nucleotideValue(char a, int c){
-            long value;
-            if (a == 'A') {
-                value = 0;
-            } else if (a == 'C') {
-                value = 1;
-            } else if (a == 'G') {
-                value = 2;
-            } else { // T
-                value = 3;
-            }
-
-            value = value << (2*c);
-            return value;
-        }
-    }
-
     /**
      * interface class for RDD implementation, Used in step 1
      */
@@ -3725,12 +2202,6 @@ public class ReflexivReAssembler implements Serializable{
             return s._2 >= param.minKmerCoverage && s._2 <= param.maxKmerCoverage;
         }
 
-    }
-
-    class ExtendedKmerFilter implements Function<Tuple2<String, Tuple4<Integer, String, Integer, Integer>>, Boolean>, Serializable{
-        public Boolean call(Tuple2<String, Tuple4<Integer, String, Integer, Integer>> s){
-            return s != null;
-        }
     }
 
     /**
