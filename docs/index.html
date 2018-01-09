@@ -2,7 +2,7 @@
 <html lang="en-us">
   <head>
     <meta charset="UTF-8">
-    <title>Reflexiv by rhinempi</title>
+    <title>Reflexiv</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
@@ -30,8 +30,7 @@
   <a href="#welcome-to-Reflexiv" style="font-size:18px">Welcome</a>
   <a href="#how-it-works" style="font-size:18px">How it works</a>
   <a href="#getting-started" style="font-size:18px">Getting started</a>
-  <a href="#use-your-tool"style="font-size:18px" >Use your own tool</a>
-  <a href="#parallelize-docker"style="font-size:18px" >Parallelizing Docker containers</a>
+  <a href="#Reassembly"style="font-size:18px" >Re-assembly</a>
   <a href="#setup-cluster" style="font-size:18px" >Setup cluster</a>
   <a href="#support-or-contact" style="font-size:18px">Support or Contact</a>
   <a href="#acknowledgement" style="font-size:18px">Acknowledgement</a>
@@ -56,21 +55,22 @@ function closeNav() {
 
 
     <section class="main-content">
-      <h3>
-<a id="welcome-to-Reflexiv" class="anchor" href="#welcome-to-Reflexiv" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Welcome to Reflexiv</h3>
-
-        <p><b>Reflexiv</b> is an open source distributed <i>De novo</i> genome assembler. We devoloped a new distributed data structure called Reflexible Distributed K-mer (RDK) that enables distributed . It is built on top of the <i>Apache</i> <a href="http://spark.apache.org/">Spark</a> and <a href="http://hadoop.apache.org/">Hadoop</a> framework, integrates a series of bioinformatics tools and methods. Here you can parallelize different analytical modules, such as sequence mapping, genotyping, gene expression quantification and taxonomy profiling. You can also use your own tools without changing the source code.</p>
+        <h3>
+            <a id="welcome-to-Reflexiv" class="anchor" href="#welcome-to-Reflexiv" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Welcome to Reflexiv</h3>
+        
+        <p>
+            <b>Reflexiv</b> is an open source parallel <i>De novo</i> genome assembler. It addresses the challenge of high memory consumption during <i>De novo</i> genome assembly by leveraging distributed computational resources. It also improves the run time performance using a parallel assembly algorithm. Having problem fitting a <code>500GB</code> <i>De Bruijn</i> graph into the memory? Here, you can use 10 <code>64GB</code> computer nodes to solve the problem.
+        </p>
 
 <h3>
-<a id="how-it-works" class="anchor" href="#how-it-works" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>How it works</h3>
+    <a id="how-it-works" class="anchor" href="#how-it-works" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>How it works</h3>
 
-        <p><b>Reflexiv</b> uses Spark <a href="http://www.tutorialspoint.com/apache_spark/apache_spark_rdd.htm">RDD</a> (resilient distributed dataset) to distribute genomic datasets: sequencing data, mapping results, genotypes or expression profiles of genes or microbes. A <i>Spark</i> extended <a href="https://en.wikipedia.org/wiki/MapReduce">MapReduce</a> paradigm is used to analyse these datasets in parallel.</p>
         <p>
-            Read more: <a href="https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/btx808/4747885">Analyzing large scale genomic data on the cloud with Reflexiv</a>.  <i> Bioinformatics. 2017</i>.
+            <b>Reflexiv</b> implements a new data structure, Reflexible Distributed K-mer (RDK), built on top of the <i>Apache</i> <a href="http://spark.apache.org/">Spark</a> platform. It uses Spark <a href="http://www.tutorialspoint.com/apache_spark/apache_spark_rdd.htm">RDD</a> (resilient distributed dataset) to distribute large amount of K-mers across the cluster and assembles the genome in a recursive way.
         </p>
         <p>
-        <img src="images/Poster-Reflexiv.png" style="width:100%;height:100%;">
-
+            <img src="images/Poster-Reflexiv.png" style="width:100%;height:100%;">
+        </p>
 <h3>
 <a id="getting-started" class="anchor" href="#getting-started" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Getting started</h3>
 
@@ -80,45 +80,26 @@ function closeNav() {
         
 
 <h3>
-<a id="use-your-tool" class="anchor" href="#use-your-tool" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Use your own tool</h3>
+<a id="Reassembly" class="anchor" href="#Reassembly" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Re-assembly: Extending assembled fragments</h3>
 
-<p><b>Reflexiv</b> facilitates users to use their own tools without changing the source code.</p>
+<p><b>Reflexiv</b> can also re-assemble pre-assembled or probe-targeted genome/gene fragments. This is useful to improve the quality of assemblies, etc., to complete a gene from a gene domain using whole genome sequencing data.</p>
  <p>
             Command: <br> </p>
 <pre>
-/usr/bin/Reflexiv piper \ 
-  --driver-memory 4G \                                          ## Spark parameter
-  --executor-memory 8G \                                        ## Spark parameter
-  -input '/vol/human-microbiome-project/SRS*.tar.bz2' \         # Reflexiv parameter
-  -tool /vol/Reflexiv-home/package/mycode/myMappingScript.sh \  # Reflexiv parameter
-  -toolparam "-reference /vol/singlecell/genome.fa" \           # Reflexiv parameter
-  -output /vol/mybucket/Reflexiv/result                         # Reflexiv parameter
+/usr/bin/Reflexiv reassembler \ 
+  --driver-memory 6G \                                     ## Spark parameter
+  --executor-memory 60G \                                  ## Spark parameter
+  -fastq '/vol/human-microbiome-project/SRS*.tar.bz2' \    # Reflexiv parameter
+  -frag /vol/private/gene_fragment.fa \                    # Reflexiv parameter: gene fragments/domains
+  -outfile /vol/mybucket/Reflexiv/assembly \               # Reflexiv parameter
+  -kmer 31                                                 # Reflexiv parameter
 </pre>
-        Read <a href="manual.html#piper-options">more</a>.
-        
-<h3>
-<a id="parallelize-docker" class="anchor" href="#parallelize-docker" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Parallelize Docker containers</h3>
-
-<p><b>Reflexiv</b> enables users to parallelize public biocontainers, e.g. <a href="https://www.docker.com/">Docker</a>.</p>
- <p>
-            Command: <br> </p>
-<pre>
-/usr/bin/Reflexiv piper \ 
-  --driver-memory 4G \                                       ## Spark parameter
-  --executor-memory 8G \                                     ## Spark parameter
-  -input '/vol/human-microbiome-project/SRS*.tar.bz2' \      # Reflexiv parameter
-  -tooldepand docker \                                       # Reflexiv parameter: use docker
-  -tool run \                                                # Reflexiv parameter: use docker run
-  -toolparam "-iv /ReflexivData/dataset:/tmp -w /tmp --rm \  # Reflexiv parameter: docker options
-  lh3lh3/bwa mem reference.fa /dev/stdin" \                  # Reflexiv parameter: docker image "bwa"            
-  -output /vol/mybucket/Reflexiv/result                      # Reflexiv parameter
-</pre>
-        Read <a href="manual.html#piper-options">more</a>.
-        
+        Read <a href="manual.html#reassembler-options">more</a>.
+          
 <h3>
 <a id="setup-cluster" class="anchor" href="#setup-cluster" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Setup cluster</h3>
 
-        <p>A Spark cluster is essential to scale-out (distribute to multiple compute nodes) <bold>Reflexiv</bold> workloads. There are three tools at your disposal: Spark-ec2, BiBiGrid, Amazon Elastic MapReduce (EMR). Follow the <a href="manual.html#setting-spark-sge">tutorial</a> to setup a Spark cluster on the Amazon cloud or a local cluster.</p>
+        <p>A Spark cluster is essential to scale-out (distribute to multiple compute nodes) <bold>Reflexiv</bold> workloads. There are three tools at your disposal: Spark-ec2, BiBiGrid, Amazon Elastic MapReduce (EMR). Follow a <a href="manual.html#setting-spark-sge">tutorial</a> to setup a Spark cluster on the Amazon cloud or a local cluster.</p>
         
 <h3>
 <a id="support-or-contact" class="anchor" href="#support-or-contact" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Support or Contact</h3>
@@ -128,10 +109,8 @@ function closeNav() {
 <h3>
 <a id="acknowledgement" class="anchor" href="#acknowledgement" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Acknowledgement</h3>
         
-<p>We acknowledge all developers whose tools are used by Reflexiv.</p>
         <a href="http://www.didy.uni-bielefeld.de/"><img src="images/didy-logo.png" style="width:259px;height:53px;"></a>
         <a href="https://www.denbi.de/"><img src="images/deNBI-Logo.png" style="width:202px;height:53px;"></a>
-        <a href="https://aws.amazon.com/grants/"><img src="images/aws-logo.png" style="width:145px;height:53px;"></a>
 
       <footer class="site-footer">
           <span class="site-footer-owner"><a href="https://github.com/rhinempi/Reflexiv">Reflexiv</a> is maintained by <a href="https://github.com/rhinempi">Liren Huang</a></span>

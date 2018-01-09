@@ -22,7 +22,7 @@
  # with this program. If not, see <http://www.gnu.org/licenses>.
  #-----------------------------------------------------------------------------
 
-name="reflexiv"
+name="Reflexiv"
 version="0.3"   # change to 0.8 if you are using Spark version under 2.0.0
 spark_version="2.0.0"  # only for auto downloading Spark package
 
