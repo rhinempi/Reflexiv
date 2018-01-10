@@ -101,7 +101,7 @@ public class HelpParam {
         formatter.printOptions(new PrintWriter(err, true), 85, parameter, 2, 3); /* print formatted parameters */
         err.println();
         err.println("Usage:");
-        err.println("\trun de novo genome assembly : ");
+        err.println("\trun K-mer counting : ");
         err.println(executable + " [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out");
         err.println(executable + " [parameters] -fasta input.txt -kmer 31 -outfile kmerCount.out");
         err.println(executable2 + " [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out");
@@ -129,7 +129,7 @@ public class HelpParam {
         formatter.printOptions(new PrintWriter(err, true), 85, parameter, 2, 3); /* print formatted parameters */
         err.println();
         err.println("Usage:");
-        err.println("\trun de novo genome assembly : ");
+        err.println("\trun de novo genome Re-assembly : ");
         err.println(executable + " [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
         err.println(executable + " [parameters] -fasta input.txt -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
         err.println(executable2 + " [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out");
