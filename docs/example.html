@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <title>Reflexiv</title>
+      <link rel="shortcut icon" type="image/x-icon" href="./images/reflexiv-logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
@@ -299,7 +300,7 @@ reflexiv run [spark parameter] [parameters] -fastq input.fq -kmer 63 -outfile ou
 
         <p>
             Follow the instruction, set the input sequencing data and the K-mer length accordingly: <br>
-            <code>$ ./bin/reflexiv run --driver-memory 3G --executor-memory 3G -fastq './example/paired_dat*.fq.gz' -outfile ./example/result -kmer 31</code>
+            <code>$ ./bin/reflexiv run --driver-memory 3G --executor-memory 3G -fastq './example/paired_dat*.fq.gz' -outfile ./example/result -kmer 31 -cover 3</code>
         </p>
         <pre>
 Reflexiv 13:58:38 Reflexiv main initiating ... 
@@ -324,7 +325,7 @@ drwxr-xr-x 25 ec2-user users 2146 Jan  9 14:00 ..
 -rw-r--r--  1 ec2-user users    8 Jan  9 14:00 ._SUCCESS.crc</pre>
         <p>
             To view the result: <br>
-            <code>$ less -S ./example/stool-result/part-00000</code> <br>
+            <code>$ less -S ./example/result/part-00000</code> <br>
         </p>
         <pre>
 >Contig-4558-0

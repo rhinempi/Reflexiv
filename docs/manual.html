@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <title>Reflexiv</title>
+      <link rel="shortcut icon" type="image/x-icon" href="./images/reflexiv-logo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
@@ -262,23 +263,325 @@ For detailed cluster submission, please refer to scripts located in:
             The <code>run</code> command starts a standard assembly pipeline. The options of the <code>run</code> command mainly consist of input sequencing data (usually a fastq file), a K-mer size and an output result file.
         </p>
         <p>
-            Fragment recruitment allows more mismatches during the alignment between sequencing reads and reference genomes. This funtion is useful in situations like evaluating the qualities of metagenomic assemblies, where bad quality matches are also needed for the evaluation.
-        </p>
-        <p>
             To print out all options, simply type the command: <br>
             <code>$ reflexiv run</code>
         </p>       
         <pre>
-Reflexiv 17:11:21 Reflexiv main initiating ... 
-Reflexiv 17:11:21 interpreting parameters.
+Reflexiv 16:31:52 Reflexiv main initiating ... 
+Reflexiv 16:31:52 interpreting parameters.
 Name:
 	Reflexiv Main
 
 Options:
+  -fastq &lt;input fastq file>                 Input NGS data, fastq file format, four
+                                            line per unit
+  -fasta &lt;input fasta file>                 Also input NGS data, but in fasta file
+                                            format, two line per unit
+  -outfile &lt;output file>                    Output assembly result
+  -kmer &lt;kmer size>                         Kmer length for reads mapping
+  -overlap &lt;kmer overlap>                   Overlap size between two adjacent kmers
+  -miniter &lt;minimum iterations>             Minimum iterations for contig
+                                            construction
+  -maxiter &lt;maximum iterations>             Maximum iterations for contig
+                                            construction
+  -clipf &lt;clip front nt>                    Clip N number of nucleotides from the
+                                            beginning of the reads
+  -clipe &lt;clip end nt>                      Clip N number of nucleotides from the end
+                                            of the reads
+  -cover &lt;minimal kmer coverage>            Minimal coverage to filter low freq kmers
+  -maxcov &lt;maximal kmer coverage>           Maximal coverage to filter high freq
+                                            kmers
+  -error &lt;minimum error correction cover>   Minimum coverage for correcting
+                                            sequencing errors. Used for low coverage
+                                            sequencing. Should be higher than minimal
+                                            kmer coverage -cover
+  -minlength &lt;minimal read length>          Minimal read length required for assembly
+  -mincontig &lt;minimal contig length>        Minimal contig length to be reported
+  -partition &lt;re-partition number>          re generate N number of partitions
+  -bubble                                   Set to NOT remove bubbles.
+  -cache                                    weather to store data in memory or not
+  -version                                  show version information
+  -h
+  -help                                     print and show this information
+
+Usage:
+	run de novo genome assembly : 
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.Main reflexiv.jar [parameters] -fastq input.fq -kmer 31 -outfile output_file
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.Main reflexiv.jar [parameters] -fasta input.txt -kmer 31 -outfile output_file
+reflexiv run [spark parameter] [parameters] -fastq input.fq -kmer 31 -outfile output_file</pre>
+        <table>
+            <caption>Table M-3:  Descriptions of Reflexiv run options</caption>
+  <tr>
+    <th>Options</th>
+    <th>Description</th> 
+  </tr>
+  <tr>
+    <td>-fastq</td>
+      <td>The input sequencing data is in the <b>fastq</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fastq /vol/data/samples/*.fq.bz2</code>.
+      </td> 
+  </tr>
+  <tr>
+    <td>-fasta</td>
+      <td>The input sequencing data is in the <b>fasta</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fasta /vol/data/samples/*.fa.gz</code>.
+      </td> 
+  </tr>   
+  <tr>
+    <td>-outfile</td>
+            <td>Directory of output files.
+            </td> 
+  </tr>
+            <tr>
+    <td>-kmer</td>
+            <td>The K-mer length for building the Reflexilbe Distributed K-mer (RDK). Default is 31.
+            </td> 
+  </tr>
+            <tr>
+    <td>-overlap</td>
+            <td>When extracting k-mers from the reference genome, there will be a shift between k-mers. The k-mer length minus the shifted length is the overlap length. For most cases, the overlap should be <code>K-1</code> mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-miniter</td>
+            <td>The minimal iterations for contig extention. The program will start checking convergence after the minimal iteration value is reached. As the convergence checking step consumes a certain amount of resource, it is better to set a minimal iterations to avoid unnecessary convergence check. The Default is 20.
+            </td> 
+  </tr>
+            <tr>
+    <td>-maxiter</td>
+            <td>The maximum iterations for contig extention. In a really rare case where convergence will never be reached (never happened before), the maximum iteration threshold will stop the infinite loop.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipf</td>
+            <td>Trim a certain number of nucleotides at the beginning of the sequencing reads. This is useful to clip high error region at the start of an Illumina sequencing read.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipe</td>
+            <td>Trim a certain number of nucleotides at the end of the sequencing reads. This is useful to clip high error region at the end of an Illumina sequencing read.
+            </td> 
+  </tr>
+         <tr>
+    <td>-cover</td>
+            <td>The minimal coverage to filter low frequency K-mers. The higher the coverage is, the more accurate the result will be. On the other hand, the lower the coverage is, the more sensitive the result will be. 
+            </td> 
+  </tr>
+            <tr>
+    <td>-maxcov</td>
+            <td>The maximal coverage to filter high frequency K-mers. In case of sequencing artifacts that produces extreme high cover K-mers, the threshold filtered abnormal high coverage K-mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-error</td>
+            <td>The maximal coverage for error correction. Error nucleotides with lower coverage will be corrected to the higher coverage nucleotides.
+            </td> 
+  </tr>
+            <tr>
+    <td>-minlength</td>
+            <td>The minimal length of input reads. The default is the length of the K-mer.
+            </td> 
+  </tr>
+            <tr>
+    <td>-mincontig</td>
+            <td>The minimal length of the output contigs. The default is 100.
+            </td> 
+  </tr>
+            <tr>
+    <td>-partition</td>
+            <td>Re-distribute the input data into a number of partitions. Each partition runs a individual task. This is useful when you want to evenly distribute your data for parallel computations (Also see <b>Notes</b> below).
+            </td> 
+  </tr>
+            <tr>
+    <td>-bubble</td>
+                <td>Set to <b>NOT</b> remove bubbles in the assembly. Mainly used for debugging.
+            </td> 
+  </tr>
+            <tr>
+    <td>-cache</td>
+                <td>Set to cache input data into memory. Default is not.
+            </td> 
+  </tr>
+            <tr>
+    <td>-version</td>
+            <td>Print out the Reflexiv version.
+            </td> 
+  </tr>
+            <tr>
+    <td>-help</td>
+            <td>Print the help information.
+            </td> 
+  </tr>
+        </table>
+        <p>
+        </p>
+        <div>
+            &#9749; &nbsp;Notes
+        </div>
+        <div-content>
+            <ol type="1">
+            <li>
+                The peak memory consuming step of Reflexiv is counting K-mer frequencies. If you do not have enough RAM for a certain dataset, try to increase the number of partitions by setting <code>-partition</code> to a higher value. This option will trade runtime for lower memory consumptions.
+            </li>
+            </ol>
+        </div-content>
+
+    
+<h3>
+<a id="counter-options" class="anchor" href="#counter-options" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Reflexiv counter options</h3>
+        
+        <p>
+            <code>counter</code> allows users to run a seperate K-mer counting step before the assembly. This step can also be replaced by other K-mer counters. <b>Reflexiv</b> can read other K-mer counting result (in tabular format) directly as assembly input.
+        </p>
+        <p>
+            To list all options, simply type command: <br>
+            <code>$ sparkhit mapper</code>
+        </p>       
+        <pre>
+Reflexiv 17:10:21 Reflexiv KmerCounter initiating ... 
+Reflexiv 17:10:21 interpreting parameters.
+Name:
+	Reflexiv Kmer Counter
+
+Options:
+  -fastq &lt;input fastq file>          Input NGS data, fastq file format, four line per
+                                     unit
+  -fasta &lt;input fasta file>          Also input NGS data, but in fasta file format,
+                                     two line per unit
+  -outfile &lt;output file>             Output assembly result
+  -kmer &lt;kmer size>                  Kmer length for reads mapping
+  -overlap &lt;kmer overlap>            Overlap size between two adjacent kmers
+  -clipf &lt;clip front nt>             Clip N number of nucleotides from the beginning
+                                     of the reads
+  -clipe &lt;clip end nt>               Clip N number of nucleotides from the end of the
+                                     reads
+  -cover &lt;minimal kmer coverage>     Minimal coverage to filter low freq kmers
+  -maxcov &lt;maximal kmer coverage>    Maximal coverage to filter high freq kmers
+  -minlength &lt;minimal read length>   Minimal read length required for assembly
+  -partition &lt;re-partition number>   re generate N number of partitions
+  -cache                             weather to store data in memory or not
+  -version                           show version information
+  -h
+  -help                              print and show this information
+
+Usage:
+	run K-mer counting : 
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfCounter reflexiv.jar [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfCounter reflexiv.jar [parameters] -fasta input.txt -kmer 31 -outfile kmerCount.out
+reflexiv counter [spark parameter] [parameters] -fastq input.fq -kmer 31 -outfile kmerCount.out</pre>
+        <table>
+            <caption>Table M-4:  Descriptions of Reflexiv counter options</caption>
+  <tr>
+    <th>Options</th>
+    <th>Description</th> 
+  </tr>
+  <tr>
+    <td>-fastq</td>
+      <td>The input sequencing data is in the <b>fastq</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fastq /vol/data/samples/*.fq.bz2</code>.
+      </td> 
+  </tr>
+  <tr>
+    <td>-fasta</td>
+      <td>The input sequencing data is in the <b>fasta</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fasta /vol/data/samples/*.fa.gz</code>.
+      </td> 
+  </tr>   
+  <tr>
+    <td>-outfile</td>
+            <td>Directory of output files.
+            </td> 
+  </tr>
+            <tr>
+    <td>-kmer</td>
+            <td>The K-mer length for building the Reflexilbe Distributed K-mer (RDK). Default is 31.
+            </td> 
+  </tr>
+            <tr>
+    <td>-overlap</td>
+            <td>When extracting k-mers from the reference genome, there will be a shift between k-mers. The k-mer length minus the shifted length is the overlap length. For most cases, the overlap should be <code>K-1</code> mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipf</td>
+            <td>Trim a certain number of nucleotides at the beginning of the sequencing reads. This is useful to clip high error region at the start of an Illumina sequencing read.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipe</td>
+            <td>Trim a certain number of nucleotides at the end of the sequencing reads. This is useful to clip high error region at the end of an Illumina sequencing read.
+            </td> 
+  </tr>
+         <tr>
+    <td>-cover</td>
+            <td>The minimal coverage to filter low frequency K-mers. The higher the coverage is, the more accurate the result will be. On the other hand, the lower the coverage is, the more sensitive the result will be. 
+            </td> 
+  </tr>
+            <tr>
+    <td>-maxcov</td>
+            <td>The maximal coverage to filter high frequency K-mers. In case of sequencing artifacts that produces extreme high cover K-mers, the threshold filtered abnormal high coverage K-mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-minlength</td>
+            <td>The minimal length of input reads. The default is the length of the K-mer.
+            </td> 
+  </tr>
+            <tr>
+    <td>-partition</td>
+            <td>Re-distribute the input data into a number of partitions. Each partition runs a individual task. This is useful when you want to evenly distribute your data for parallel computations (Also see <b>Notes</b> below).
+            </td> 
+  </tr>
+            <tr>
+    <td>-cache</td>
+                <td>Set to cache input data into memory. Default is not.
+            </td> 
+  </tr>
+            <tr>
+    <td>-version</td>
+            <td>Print out the Reflexiv version.
+            </td> 
+  </tr>
+            <tr>
+    <td>-help</td>
+            <td>Print the help information.
+            </td> 
+  </tr>
+        </table>
+        <p>
+        </p>
+        <div>
+            &#9749; &nbsp;Notes
+        </div>
+        <div-content>
+            <ol type="1">
+            <li>
+                This is the most memory consuming step of the entire assemly process. Thus, we recommend users to run a K-mer counting step first. The result can, then, be iteratively used for several downstream assembly attemps with different input parameters (e.g. K-mer length or minimal K-mer coverage).
+            </li>
+            </ol>
+        </div-content>
+
+<h3>
+<a id="reassembler-options" class="anchor" href="#reassembler-options" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Reflexiv reassembler options</h3>
+        
+        <p>
+            <code>reassembler</code> is a tool to extend pre-assembled or probe-targeted sequence fragments using other NGS (Next-generation sequencing) datasets. <b>Reflexiv</b> reads the sequence fragments and extracts RDK from the sequence. It also extracts RDK from the NGS datasets and combine the two RDKs into one RDK. After combining two RDKs, <b>Reflexiv</b> assembles and extends the fragments using the standard pipeline. Once the assembly is complete, re-assembled fragments will be extracted and saved in another folder.
+        </p>
+        <p>
+            To list all options, type command: <br>
+            <code>$ ./bin/reflexiv reassembler</code>
+        </p>
+        <pre>
+Reflexiv 15:35:47 Reflexiv ReAssembler initiating ... 
+Reflexiv 15:35:47 interpreting parameters.
+Name:
+	Reflexiv Re-Assembler
+
+Options:
   -fastq &lt;input fastq file>            Input NGS data, fastq file format, four line
                                        per unit
+  -kmerc &lt;input Kmer file>             Input counted kmer file, tabular file format
+                                       or spark RDD pair text file
   -fasta &lt;input fasta file>            Also input NGS data, but in fasta file format,
                                        two line per unit
+  -frag &lt;input pre assemblies>         Input pre-assembled contig fragments to be
+                                       extended
   -outfile &lt;output file>               Output assembly result
   -kmer &lt;kmer size>                    Kmer length for reads mapping
   -overlap &lt;kmer overlap>              Overlap size between two adjacent kmers
@@ -300,400 +603,119 @@ Options:
   -help                                print and show this information
 
 Usage:
-	run de novo genome assembly : 
-spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.Main reflexiv.jar [parameters] -fastq input.fq -kmer 63 -outfile output_file
-spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.Main reflexiv.jar [parameters] -fasta input.txt -kmer 63 -outfile output_file
-reflexiv mapper [spark parameter] [parameters] -fastq input.fq -kmer 63 -outfile output_file"</pre>
-        <table>
-            <caption>Table M-3:  Descriptions of Reflexiv run options</caption>
-  <tr>
-    <th>Options</th>
-    <th>Description</th> 
-  </tr>
-  <tr>
-    <td>-fastq</td>
-      <td>The input sequencing data is in the fastq format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fastq /vol/data/samples/*.fq.bz2</code>.
-      </td> 
-  </tr>
-  <tr>
-    <td>-line</td>
-      <td>The input sequencing data is a fastq file in the line-based format. This line-based sequecing data is useful when users have uncompressed files distributed across different nodes. In this case, a fastq unit is intact on one worker node. See below <b>Notes</b>.
-      </td> 
-  </tr>
-        <tr>
-    <td>-tag</td>
-            <td>Whether to tag the file name to each sequence or not. This tag function can mark each sequence of the intermediate mapping result. This information is useful when users have a list of samples input in the same time and would like to be summarized seperately. This option will increase the size of output file.
-            </td> 
-  </tr>    
-  <tr>
-    <td>-reference</td>
-            <td>Input file of the reference genome in the fasta format. Make sure it is located in a shared file system or downloaded to each worker node.
-            </td> 
-  </tr>    
-  <tr>
-    <td>-outfile</td>
-            <td>Directory of output files.
-            </td> 
-  </tr>
-            <tr>
-    <td>-kmer</td>
-            <td>The K-mer length for building the reference index, 8-12 is recommanded. Default is 12.
-            </td> 
-  </tr>
-            <tr>
-    <td>-evalue</td>
-            <td>Set a maximum E-value as a filter to remove mappings higher than the threshold.
-            </td> 
-  </tr>
-            <tr>
-    <td>-global</td>
-            <td>Global alignment or local alignment. Set to 0 as local alignment, to 1 as global alignment. The default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-unmask</td>
-            <td>Whether to mask repeats in the reference genome or not. 0 for not mask; 1 for mask. The default is 1.
-            </td> 
-  </tr>
-            <tr>
-    <td>-overlap</td>
-            <td>When extracting k-mers from the reference genome, there will be a shift between k-mers. The k-mer length minus the shifted length is the overlap length. The larger the overlap size is, the more sensitive the mapping result will be.
-            </td> 
-  </tr>
-            <tr>
-    <td>-identity</td>
-            <td>The mapping identity between the sequencing read and the reference genome. The identity is calculated by dividing perfectly matched nuclieotides to the length of the sequecing read.
-            </td> 
-  </tr>
-            <tr>
-    <td>-coverage</td>
-            <td>The minimal coverage to recruit a read. Default is 30.
-            </td> 
-  </tr>
-            <tr>
-    <td>-minlength</td>
-            <td>The minmal length to recruit a read.
-            </td> 
-  </tr>
-            <tr>
-    <td>-attempts</td>
-            <td>Sparkhit recruiter trys to map each sequence to a collection of q-Grams (a block of sequence that is very likely to be recuited). This parameter sets a number of failed attempts to map to q-Grams. Default is 20
-            </td> 
-  </tr>
-         <tr>
-    <td>-hits</td>
-            <td>How many hits to be reported in the result for each sequencing read. 0 for report all possible matches. The default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-strand</td>
-            <td>Strands selection. 0 is for mapping to both strands of reference genome. 1 for mapping to only "+" strand. 2 for mapping to only "-". The Default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-thread</td>
-            <td>How many threads to be used in parallel. This parameter is deprecated. Check the <code>-partition</code>.
-            </td> 
-  </tr>
-            <tr>
-    <td>-partition</td>
-            <td>Re-distribute the input data into a number of partitions. Each partition runs a individual mapping task. This is useful when you want to evenly distribute your data for parallel computations.
-            </td> 
-  </tr>
-            <tr>
-    <td>-version</td>
-            <td>Print out the Sparkhit version.
-            </td> 
-  </tr>
-            <tr>
-    <td>-help</td>
-            <td>Print the help information.
-            </td> 
-  </tr>
-        </table>
-        <p>
-        </p>
-        <div>
-            &#9749; &nbsp;Notes
-        </div>
-        <div-content>
-            <ol type="1">
-                <li>
-                    Different from the standard short read alignment, fragment recruitment allows more mismatches during the alignment processes between sequencing reads and reference genomes. This function is useful in situations like evaluating the qualities of metagenomic assemblies, where bad quality matches are also needed for the evaluation.
-                </li>
-            <li>
-                As most of the distributed storage systems manage the data distribution automatically (eg. Hadoop distributed file system (HDFS)), uncompressed text files are usually splitted and identified by lines. Fastq files consist of <b>4-line-units</b>: an ID header line starts with "@", a raw sequence line, an identifier starts with "+" and a sequecing quality line. Most tools require the complete information of a fastq unit for their algorithms. So, after decompression, <i>Sparkhit</i> changes a fastq file to a tabular file where each line is a complete unit consists of the four elements space out by "tab".
-            </li>
-            </ol>
-        </div-content>
-        <pre>
-    Fastq file:
-        @hiseq2000
-        ATCGGCTAATCGGCTAATCGGCTA
-        +
-        iiiibbbibibibibibbbbiiib
-    Line file:
-        @hiseq2000  ATCGGCTAATCGGCTAATCGGCTA    +   iiiibbbibibibibibbbbiiib</pre>
-
-    
-<h3>
-<a id="counter-options" class="anchor" href="#counter-options" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Reflexiv counter options</h3>
-        
-        <p>
-            <i>Sparkhit mapper</i> is a short read aligner built on top of the <i>Apache Spark</i> platform. The options for <i>Sparkhit mapper</i> are similar to standard alignment tools: an input file of sequencing data (usually a fastq file); An input reference genome; An output result file.
-        </p>
-        <p>
-            Different from the Sparkhit-recruiter, the mapper runs much faster than the recruiter by using the Pigeonhole principle as a more strict filter. Thus, Sparkhit-mapper is recommanded in the situation where only high quality matches (more than 94% identity) are needed for the analysis.</p>
-        <p>
-            To list all options, simply type command: <br>
-            <code>$ sparkhit mapper</code>
-        </p>       
-        <pre>
-SparkHit 15:32:41 SparkHit main initiating ... 
-SparkHit 15:32:41 interpreting parameters.
-Name:
-	SparkHit mapper
-
-Options:                             
-  -fastq &lt;input fastq file>          Input Next Generation Sequencing (NGS) data,
-                                     fastq file format, four line per unit
-  -line &lt;input line file>            Input NGS data, line based text file format, one
-                                     line per unit
-  -tag                               Set to tag filename to sequence id. It is useful
-                                     when you are processing lots of samples at the
-                                     same time
-  -reference &lt;input reference>       Input genome reference file, usually fasta
-                                     format file, as input file
-  -outfile &lt;output file>             Output line based file in text format
-  -kmer &lt;kmer size>                  Kmer length for reads mapping
-  -evalue &lt;e-value>                  e-value threshold, default 10
-  -global &lt;global or not>            Use global alignment or not. 0 for local, 1 for
-                                     global, default 0
-  -unmask &lt;unmask>                   whether mask repeats of lower case nucleotides:
-                                     1: yes; 0 :no; default=1
-  -overlap &lt;kmer overlap>            small overlap for long read
-  -identity &lt;identity threshold>     minimal identity for recruiting a read, default
-                                     75 (sensitive mode, fast mode starts from 94)
-  -coverage &lt;coverage threshold>     minimal coverage for recruiting a read, default
-                                     30
-  -minlength &lt;minimal read length>   minimal read length required for processing
-  -attempts &lt;number attempts>        maximum number of alignment attempts for one
-                                     read to a block, default 20
-  -hits &lt;hit number>                 how many hits for output: 0:all; N: top N hits
-  -strand &lt;strand +/->
-  -thread &lt;number of threads>        How many threads to use for parallelizing
-                                     processes,default is 1 cpu. set to 0 is the
-                                     number of cpus available!local mode only, for
-                                     Spark version, use spark parameter!
-  -partition &lt;re-partition number>   re generate number of partitions for .gz data,
-                                     as .gz data only have one partition (spark
-                                     parallelization)
-  -version                           show version information
-  -help                              print and show this information
-  -h
-
-Usage:
-	run short read mapping : 
-spark-submit [spark parameter] --class uni.bielefeld.cmg.sparkhit.main.MainOfMapper sparkhit.jar [parameters] -fastq query.fq -reference reference.fa -outfile output_file.txt
-spark-submit [spark parameter] --class uni.bielefeld.cmg.sparkhit.main.MainOfMapper sparkhit.jar [parameters] -line query.txt -reference reference.fa -outfile output_file.txt
-sparkhit [command] [spark parameter] [parameters] -fastq query.fq -reference reference.fa -outfile output_file</pre>
-        <table>
-            <caption>Table M-4:  Descriptions of Reflexiv counter options</caption>
-  <tr>
-    <th>Options</th>
-    <th>Description</th> 
-  </tr>
-  <tr>
-    <td>-fastq</td>
-      <td>The input sequencing data is in the fastq format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fastq /vol/data/samples/*.fq.bz2</code>.
-      </td> 
-  </tr>
-  <tr>
-    <td>-line</td>
-      <td>The input sequencing data is a fastq file in the line-based format. This line-based sequecing data is useful when users have uncompressed files distributed across different nodes. In this case, a fastq unit is intact on one worker node. See below <b>Notes</b>.
-      </td> 
-  </tr>
-        <tr>
-    <td>-tag</td>
-            <td>Whether to tag the file name to each sequence or not. This tag function can mark each sequence of the intermediate mapping result. This information is useful when users have a list of samples input in the same time and would like to be summarized seperately. This option will increase the size of output file.
-            </td> 
-  </tr>    
-  <tr>
-    <td>-reference</td>
-            <td>Input file of the reference genome in the fasta format. Make sure it is located in a shared file system or downloaded to each worker node.
-            </td> 
-  </tr>    
-  <tr>
-    <td>-outfile</td>
-            <td>Directory of output files.
-            </td> 
-  </tr>
-            <tr>
-    <td>-kmer</td>
-            <td>The K-mer length for building the reference index, 8-12 is recommanded. Default is 12.
-            </td> 
-  </tr>
-            <tr>
-    <td>-evalue</td>
-            <td>Set a maximum E-value as a filter to remove mappings higher than the threshold.
-            </td> 
-  </tr>
-            <tr>
-    <td>-global</td>
-            <td>Global alignment or local alignment. Set to 0 as local alignment, to 1 as global alignment. The default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-unmask</td>
-            <td>Whether to mask repeats in the reference genome or not. 0 for not mask; 1 for mask. The default is 1.
-            </td> 
-  </tr>
-            <tr>
-    <td>-overlap</td>
-            <td>When extracting k-mers from the reference genome, there will be a shift between k-mers. The k-mer length minus the shifted length is the overlap length. The larger the overlap size is, the more sensitive the mapping result will be.
-            </td> 
-  </tr>
-            <tr>
-    <td>-identity</td>
-            <td>The mapping identity between the sequencing read and the reference genome. The identity is calculated by dividing perfectly matched nuclieotides to the length of the sequecing read.
-            </td> 
-  </tr>
-            <tr>
-    <td>-coverage</td>
-            <td>The minimal coverage to recruit a read. Default is 30.
-            </td> 
-  </tr>
-            <tr>
-    <td>-minlength</td>
-            <td>The minmal length to recruit a read.
-            </td> 
-  </tr>
-            <tr>
-    <td>-attempts</td>
-            <td>Sparkhit mapper trys to map each sequence to a collection of q-Grams (a block of sequence that is very likely to be recuited). This parameter sets a number of failed attempts to map to q-Grams. Default is 20
-            </td> 
-  </tr>
-         <tr>
-    <td>-hits</td>
-            <td>How many hits to be reported in the result for each sequencing read. 0 for report all possible matches. The default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-strand</td>
-            <td>Strands selection. 0 is for mapping to both strands of reference genome. 1 for mapping to only "+" strand. 2 for mapping to only "-". The Default is 0.
-            </td> 
-  </tr>
-            <tr>
-    <td>-thread</td>
-            <td>How many threads to be used in parallel. This parameter is deprecated. Check the <code>-partition</code>.
-            </td> 
-  </tr>
-            <tr>
-    <td>-partition</td>
-            <td>Re-distribute the input data into a number of partitions. Each partition runs a individual mapping task. This is useful when you want to evenly distribute your data for parallel computations.
-            </td> 
-  </tr>
-            <tr>
-    <td>-version</td>
-            <td>Print out the Sparkhit version.
-            </td> 
-  </tr>
-            <tr>
-    <td>-help</td>
-            <td>Print the help information.
-            </td> 
-  </tr>
-        </table>
-        <p>
-        </p>
-        <div>
-            &#9749; &nbsp;Notes
-        </div>
-        <div-content>
-            <ol type="1">
-            <li>
-                Different from the Sparkhit-recruiter, the mapper enables a faster sequence alignment by implementing the pigeonhole principle. While increasing the mapping speed, Sparkhit-mapper is less tolerant on mismatches during the alignment, due to the nature of the pigeonhole principle. Thus, when users only need good quality matches (more than 94% identity), Sparkhit-mapper is recommanded.
-            </li>
-            </ol>
-        </div-content>
-
-<h3>
-<a id="reassembler-options" class="anchor" href="#reassembler-options" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Reflexiv reassembler options</h3>
-        
-        <p>
-            <i>Sparkhit</i> reporter is a tool to summarize the mapping result of <code>sparkhit mapper</code>. Like standard word count applictions, it applies a simple Map-Reduce computation to summarize the frequency of each element. In our case, it is the mapped read number of each chromosome/contig/scaffold of the reference genomes. 
-        </p>
-        <p>
-            To list all options, type command: <br>
-            <code>$ ./bin/reflexiv reassembler</code>
-        </p>
-        <pre>
-SparkHit 11:48:21 SparkHit Reporter initiating ... 
-SparkHit 11:48:21 interpreting parameters.
-Name:
-	SparkHit Reporter
-
-Options:
-  -input &lt;input sparkhit result file>   Input spark hit result file in tabular
-                                        format. Accept wild card, s3n schema, hdfs
-                                        schema
-  -word &lt;columns for identifier>        a list of column number used to represent a
-                                        category you want to summarize. eg, 1,3,8
-                                        means counting column 1 (chr), column 3
-                                        (strain), column 8 (identity)
-  -count &lt;column for count number>      the number of column value which will be used
-                                        to aggregate for the report. set to 0 the
-                                        value will be 1 for every identifier
-  -outfile &lt;output report file>         Output report file in text format
-  -partition &lt;re-partition number>      re generate number of partitions for .gz
-                                        data, as .gz data only have one partition
-                                        (spark parallelization)
-  -version                              show version information
-  -help                                 print and show this information
-  -h
-
-Usage:
-	Report mapping summary
-spark-submit [spark parameter] --class uni.bielefeld.cmg.sparkhit.main.MainOfReporter Sparkhit.jar [parameters] -input ./sparkhit.out -outfile ./sparkhit.report
-sparkhit reporter [spark parameter] [parameters] -input ./sparkhit.out -outfile ./sparkhit.report</pre>
+	run de novo genome Re-assembly : 
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfReAssembler reflexiv.jar [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out
+spark-submit [spark parameter] --class uni.bielefeld.cmg.reflexiv.main.MainOfReAssembler reflexiv.jar [parameters] -fasta input.txt -frag gene_frag.fa -kmer 31 -outfile reassemble.out
+reflexiv reassembler [spark parameter] [parameters] -fastq input.fq -frag gene_frag.fa -kmer 31 -outfile reassemble.out</pre>
         <p>
             
         </p>
           <table>
             <caption>Table M-5: Descriptitons of Reflexiv reassembler options</caption>
-  <tr>
+    <tr>
     <th>Options</th>
     <th>Description</th> 
   </tr>
   <tr>
-    <td>-input</td>
-      <td>Input files of the fragment recruitment result in the tabular format.
+    <td>-fastq</td>
+      <td>The input sequencing data is in the <b>fastq</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fastq /vol/data/samples/*.fq.bz2</code>.
+      </td> 
+  </tr>
+<tr>
+    <td>-kmerc</td>
+      <td>The input sequencing data is either the direct output of <code><a href="#counter-options">counter</a></code> or files in the tabular format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-kmerc /vol/data/samples/*.kmers.txt</code>.
       </td> 
   </tr>
   <tr>
-    <td>-word</td>
-    <td>A list of column numbers used to represent a category you want to summarize. See <b>Notes</b> for details.</td> 
+    <td>-fasta</td>
+      <td>The input sequencing data is in the <b>fasta</b> format. The input files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-fasta /vol/data/samples/*.fa.gz</code>.
+      </td> 
   </tr>
-    <tr>
-        <td>-count</td>
-        <td>Users can specify a column as the count number. This is useful when the tabular format has one column already stating the number of matches. By default, it is always one read per line.</td>
-    </tr>
-    <tr>
-        <td>-outfile</td>
-        <td>The path of the output result file, tabular format.</td>
-    </tr>
-    <tr>
-        <td>-partition</td>
-        <td>Re-distribute the input data into a number of partitions. This is useful when you want to evenly distribute your data for parallel computations.</td>
-    </tr>
-    <tr>
-        <td>-version</td>
-        <td>Display the Sparkhit version.</td>
-    </tr>
-    <tr>
-        <td>-help</td>
-        <td>Print the help information.</td>
-    </tr>
+  <tr>
+    <td>-frag</td>
+      <td>The input sequence fragments which will be extended in the <b>fasta</b> format. The files can be compressed or uncompressed. Users can also use the wild card or comma seperated files to input a batch of files. eg. <code>-frag /vol/data/samples/gene_fragment1.fa,/vol/data/samples/gene_fragment2.fa</code>.
+      </td> 
+  </tr> 
+  <tr>
+    <td>-outfile</td>
+            <td>Directory of output files.
+            </td> 
+  </tr>
+            <tr>
+    <td>-kmer</td>
+            <td>The K-mer length for building the Reflexilbe Distributed K-mer (RDK). Default is 31.
+            </td> 
+  </tr>
+            <tr>
+    <td>-overlap</td>
+            <td>When extracting k-mers from the reference genome, there will be a shift between k-mers. The k-mer length minus the shifted length is the overlap length. For most cases, the overlap should be <code>K-1</code> mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-miniter</td>
+            <td>The minimal iterations for contig extention. The program will start checking convergence after the minimal iteration value is reached. As the convergence checking step consumes a certain amount of resource, it is better to set a minimal iterations to avoid unnecessary convergence check. The Default is 20.
+            </td> 
+  </tr>
+            <tr>
+    <td>-maxiter</td>
+            <td>The maximum iterations for contig extention. In a really rare case where convergence will never be reached (never happened before), the maximum iteration threshold will stop the infinite loop.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipf</td>
+            <td>Trim a certain number of nucleotides at the beginning of the sequencing reads. This is useful to clip high error region at the start of an Illumina sequencing read.
+            </td> 
+  </tr>
+            <tr>
+    <td>-clipe</td>
+            <td>Trim a certain number of nucleotides at the end of the sequencing reads. This is useful to clip high error region at the end of an Illumina sequencing read.
+            </td> 
+  </tr>
+         <tr>
+    <td>-cover</td>
+            <td>The minimal coverage to filter low frequency K-mers. The higher the coverage is, the more accurate the result will be. On the other hand, the lower the coverage is, the more sensitive the result will be. 
+            </td> 
+  </tr>
+            <tr>
+    <td>-maxcov</td>
+            <td>The maximal coverage to filter high frequency K-mers. In case of sequencing artifacts that produces extreme high cover K-mers, the threshold filtered abnormal high coverage K-mers.
+            </td> 
+  </tr>
+            <tr>
+    <td>-minlength</td>
+            <td>The minimal length of input reads. The default is the length of the K-mer.
+            </td> 
+  </tr>
+            <tr>
+    <td>-mincontig</td>
+            <td>The minimal length of the output contigs. The default is 100.
+            </td> 
+  </tr>
+            <tr>
+    <td>-partition</td>
+            <td>Re-distribute the input data into a number of partitions. Each partition runs a individual task. This is useful when you want to evenly distribute your data for parallel computations (Also see <b>Notes</b> below).
+            </td> 
+  </tr>
+            <tr>
+    <td>-bubble</td>
+                <td>Set to <b>NOT</b> remove bubbles in the assembly. Mainly used for debugging.
+            </td> 
+  </tr>
+            <tr>
+    <td>-cache</td>
+                <td>Set to cache input data into memory. Default is not.
+            </td> 
+  </tr>
+            <tr>
+    <td>-version</td>
+            <td>Print out the Reflexiv version.
+            </td> 
+  </tr>
+            <tr>
+    <td>-help</td>
+            <td>Print the help information.
+            </td> 
+  </tr>
 
 </table>
         <p>
@@ -704,7 +726,7 @@ sparkhit reporter [spark parameter] [parameters] -input ./sparkhit.out -outfile 
         <div-content>
             <ol type="1">
             <li>
-                The reporter usually summarizes the mapped read number of a certain chromosome/contig/scaffold above a certain identity, eg. how many reads mapped to <code>NM_086618</code> with more than 98% identity. Some times users might want to make some changes, eg. how many reads map to the <code>NM_086618</code> "+" strand with more than 97% identity. We offer a flexible option for the summarization, the <code>-word</code> option. It allows you to specify the identifier with a combination of elements by selecting a list of columns. Each line of the input tabular format file is a hit of a sequencing read. By choosing and combinig several columns, users can assemble their identifier as a key word for thesummarization (like a MapReduce WordCount).
+                The extended result is in the <code>fasta</code> format. The ID of each contig provides the loci of the extended fragment(s) in the contig. E.g. <code>>ReCon-length:739-begin:455-end:665-NC0130078_102956401|NC0130078_105631461-begin:503-end:731-NC0130078_103544151-34</code>. Here, <i>length</i> denotes the nucleotide number of the assembled contig. <i>begin</i> denotes the start point of the following fragment and <i>end</i> denotes the end position of the fragment. Accordingly, <i>NC0130078_102956401</i> is the ID of the fragment. <cod>|</cod> symbol connects two fragments which have identical start and end K-mers (redundancy).
             </li>
             </ol>
         </div-content>

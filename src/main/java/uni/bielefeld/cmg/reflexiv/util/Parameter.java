@@ -51,6 +51,7 @@ public class Parameter {
     private static final String
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
+            INPUT_KMER= "kmerc",
             OUTPUT_FILE = "outfile",
             KMER_SIZE = "kmer",
             OVERLAP = "overlap",
@@ -77,6 +78,7 @@ public class Parameter {
 
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
+        parameterMap.put(INPUT_KMER, o++);
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(KMER_SIZE, o++);
         parameterMap.put(OVERLAP, o++);
@@ -108,6 +110,10 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("input fasta file")
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
                 .create(INPUT_FASTA));
+
+        parameter.addOption(OptionBuilder.withArgName("input Kmer file")
+                .hasArg().withDescription("Input counted kmer file, tabular file format or spark RDD pair text file")
+                .create(INPUT_KMER));
 
         parameter.addOption(OptionBuilder.withArgName("output file")
                 .hasArg().withDescription("Output assembly result")
@@ -341,6 +347,8 @@ public class Parameter {
                 param.inputFqPath = value;
             } else if ((value = cl.getOptionValue(INPUT_FASTA)) != null){
                 param.inputFaPath = value;
+            } else if ((value = cl.getOptionValue(INPUT_KMER)) != null) {
+                param.inputKmerPath = value;
             } else{
                 help.printHelp();
                 System.exit(0);
