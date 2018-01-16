@@ -11,29 +11,39 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /**
- * Created by Liren Huang on 24.08.17.
+ * Created by rhinempi on 22.07.2017.
  *
- *      Reflexiv
+ *       Reflexiv
  *
- * Copyright (c) 2015-2015
- *      Liren Huang      <huanglr at cebitec.uni-bielefeld.de>
- * 
- * SparkHit is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Copyright (c) 2017.
+ *       Liren Huang     <huanglr at cebitec.uni-bielefeld.de>
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; Without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more detail.
- * 
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses>.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 
+/**
+ * Returns an object for logging messages in a structured format.
+ *
+ * @author  Liren Huang
+ * @version %I%, %G%
+ * @see
+ */
 public class InfoLogger implements InfoManager {
     private String message;
     private File outputPath;
@@ -51,9 +61,10 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method formats the message by including the time information.
      *
-     * @param timeFormat
-     * @return
+     * @param timeFormat the raw system time format.
+     * @return the formatted time
      */
     private String headerTime(String timeFormat){
         SimpleDateFormat hourMinuteSecond = new SimpleDateFormat(timeFormat);
@@ -62,9 +73,10 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method formats the message by including the time header.
      *
-     * @param m
-     * @return
+     * @param m the raw message.
+     * @return the formated message.
      */
     private String completeMessage(String m){
         String mHeader = headerMessage("HH:mm:ss");
@@ -73,8 +85,9 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method writes the structured message to a log file.
      *
-     * @param logFileWriter
+     * @param logFileWriter a {@link BufferedWriter} of a log file.
      */
     private void logFileWrite(BufferedWriter logFileWriter){
         try {
@@ -87,9 +100,10 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method parses the output path and sets a BufferedWriter for the output
      *
-     * @param path
-     * @param overwrite
+     * @param path the full path of an output file.
+     * @param overwrite whether to overwrite existing file or not.
      * @return
      */
     public BufferedWriter setOutput(String path, boolean overwrite){
@@ -100,23 +114,25 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
-     *
+     * This method prints the structured message to the screen.
      */
     public void screenDump (){
         System.out.println(message);
     }
 
     /**
+     * This method records a specified message.
      *
-     * @param m
+     * @param m the message that is going to be processed.
      */
     public void readMessage (String m){
         this.message = completeMessage(m);
     }
 
     /**
+     * This method records an IOException message.
      *
-     * @param e
+     * @param e the IOException message that is going to be processed.
      */
     public void readIOException (IOException e){
         String m = e.getMessage();
@@ -124,8 +140,9 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method records a FileNotFoundException message.
      *
-     * @param e
+     * @param e the FileNotFoundException message that is going to be processed.
      */
     public void readFileNotFoundException (FileNotFoundException e){
         String m = e.getMessage();
@@ -133,8 +150,9 @@ public class InfoLogger implements InfoManager {
     }
 
     /**
+     * This method records a ClassNotFoundException message.
      *
-     * @param e
+     * @param e the ClassNotFoundException message that is going to be processed.
      */
     public void readClassNotFoundException (ClassNotFoundException e){
         String m = e.getMessage();

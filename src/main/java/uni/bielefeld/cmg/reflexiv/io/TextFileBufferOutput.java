@@ -4,29 +4,40 @@ package uni.bielefeld.cmg.reflexiv.io;
 import java.io.*;
 
 /**
- * Created by Liren Huang on 24.08.17.
+ * Created by rhinempi on 22.07.2017.
  *
- *      Reflexiv
+ *       Reflexiv
  *
- * Copyright (c) 2015-2015
- *      Liren Huang      <huanglr at cebitec.uni-bielefeld.de>
- * 
- * Reflexiv is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Copyright (c) 2017.
+ *       Liren Huang     <huanglr at cebitec.uni-bielefeld.de>
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; Without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more detail.
- * 
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses>.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
-
+/**
+ * Returns an object for buffering output files. This class is
+ * used in local mode only. For cluster mode, Spark "textFile" function
+ * is used to access input Fastq file.
+ *
+ * @author  Liren Huang
+ * @version %I%, %G%
+ * @see
+ */
 public class TextFileBufferOutput implements OutputFileManager {
     public String path;
     public File outputPath;
@@ -34,6 +45,10 @@ public class TextFileBufferOutput implements OutputFileManager {
     public OutputStreamWriter outputStreamWriter;
     public BufferedWriter outputBufferWriter;
 
+    /**
+     * A constructor that construct an object of {@link TextFileBufferOutput} class.
+     * No constructor option needed.
+     */
     public TextFileBufferOutput(){
         /**
          *
@@ -41,24 +56,27 @@ public class TextFileBufferOutput implements OutputFileManager {
     }
 
     /**
+     * Returns the preset BufferedWriter.
      *
-     * @return return BufferWriter for output text
+     * @return return {@link BufferedWriter} for output text.
      */
     public BufferedWriter getOutputBufferWriter(){
         return outputBufferWriter;
     }
 
     /**
+     * Returns the preset OutputStreamWriter.
      *
-     * @return
+     * @return {@link OutputStreamWriter}.
      */
     public OutputStreamWriter getOutputStreamWriter(){
         return outputStreamWriter;
     }
 
     /**
+     * Returns the preset FileOutputStream.
      *
-     * @return
+     * @return {@link FileOutputStream}.
      */
     public FileOutputStream getOutputFileStream(){
         return outputFileStream;
@@ -74,16 +92,16 @@ public class TextFileBufferOutput implements OutputFileManager {
 
     /**
      *
-     * set class OutputStreamWriter object outputStreamWriter
+     * set class {@link OutputStreamWriter} object outputStreamWriter.
      */
     public void setOutputStreamWriter(){
         this.outputStreamWriter = new OutputStreamWriter(outputFileStream);
     }
 
     /**
-     * set class FileOutputStream object outputFileStream
+     * set class {@link FileOutputStream} object outputFileStream.
      *
-     * @param overwrite stands for whether overwrite the log file or not
+     * @param overwrite stands for whether overwrite the output file or not.
      */
     public void setFileOutputStream(boolean overwrite){
         try{
@@ -95,18 +113,19 @@ public class TextFileBufferOutput implements OutputFileManager {
     }
 
     /**
-     * set class File object outputPath
+     * This method sets the full path of an output file.
      *
-     * @param overwrite
+     * @param overwrite whether to overwrite the existing file or not.
      */
     private void setOutputFile(boolean overwrite){
         this.outputPath = new File(path).getAbsoluteFile();
     }
 
     /**
+     * This method sets up an output file stream for an output file.
      *
-     * @param outputFile out put file path
-     * @param overwrite  whether overwrite existing file
+     * @param outputFile the full path of an output file.
+     * @param overwrite  whether to overwrite the existing file or not.
      */
     public void setOutput(String outputFile, boolean overwrite){
         this.path = outputFile;
@@ -117,17 +136,18 @@ public class TextFileBufferOutput implements OutputFileManager {
     }
 
     /**
-     * Override interface method
+     * This method sets up an output file buffer based on an output file path.
      *
-     * @param outputFile is the out put file path in String.
+     * @param outputFile the full path of an output file.
      */
     public void bufferOutputFile(String outputFile){
         this.path = outputFile;
     }
 
     /**
+     * This method sets up an input file buffer based on an input file path.
      *
-     * @param inputFile
+     * @param inputFile the full path of an input file.
      */
     public void bufferInputFile(String inputFile){
         /**

@@ -4,31 +4,45 @@ package uni.bielefeld.cmg.reflexiv.util;
 import java.io.Serializable;
 
 /**
- * Created by Liren Huang on 24.08.17.
+ * Created by rhinempi on 22.07.2017.
  *
- *      Reflexiv
+ *       Reflexiv
  *
- * Copyright (c) 2015-2015
- *      Liren Huang      <huanglr at cebitec.uni-bielefeld.de>
+ * Copyright (c) 2017.
+ *       Liren Huang     <huanglr at cebitec.uni-bielefeld.de>
  *
- * Reflexiv is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; Without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more detail.
- * 
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses>.
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 
+/**
+ * A data structure class that stores all default parameters.
+ *
+ * @author  Liren Huang
+ * @version %I%, %G%
+ * @see
+ */
 public class DefaultParam implements Serializable{
 
+
+    /**
+     * A constructor that construct an object of {@link DefaultParam} class.
+     */
     public DefaultParam () {
         /**
          * This is a class of data structure which stores the default parameters
@@ -61,57 +75,39 @@ public class DefaultParam implements Serializable{
     public int endClip = 0;
 
 
-    public int[] initialAlphaCode(){
-        int[] alphaCodeInitial = new int[256];
-        for (int i=0; i<256; i++){
-            alphaCodeInitial[i] = 0;         // 'a' 'A' ASCII code and all other Char
-        }
-
-        alphaCodeInitial['c']=alphaCodeInitial['C']=1; // 'c' is ASCII number of c
-        alphaCodeInitial['g']=alphaCodeInitial['G']=2; // the same
-        alphaCodeInitial['t']=alphaCodeInitial['T']=3; // the same
-
-        return alphaCodeInitial;
-    }
-
-    public int[] initialAlphaCodeComplement(){
-        int[] alphaCodeComplementInitial = new int[256];
-        for (int i=0; i<256; i++){
-            alphaCodeComplementInitial[i] = 3;
-        }
-
-        alphaCodeComplementInitial['c']=alphaCodeComplementInitial['C']=2;
-        alphaCodeComplementInitial['g']=alphaCodeComplementInitial['G']=1;
-        alphaCodeComplementInitial['t']=alphaCodeComplementInitial['T']=0;
-        return alphaCodeComplementInitial;
-    }
-
-    public int[] initialNNNNNFilter(){
-        int[] alphaCodeNNNNNInitial = new int[256];
-        for (int i=0; i<256; i++){
-            alphaCodeNNNNNInitial[i] = 1;
-        }
-        alphaCodeNNNNNInitial['c']=alphaCodeNNNNNInitial['C']=0;
-        alphaCodeNNNNNInitial['g']=alphaCodeNNNNNInitial['G']=0;
-        alphaCodeNNNNNInitial['t']=alphaCodeNNNNNInitial['T']=0;
-        alphaCodeNNNNNInitial['a']=alphaCodeNNNNNInitial['A']=0;
-        return alphaCodeNNNNNInitial;
-    }
-
-    /* change kmer length and maximum bit */
+    /**
+     * This method initiates the K-mer size parameter.
+     *
+     * @param k the size of the k-mer.
+     */
     public  void setKmerSize(int k){
         kmerSize = k;
         kmerBits = (1 << (kmerSize*2))-1;
     }
 
+    /**
+     * This method initiates the sub K-mer size parameter.
+     *
+     * @param s the size of the sub k-mer.
+     */
     public void setSubKmerSize(int s){
         subKmerSize = s;
     }
 
+    /**
+     * This method initiates the minimal coverage for error correction.
+     *
+     * @param s the minimal size for error correction.
+     */
     public void setMinErrorCoverage(int s){
         minErrorCoverage = s;
     }
 
+    /**
+     * This method initiates the overlap between k-mers.
+     *
+     * @param o the size of the overlap between k-mers.
+     */
     public void setKmerOverlap(int o){
         kmerOverlap = o;
     }

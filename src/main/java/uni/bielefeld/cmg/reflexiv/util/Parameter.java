@@ -13,33 +13,50 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Created by Liren Huang on 24.08.17.
+ * Created by rhinempi on 22.07.2017.
  *
- *      Reflexiv
+ *       Reflexiv
  *
- * Copyright (c) 2015-2015
- *      Liren Huang      <huanglr at cebitec.uni-bielefeld.de>
- * 
- * Reflexiv is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Copyright (c) 2017.
+ *       Liren Huang     <huanglr at cebitec.uni-bielefeld.de>
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; Without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more detail.
- * 
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses>.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 
+/**
+ * Returns an object for parsing the input options for Reflexiv run.
+ *
+ * @author  Liren Huang
+ * @version %I%, %G%
+ * @see
+ */
 public class Parameter {
     private String[] arguments;
     private InfoDumper info = new InfoDumper();
 
+    /**
+     * A constructor that construct an object of {@link Parameter} class.
+     *
+     * @param arguments an array of strings containing commandline options
+     * @throws IOException
+     * @throws ParseException
+     */
     public Parameter(String[] arguments) throws IOException, ParseException {
         this.arguments = arguments;
     }
@@ -73,6 +90,9 @@ public class Parameter {
 
     private static final Map<String, Integer> parameterMap = new HashMap<String, Integer>();
 
+    /**
+     * This method places all input parameters into a hashMap.
+     */
     public void putParameterID() {
         int o = 0;
 
@@ -99,6 +119,9 @@ public class Parameter {
         parameterMap.put(HELP, o ++);
     }
 
+    /**
+     * This method adds descriptions to each parameter.
+     */
     public void addParameterInfo(){
 
         /*  use Object parameter of Options class to store parameter information   */
@@ -189,6 +212,13 @@ public class Parameter {
     }
 
     /* main method */
+
+    /**
+     * This method parses input commandline arguments and sets correspond
+     * parameters.
+     *
+     * @return {@link DefaultParam}.
+     */
     public DefaultParam importCommandLine(){
 
         /* Assigning Parameter ID to an ascending number */

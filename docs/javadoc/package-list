@@ -1,9 +1,5 @@
-uni.bielefeld.cmg.sparkhit.algorithm
-uni.bielefeld.cmg.sparkhit.io
-uni.bielefeld.cmg.sparkhit.main
-uni.bielefeld.cmg.sparkhit.matrix
-uni.bielefeld.cmg.sparkhit.pipeline
-uni.bielefeld.cmg.sparkhit.reference
-uni.bielefeld.cmg.sparkhit.serializer
-uni.bielefeld.cmg.sparkhit.struct
-uni.bielefeld.cmg.sparkhit.util
+uni.bielefeld.cmg.reflexiv.io
+uni.bielefeld.cmg.reflexiv.main
+uni.bielefeld.cmg.reflexiv.pipeline
+uni.bielefeld.cmg.reflexiv.serializer
+uni.bielefeld.cmg.reflexiv.util
