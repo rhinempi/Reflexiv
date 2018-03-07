@@ -1,11 +1,11 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
@@ -15,8 +15,9 @@ import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.Serializable;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 
 /**
@@ -164,7 +165,12 @@ public class ReflexivCounter implements Serializable{
         BinaryKmerToString KmerStringOutput = new BinaryKmerToString();
 
         KmerRDD = KmerBinaryRDD.mapPartitionsToPair(KmerStringOutput);
-        KmerRDD.saveAsTextFile(param.outputPath);
+
+        if (param.gzip) {
+            KmerRDD.saveAsTextFile(param.outputPath, GzipCodec.class);
+        }else{
+            KmerRDD.saveAsTextFile(param.outputPath);
+        }
 
         sc.stop();
     }

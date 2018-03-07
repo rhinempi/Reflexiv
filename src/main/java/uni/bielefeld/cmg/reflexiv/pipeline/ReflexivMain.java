@@ -1,6 +1,7 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -235,6 +236,240 @@ public class ReflexivMain implements Serializable{
 
  //           ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
  //           ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
+        }
+
+
+        /**
+         * first extension to array
+         */
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+
+        iterations++;
+//        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+//        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
+        ExtendReflexivKmerToArrayFirstTime KmerExtentionToArrayFirst = new ExtendReflexivKmerToArrayFirstTime();
+        ReflexivLongSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtentionToArrayFirst);
+
+        BinaryReflexivKmerArrayToString ArrayStringOutput = new BinaryReflexivKmerArrayToString();
+
+        /**
+         * Step 10: iteration: repeat step 6, 7 and 8 until convergence is reached
+         */
+        ExtendReflexivKmerToArrayLoop KmerExtenstionArrayToArray = new ExtendReflexivKmerToArrayLoop();
+
+        int partitionNumber = ReflexivLongSubKmerRDD.getNumPartitions();
+        long contigNumber = 0;
+        while (iterations <= param.maximumIteration) {
+            iterations++;
+            if (iterations >= param.minimumIteration){
+                if (iterations % 3 == 0) {
+
+                    long currentContigNumber = ReflexivLongSubKmerRDD.count();
+                    if (contigNumber == currentContigNumber) {
+                        break;
+                    } else {
+                        contigNumber = currentContigNumber;
+                    }
+
+                    if (partitionNumber >= 16) {
+                        if (currentContigNumber / partitionNumber <= 20) {
+                            partitionNumber = partitionNumber / 4 + 1;
+                            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.coalesce(partitionNumber);
+                        }
+                    }
+                }
+            }
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
+
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+
+            ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
+
+//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
+
+        }
+
+        /**
+         * Step 11: change reflexiv kmers to contig
+         */
+
+        ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+
+        KmerToContig contigformater = new KmerToContig();
+        ContigTuple2RDD = ReflexivSubKmerStringRDD.flatMapToPair(contigformater);
+
+        ContigTuple2IndexRDD = ContigTuple2RDD.zipWithIndex();
+
+        TagContigID IdLabeling = new TagContigID();
+        ContigRDD = ContigTuple2IndexRDD.flatMap(IdLabeling);
+
+        /**
+         * Step N: save result
+         */
+
+        ContigRDD.saveAsTextFile(param.outputPath);
+
+        /**
+         * Step N+1: Stop
+         */
+        sc.stop();
+    }
+
+    /**
+     *
+     */
+    public void assemblyFromKmer(){
+        SparkConf conf = setSparkConfiguration();
+        info.readMessage("Initiating Spark context ...");
+        info.screenDump();
+        info.readMessage("Start Spark framework");
+        info.screenDump();
+        JavaSparkContext sc = new JavaSparkContext(conf);
+
+        JavaRDD<String> FastqRDD;
+        JavaRDD<String> InputKmerRDD;
+        JavaPairRDD<String, Integer> KmerRDD;
+        JavaPairRDD<Long, Integer> KmerBinaryRDD;
+
+        /* Tuple4 data struct (reflexiv marker, rest of the string, coverage of prefix, coverage of suffix)*/
+        JavaPairRDD<Long, Tuple4<Integer, Long, Integer, Integer>> ReflexivSubKmerRDD; // both
+        JavaPairRDD<Long, Tuple4<Integer, Long[], Integer, Integer>> ReflexivLongSubKmerRDD;
+
+        JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflexivSubKmerStringRDD; // Generates strings, for testing
+        //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ForwardSubKmerRDD;
+        //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflectedSubKmerRDD;
+
+        JavaPairRDD<String, String> ContigTuple2RDD;
+        JavaPairRDD<Tuple2<String, String>, Long> ContigTuple2IndexRDD;
+        JavaRDD<String> ContigRDD;
+
+
+        //FastqRDD = sc.textFile(param.inputFqPath);
+        InputKmerRDD = sc.textFile(param.inputKmerPath);
+
+        /**
+         * Step 1: filter and check input fastq file
+         */
+        clockStart();
+      //  FastqFilterWithQual RDDFastqFilter = new FastqFilterWithQual();
+      //  FastqRDD = FastqRDD.map(RDDFastqFilter);
+        long zeit = clockCut();
+
+        /**
+         * Step 2: filter null units introduced in the above step
+         */
+   //     FastqUnitFilter RDDFastqUnitFilter = new FastqUnitFilter();
+   //     FastqRDD = FastqRDD.filter(RDDFastqUnitFilter);
+        if (param.partitions > 0) {
+            InputKmerRDD = InputKmerRDD.repartition(param.partitions);
+        }
+        if (param.cache) {
+            InputKmerRDD.cache();
+        }
+
+        /**
+         * Step 3: extract kmers from sequencing reads and
+         *          and build <kmer, count> tuples.
+         */
+
+        LoadCountedKmerToLongArray kmerLoader = new LoadCountedKmerToLongArray();
+        KmerBinaryRDD = InputKmerRDD.mapPartitionsToPair(kmerLoader);
+
+        /**
+         * Step 4: counting kmer frequencies with reduceByKey function
+         */
+
+      //  KmerCounting RDDCountingKmerFreq = new KmerCounting();
+      //  KmerBinaryRDD = KmerBinaryRDD.reduceByKey(RDDCountingKmerFreq);
+
+        /**
+         * Step 5: filter kmers by coverage
+         */
+        if (param.minKmerCoverage >1) {
+            KmerCoverageFilter RDDKmerFilter = new KmerCoverageFilter();
+            KmerBinaryRDD = KmerBinaryRDD.filter(RDDKmerFilter);
+        }
+
+        /**
+         * Generate reverse complement Kmers
+         */
+        KmerReverseComplement RDDRCKmer = new KmerReverseComplement();
+        KmerBinaryRDD = KmerBinaryRDD.mapPartitionsToPair(RDDRCKmer);
+
+        /**
+         * Step : filter forks
+         */
+
+        ForwardSubKmerExtraction RDDextractForwardSubKmer = new ForwardSubKmerExtraction();
+        ReflexivSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardSubKmer);   // all forward
+
+        if (param.bubble == true) {
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+            if (param.minErrorCoverage == 0) {
+                FilterForkSubKmer RDDhighCoverageSelector = new FilterForkSubKmer();
+                ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageSelector);
+            }else {
+                FilterForkSubKmerWithErrorCorrection RDDhighCoverageErrorRemovalSelector = new FilterForkSubKmerWithErrorCorrection();
+                ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageErrorRemovalSelector);
+            }
+
+            ReflectedSubKmerExtractionFromForward RDDreflectionExtractor =  new ReflectedSubKmerExtractionFromForward();
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDreflectionExtractor); // all reflected
+
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+            if (param.minErrorCoverage == 0) {
+                FilterForkReflectedSubKmer RDDhighCoverageReflectedSelector = new FilterForkReflectedSubKmer();
+                ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedSelector);
+            }else {
+                FilterForkReflectedSubKmerWithErrorCorrection RDDhighCoverageReflectedErrorRemovalSelector = new FilterForkReflectedSubKmerWithErrorCorrection();
+                ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedErrorRemovalSelector);
+            }
+        }
+
+        /**
+         * Step 6: extract sub-kmers from each K-mer
+         */
+        kmerRandomReflection RDDrandomizeSubKmer = new kmerRandomReflection();
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDrandomizeSubKmer);
+
+        /**
+         * Step 7: sort all sub-kmers
+         */
+
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+
+        BinaryReflexivKmerToString StringOutput = new BinaryReflexivKmerToString();
+
+        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+
+        /**
+         * Step 8: connect and extend overlap kmers
+         */
+
+        ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
+        ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
+
+        /**
+         * Step 9: filter extended Kmers
+         */
+
+
+        /**
+         * first three extensions fit in one Long 1 2 4 8 16 32(x)
+         */
+        int iterations = 0;
+        for (int i = 1; i < 4; i++) {
+            iterations++;
+            ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
+
+            //           ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+            //           ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
         }
@@ -2681,6 +2916,64 @@ public class ReflexivMain implements Serializable{
 
             return kmerList.iterator();
         }
+    }
+
+
+    class LoadCountedKmerToLongArray implements PairFlatMapFunction<Iterator<String>, Long, Integer>, Serializable {
+
+        List<Tuple2<Long, Integer>> kmerList = new ArrayList<Tuple2<Long, Integer>>();
+        String[] units;
+        String kmer;
+        int cover;
+        char nucleotide;
+        long nucleotideInt;
+        //     Long suffixBinary;
+        //     Long[] suffixBinaryArray;
+
+        public Iterator<Tuple2<Long, Integer >> call(Iterator<String> s) {
+
+            while (s.hasNext()) {
+                units = s.next().split(",");
+
+                kmer = units[0].substring(1);
+
+                cover = Integer.parseInt(StringUtils.chop(units[1]));
+
+                Long nucleotideBinary = 0L;
+
+                for (int i = 0; i < param.kmerSize; i++) {
+                    nucleotide = kmer.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinary <<= 2;
+                    nucleotideBinary |= nucleotideInt;
+                }
+
+                kmerList.add(
+                        new Tuple2<Long, Integer>(
+                                nucleotideBinary, cover
+                        )
+                );
+            }
+
+            return kmerList.iterator();
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
     }
 
     /**

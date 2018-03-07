@@ -68,6 +68,7 @@ public class DefaultParam implements Serializable{
     public boolean bubble= true;
 
     public boolean cache = false;
+    public boolean gzip = false;
     public int partitions = 0;
     public int maximumIteration = 100;
     public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)

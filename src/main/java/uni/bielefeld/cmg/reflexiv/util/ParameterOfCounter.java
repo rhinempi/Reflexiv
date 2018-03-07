@@ -64,6 +64,7 @@ public class ParameterOfCounter {
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
             OUTPUT_FILE = "outfile",
+            OUTPUT_CODEC="gzip",
             KMER_SIZE = "kmer",
             OVERLAP = "overlap",
             FRONTCLIP = "clipf",
@@ -88,6 +89,7 @@ public class ParameterOfCounter {
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
         parameterMap.put(OUTPUT_FILE, o++);
+        parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(KMER_SIZE, o++);
         parameterMap.put(OVERLAP, o++);
         parameterMap.put(FRONTCLIP, o++);
@@ -120,6 +122,10 @@ public class ParameterOfCounter {
         parameter.addOption(OptionBuilder.withArgName("output file")
                 .hasArg().withDescription("Output assembly result")
                 .create(OUTPUT_FILE));
+
+        parameter.addOption(OptionBuilder.withArgName("output compression")
+                .hasArg(false).withDescription("Set to compress output files")
+                .create(OUTPUT_CODEC));
 
         parameter.addOption(OptionBuilder.withArgName("kmer size")
                 .hasArg().withDescription("Kmer length for reads mapping")
@@ -211,6 +217,10 @@ public class ParameterOfCounter {
 
             if (cl.hasOption(VERSION)) {
                 System.exit(0);
+            }
+
+            if (cl.hasOption(OUTPUT_CODEC)) {
+                param.gzip =true;
             }
 
 			/* Checking all parameters */

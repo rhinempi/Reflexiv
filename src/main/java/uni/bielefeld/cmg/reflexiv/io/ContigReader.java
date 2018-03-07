@@ -138,11 +138,12 @@ public class ContigReader implements Serializable{
                             contigPrimerTable.put(primer, contigPrimerTable.get(primer)+ "|" + name);
                         }else{
                             contigPrimerTable.put(primer, name);
-                        }
 
-                        Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> subKmerSuffixBinary = getBinaryReflexivKmer(seq, contigId);
-                        reflexivContigList.add(subKmerSuffixBinary);
+                        }
                     }
+
+                    Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>> subKmerSuffixBinary = getBinaryReflexivKmer(seq, contigId);
+                    reflexivContigList.add(subKmerSuffixBinary);
 
                     seqBuilder = new StringBuilder();
 
@@ -183,6 +184,7 @@ public class ContigReader implements Serializable{
                 contigPrimerTable.put(primer, contigPrimerTable.get(primer)+ "|" + name);
             }else{
                 contigPrimerTable.put(primer, name);
+
             }
 
             Tuple2<Long, Tuple4<Integer, Long[], Integer, Integer>>  subKmerSuffixBinary = getBinaryReflexivKmer(seq, contigId);
