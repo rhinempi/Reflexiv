@@ -92,6 +92,12 @@ public class Pipelines implements Pipeline, Serializable{
         rflPipe.assembly();
     }
 
+    public void reflexivDSCounterPipe(){
+        ReflexivDataFrameCounter rflPipe = new ReflexivDataFrameCounter();
+        rflPipe.setParam(param);
+        rflPipe.assembly();
+    }
+
 
     /**
      * This method starts the Reflexiv reassembler pipeline

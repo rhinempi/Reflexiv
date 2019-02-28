@@ -6,9 +6,12 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
+import org.apache.spark.sql.*;
+import org.apache.spark.sql.catalyst.expressions.IntegerLiteral;
 import scala.Tuple2;
 import scala.Tuple4;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
@@ -89,6 +92,17 @@ public class ReflexivCounter implements Serializable{
         return conf;
     }
 
+    private SparkSession setSparkSessionConfiguration(){
+        SparkSession spark = SparkSession
+                .builder()
+                .appName("Reflexiv")
+                .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
+                .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .getOrCreate();
+
+        return spark;
+    }
+
     /**
      *
      */
@@ -99,6 +113,8 @@ public class ReflexivCounter implements Serializable{
         info.readMessage("Start Spark framework");
         info.screenDump();
         JavaSparkContext sc = new JavaSparkContext(conf);
+
+        SparkSession spark = setSparkSessionConfiguration();
 
         JavaRDD<String> FastqRDD;
         JavaPairRDD<String, Integer> KmerRDD;
@@ -147,6 +163,7 @@ public class ReflexivCounter implements Serializable{
         ReverseComplementKmerBinaryExtraction RDDExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtraction();
         KmerBinaryRDD = FastqRDD.mapPartitionsToPair(RDDExtractRCKmerBinaryFromFastq);
 
+
         /**
          * Step 4: counting kmer frequencies with reduceByKey function
          */
@@ -174,6 +191,7 @@ public class ReflexivCounter implements Serializable{
 
         sc.stop();
     }
+
 
     class BinaryKmerToString implements PairFlatMapFunction<Iterator<Tuple2<Long, Integer>>, String, Integer>, Serializable{
         List<Tuple2<String, Integer>> reflexivKmerStringList = new ArrayList<Tuple2<String, Integer>>();

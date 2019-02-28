@@ -72,6 +72,6 @@ public class MainOfCounter {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivCounterPipe();
+        pipes.reflexivDSCounterPipe();
     }
 }
