@@ -58,6 +58,12 @@ public class DefaultParam implements Serializable{
 
     public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;
+    public int kmerSizeResidue = kmerSize % 32;
+    public int subKmerSizeResidue= subKmerSize % 31;
+    public int kmerBinarySlots = kmerSize / 32 +1;   /* for kmer counting, each slot stores 32 mer */
+    public int subKmerBinarySlots = subKmerSize / 31 +1; /* for assembly, each slot stores 31 mer */
+
+
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
@@ -74,6 +80,8 @@ public class DefaultParam implements Serializable{
     public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)
     public int frontClip = 0;
     public int endClip = 0;
+
+    public int shufflePartition=200;
 
 
     /**

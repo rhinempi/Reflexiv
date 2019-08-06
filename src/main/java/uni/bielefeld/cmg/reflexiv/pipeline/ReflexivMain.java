@@ -396,11 +396,15 @@ public class ReflexivMain implements Serializable{
             KmerBinaryRDD = KmerBinaryRDD.filter(RDDKmerFilter);
         }
 
+        KmerBinaryRDD.saveAsTextFile(param.outputPath + "kmercount");
+
         /**
          * Generate reverse complement Kmers
          */
         KmerReverseComplement RDDRCKmer = new KmerReverseComplement();
         KmerBinaryRDD = KmerBinaryRDD.mapPartitionsToPair(RDDRCKmer);
+
+        KmerBinaryRDD.saveAsTextFile(param.outputPath + "reversecomplemen");
 
         /**
          * Step : filter forks
@@ -408,6 +412,8 @@ public class ReflexivMain implements Serializable{
 
         ForwardSubKmerExtraction RDDextractForwardSubKmer = new ForwardSubKmerExtraction();
         ReflexivSubKmerRDD = KmerBinaryRDD.mapPartitionsToPair(RDDextractForwardSubKmer);   // all forward
+
+        ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + "reflexivForward");
 
         if (param.bubble == true) {
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
@@ -418,9 +424,12 @@ public class ReflexivMain implements Serializable{
                 FilterForkSubKmerWithErrorCorrection RDDhighCoverageErrorRemovalSelector = new FilterForkSubKmerWithErrorCorrection();
                 ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageErrorRemovalSelector);
             }
+            ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + "filteredFowardFork");
 
             ReflectedSubKmerExtractionFromForward RDDreflectionExtractor =  new ReflectedSubKmerExtractionFromForward();
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDreflectionExtractor); // all reflected
+
+            ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + "reflexivBackward");
 
             ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
             if (param.minErrorCoverage == 0) {
@@ -430,6 +439,7 @@ public class ReflexivMain implements Serializable{
                 FilterForkReflectedSubKmerWithErrorCorrection RDDhighCoverageReflectedErrorRemovalSelector = new FilterForkReflectedSubKmerWithErrorCorrection();
                 ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(RDDhighCoverageReflectedErrorRemovalSelector);
             }
+            ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + "filteredBackward");
         }
 
         /**
@@ -454,6 +464,8 @@ public class ReflexivMain implements Serializable{
 
         ExtendReflexivKmer KmerExtention = new ExtendReflexivKmer();
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtention);
+
+        ReflexivSubKmerRDD.saveAsTextFile(param.outputPath + "1stextension");
 
         /**
          * Step 9: filter extended Kmers
@@ -481,8 +493,8 @@ public class ReflexivMain implements Serializable{
         ReflexivSubKmerRDD = ReflexivSubKmerRDD.sortByKey();
 
         iterations++;
-//        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
-//        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+        ReflexivSubKmerStringRDD = ReflexivSubKmerRDD.mapPartitionsToPair(StringOutput);
+        ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
         ExtendReflexivKmerToArrayFirstTime KmerExtentionToArrayFirst = new ExtendReflexivKmerToArrayFirstTime();
         ReflexivLongSubKmerRDD = ReflexivSubKmerRDD.mapPartitionsToPair(KmerExtentionToArrayFirst);
@@ -519,8 +531,8 @@ public class ReflexivMain implements Serializable{
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.sortByKey();
 
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
+            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
+            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivLongSubKmerRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(KmerExtenstionArrayToArray);
 

@@ -73,6 +73,7 @@ public class ParameterOfCounter {
             MAXCOVER= "maxcov",
             MINLENGTH = "minlength",
             PARTITIONS = "partition",
+            SHUFFLEPARTITIONS = "partitionredu",
             CACHE = "cache",
             VERSION = "version",
             HELP2 = "h",
@@ -98,6 +99,7 @@ public class ParameterOfCounter {
         parameterMap.put(MAXCOVER, o++);
         parameterMap.put(MINLENGTH, o++);
         parameterMap.put(PARTITIONS, o++);
+        parameterMap.put(SHUFFLEPARTITIONS, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
         parameterMap.put(HELP2, o++);
@@ -158,6 +160,10 @@ public class ParameterOfCounter {
         parameter.addOption(OptionBuilder.withArgName("re-partition number")
                 .hasArg().withDescription("re generate N number of partitions")
                 .create(PARTITIONS));
+
+        parameter.addOption(OptionBuilder.withArgName("re-partition number")
+                .hasArg().withDescription("re generate N number of partitions for reducer")
+                .create(SHUFFLEPARTITIONS));
 
         parameter.addOption(OptionBuilder.withArgName("cache data RAM")
                 .hasArg(false).withDescription("weather to store data in memory or not")
@@ -256,6 +262,14 @@ public class ParameterOfCounter {
                 }
             }
 
+            if ((value = cl.getOptionValue(SHUFFLEPARTITIONS)) != null){
+                if (Integer.decode(value) >= 0 ) {
+                    param.shufflePartition = Integer.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + SHUFFLEPARTITIONS+
+                            " should be larger than 0");
+                }
+            }
 
             if ((value = cl.getOptionValue(FRONTCLIP)) != null){
                 if (Integer.decode(value) >0 ) {

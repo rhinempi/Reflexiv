@@ -82,6 +82,16 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSMainPipe(){
+        ReflexivDSMain rflPipe = new ReflexivDSMain();
+        rflPipe.setParam(param);
+        if (param.inputKmerPath != null){
+            rflPipe.assemblyFromKmer();
+        }else {
+            rflPipe.assembly();
+        }
+    }
+
 
     /**
      * This method starts the Reflexiv counter pipeline

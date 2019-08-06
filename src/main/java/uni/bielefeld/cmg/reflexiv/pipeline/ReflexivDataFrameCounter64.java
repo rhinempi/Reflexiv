@@ -54,7 +54,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameCounter implements Serializable{
+public class ReflexivDataFrameCounter64 implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -233,6 +233,102 @@ public class ReflexivDataFrameCounter implements Serializable{
     /**
      *
      */
+    /*
+    class ReverseComplementKmerBinaryExtractionFromDataset64 implements MapPartitionsFunction<String, Long[]>, Serializable{
+        long maxKmerBits= ~((~0L) << (2*param.kmerSizeResidue));
+
+        List<Long[]> kmerList = new ArrayList<Long[]>();
+        int readLength;
+        String[] units;
+        String read;
+        char nucleotide;
+        long nucleotideInt;
+        long nucleotideIntComplement;
+
+        public Iterator<Long[]> call(Iterator<String> s){
+
+            while (s.hasNext()) {
+                units = s.next().split("\\n");
+                read = units[1];
+                readLength = read.length();
+
+                if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {
+                    continue;
+                }
+
+                Long nucleotideBinary = 0L;
+                Long nucleotideBinaryReverseComplement = 0L;
+                Long[] nucleotideBinarySlot = new Long[param.kmerBinarySlots];
+                Long[] nucleotideBinaryReverseComplementSlot = new Long[param.kmerBinarySlots];
+
+                for (int i = param.frontClip; i < readLength - param.endClip; i++) {
+                    nucleotide = read.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinary <<= 2;
+                    nucleotideBinary |= nucleotideInt;
+                    if (i-param.frontClip == 32){
+                        nucleotideBinarySlot[ (i-param.frontClip )/ 32] = nucleotideBinary;
+                        nucleotideBinary = 0L;
+                    }
+
+                    if (i - param.frontClip >= param.kmerSize) {
+                        nucleotideBinary &= maxKmerBits;
+                    }
+
+                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
+                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
+
+                    if (i - param.frontClip >= param.kmerSize) {
+                        nucleotideBinaryReverseComplement >>>= 2;
+                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
+                    } else {
+                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
+                    }
+                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+
+                    // reach the first complete K-mer
+                    if (i - param.frontClip >= param.kmerSize - 1) {
+                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
+                            kmerList.add(nucleotideBinary);
+                        } else {
+                            kmerList.add(nucleotideBinaryReverseComplement);
+                        }
+                    }
+                }
+            }
+            return kmerList.iterator();
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
+        private boolean compareLongArray (Long[] a, Long[] b){
+
+            return true;
+        }
+
+        private Long[] shiftLongArrayBinary (Long[] previousKmer){
+            return previousKmer;
+        }
+    }
+    */
+
+    /**
+     *
+     */
     class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable{
         long maxKmerBits= ~((~0L) << (2*param.kmerSize));
 
@@ -248,9 +344,6 @@ public class ReflexivDataFrameCounter implements Serializable{
 
             while (s.hasNext()) {
                 units = s.next().split("\\n");
-                if (units.length <=1){
-                    continue;
-                }
                 read = units[1];
                 readLength = read.length();
 

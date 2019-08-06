@@ -71,6 +71,6 @@ public class Main {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivMainPipe();
+        pipes.reflexivDSMainPipe();
     }
 }
