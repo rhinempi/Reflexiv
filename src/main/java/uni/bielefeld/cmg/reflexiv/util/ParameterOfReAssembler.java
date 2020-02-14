@@ -251,6 +251,8 @@ public class ParameterOfReAssembler {
                     param.kmerSize = Integer.decode(value);
                     param.setKmerSize(param.kmerSize);
                     param.setSubKmerSize(param.kmerSize-1);
+                    param.setKmerBinarySlots(param.kmerSize);
+                    param.setKmerSizeResidue(param.kmerSize);
                 } else {
                     throw new RuntimeException("Parameter " + KMER_SIZE +
                             " should be set between 1-100");

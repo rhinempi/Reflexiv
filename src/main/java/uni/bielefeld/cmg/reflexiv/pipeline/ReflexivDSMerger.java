@@ -1,33 +1,27 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
-import com.oracle.jrockit.jfr.DataType;
-import org.apache.avro.generic.GenericData;
 import org.apache.commons.lang.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.*;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.LongType;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.sql.types.ArrayType;
 import scala.Tuple2;
-import scala.Tuple4;
-import scala.reflect.ClassTag;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
-import static org.apache.spark.sql.functions.col;
 
-import java.io.*;
-import java.text.DecimalFormat;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+
+import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.desc;
 
 
 /**
@@ -64,7 +58,7 @@ import java.util.List;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSMain implements Serializable{
+public class ReflexivDSMerger implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -106,6 +100,7 @@ public class ReflexivDSMain implements Serializable{
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                 .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.default.parallelism", shufflePartitions)
                 .getOrCreate();
 
         return spark;
@@ -168,6 +163,21 @@ public class ReflexivDSMain implements Serializable{
         ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
 
+        Dataset<Row> ContigLengthRows;
+        Dataset<Row> ContigLengthRowsLarge;
+        Dataset<Row> ContigLengthRowsSmall;
+        StructType ContigLengthStruct = new StructType();
+        ContigLengthStruct = ContigLengthStruct.add("length", DataTypes.IntegerType, false);
+        ContigLengthStruct = ContigLengthStruct.add("contig", DataTypes.StringType, false);
+        ExpressionEncoder<Row> ContigLengthEncoder = RowEncoder.apply(ContigLengthStruct);
+
+        Dataset<Row> ContigMergedRow;
+        Dataset<Row> ContigMergedRowLarge;
+        Dataset<Row> ContigMergedRowSmall;
+        StructType ContigMergedStruct = new StructType();
+        ContigMergedStruct = ContigMergedStruct.add("contig", DataTypes.StringType, false);
+        ExpressionEncoder<Row> ContigMergedEncoder = RowEncoder.apply(ContigMergedStruct);
+
         Dataset<Row> ContigRows;
         StructType ContigLongKmerStringStruct = new StructType();
         ContigLongKmerStringStruct= ContigLongKmerStringStruct.add("ID", DataTypes.StringType, false);
@@ -180,156 +190,65 @@ public class ReflexivDSMain implements Serializable{
 
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-        FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
+      //  DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
+      //  FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
 
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+     //   DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
-        FastqDS = FastqDS.filter(FilterDSUnit);
+    //    FastqDS = FastqDS.filter(FilterDSUnit);
 
-        if (param.partitions > 0) {
-            FastqDS = FastqDS.repartition(param.partitions);
-        }
-        if (param.cache) {
-            FastqDS.cache();
-        }
-
-        ReverseComplementKmerBinaryExtractionFromDataset DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset();
-        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, Encoders.LONG());
-
-        KmerBinaryCountLongDS = KmerBinaryDS.groupBy("value")
-                .count()
-                .toDF("kmer","count");
-
-        KmerBinaryCountLongDS = KmerBinaryCountLongDS.filter(col("count")
-                .geq(param.minKmerCoverage)
-                .and(col("count")
-                        .leq(param.maxKmerCoverage)
-                )
-        );
-
-        /**
-         * Extract reverse complementary kmer
-         */
-        DSKmerReverseComplementLong DSRCKmer = new DSKmerReverseComplementLong();
-        KmerBinaryCountDS = KmerBinaryCountLongDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-        /**
-         * Extract forward sub kmer
-         */
-
-        DSForwardSubKmerExtraction DSextractForwardSubKmer = new DSForwardSubKmerExtraction();
-        ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerEncoder);
-
-        if (param.bubble == true) {
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
-            }else {
-                DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-            DSReflectedSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedSubKmerExtractionFromForward();
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerEncoder);
-
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-            }else{
-                DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector =new DSFilterForkReflectedSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-        }
-
-        /**
-         *
-         */
-        DSkmerRandomReflection DSrandomizeSubKmer = new DSkmerRandomReflection();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSrandomizeSubKmer, ReflexivSubKmerEncoder);
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-
-        DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-
-        DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
+        DSContigInputParser contigParser = new DSContigInputParser();
 
 
-        int iterations = 0;
-        for (int i =1; i<4; i++){
-            iterations++;
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
-        }
+        ContigLengthRows = FastqDS.mapPartitions(contigParser, ContigLengthEncoder);
 
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
- //       ReflexivSubKmerDS.cache();
-
-        iterations++;
-
-        /**
-         * Extract Long sub kmer
-         */
-
-
-        DSExtendReflexivKmerToArrayFirstTime DSKmerExtentionToArrayFirst = new DSExtendReflexivKmerToArrayFirstTime();
-        ReflexivLongSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtentionToArrayFirst, ReflexivLongKmerEncoder);
-        ReflexivLongSubKmerDS.cache();
-
-        DSExtendReflexivKmerToArrayLoop DSKmerExtenstionArrayToArray = new DSExtendReflexivKmerToArrayLoop();
-
-        DSBinaryReflexivKmerArrayToString DSArrayStringOutput = new DSBinaryReflexivKmerArrayToString();
-
-  //      ReflexivSubKmerDS.unpersist();
-        int partitionNumber = ReflexivLongSubKmerDS.toJavaRDD().getNumPartitions();
-        long contigNumber = 0;
-        while (iterations <= param.maximumIteration) {
-            iterations++;
-            if (iterations >= param.minimumIteration){
-                if (iterations % 3 == 0) {
-
-                    /**
-                     *  problem ------------------------------------------v
-                     */
-                    ReflexivLongSubKmerDS.cache();
-                    long currentContigNumber = ReflexivLongSubKmerDS.count();
-                    if (contigNumber == currentContigNumber) {
-                        break;
-                    } else {
-                        contigNumber = currentContigNumber;
-                    }
-
-                    if (partitionNumber >= 16) {
-                        if (currentContigNumber / partitionNumber <= 20) {
-                            partitionNumber = partitionNumber / 4 + 1;
-                            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
-                        }
-                    }
-                }
-            }
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-        }
-
-        /**
-         *
-         */
-        ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
+        ContigLengthRows = ContigLengthRows.repartition(param.partitions);
 
         /**
          *
          */
 
+        DSMergeReverseComplementaryContigs RCcontigMerger =  new DSMergeReverseComplementaryContigs();
+
+        ContigLengthRows.cache();
+        ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + 1);
+
+        ContigLengthRows = ContigLengthRows.sort(desc("length"));
+
+   //     DSContgiLengthRowsToPairedRDD RowsToPair = new DSContgiLengthRowsToPairedRDD();
+   //     JavaPairRDD<Integer, String> ContigPairedRDD = ContigLengthRows.toJavaRDD().mapPartitionsToPair(RowsToPair);
+   //     ContigPairedRDD = ContigPairedRDD.sortByKey(true, param.partitions);
+
+   //     ContigLengthRows = spark.createDataset(JavaPairRDD.toRDD(ContigPairedRDD), Encoders.tuple(Encoders.INT(),Encoders.STRING())).toDF();
+
+      //  PairedRDDToContigLengthRows PairToRows = new PairedRDDToContigLengthRows();
+      //  ContigLengthRows = ContigPairedRDD.map(PairToRows);
+
+     //   ContigLengthRows = ContigLengthRows.sort("length");
+
+        ContigLengthRows.cache();
+
+        ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + 2);
+
+
+        ContigMergedRow = ContigLengthRows.mapPartitions(RCcontigMerger, ContigMergedEncoder);
+
+  //      ContigMergedRow.cache();
+//        ContigMergedRow.toJavaRDD().saveAsTextFile(param.outputPath + 2);
+
+        /**
+         *
+         */
+        DSFormatContigs ContigFormater = new DSFormatContigs();
+        ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
+
+        /**
+         *
+         */
+        /*
         DSKmerToContig contigformaterDS = new DSKmerToContig();
         ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-
+        */
 
 
         /**
@@ -404,7 +323,20 @@ public class ReflexivDSMain implements Serializable{
         ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
 
+        Dataset<Row> ContigLengthRows;
+        Dataset<Row> ContigLengthRowsLarge;
+        Dataset<Row> ContigLengthRowsSmall;
+        StructType ContigLengthStruct = new StructType();
+        ContigLengthStruct = ContigLengthStruct.add("length", DataTypes.StringType, false);
+        ContigLengthStruct = ContigLengthStruct.add("contig", DataTypes.StringType, false);
+        ExpressionEncoder<Row> ContigLengthEncoder = RowEncoder.apply(ContigLengthStruct);
 
+        Dataset<Row> ContigMergedRow;
+        Dataset<Row> ContigMergedRowLarge;
+        Dataset<Row> ContigMergedRowSmall;
+        StructType ContigMergedStruct = new StructType();
+        ContigMergedStruct = ContigMergedStruct.add("contig", DataTypes.StringType, false);
+        ExpressionEncoder<Row> ContigMergedEncoder = RowEncoder.apply(ContigMergedStruct);
 
         Dataset<Row> ContigRows;
         StructType ContigLongKmerStringStruct = new StructType();
@@ -582,18 +514,35 @@ public class ReflexivDSMain implements Serializable{
         /**
          *
          */
-       // DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
-       // ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
+        DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
+        ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
+
+ //       ContigLengthRows.cache();
+ //       ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
 
 
-       // DSFormatContigs ContigFormater = new DSFormatContigs();
-       // ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
+
+ //       ContigLengthRows.cache();
+ //       ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + iterations + "sort");
 
 
 
+        DSMergeReverseComplementaryContigs RCcontigMerger =  new DSMergeReverseComplementaryContigs();
+
+
+        ContigLengthRows = ContigLengthRows.sort("length");
+        ContigMergedRow = ContigLengthRows.mapPartitions(RCcontigMerger, ContigMergedEncoder);
+
+
+
+        DSFormatContigs ContigFormater = new DSFormatContigs();
+        ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
+
+
+        /*
         DSKmerToContig contigformaterDS = new DSKmerToContig();
         ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-
+        */
         /**
          *
          */
@@ -636,6 +585,320 @@ public class ReflexivDSMain implements Serializable{
             return contigList.iterator();
         }
     }
+
+    class PairedRDDToContigLengthRows implements Function<Tuple2<Integer, String>, Row>, Serializable{
+        public Row call(Tuple2<Integer, String> s){
+            return RowFactory.create(s._1(), s._2());
+        }
+
+    }
+
+    class DSContgiLengthRowsToPairedRDD implements PairFlatMapFunction<Iterator<Row>, Integer, String>, Serializable{
+
+        List<Tuple2<Integer, String>> contigPairList = new ArrayList<Tuple2<Integer, String>>();
+
+        public Iterator<Tuple2<Integer, String>> call (Iterator<Row> sIterator){
+
+            while (sIterator.hasNext()){
+                Row contigPair = sIterator.next();
+
+                contigPairList.add(new Tuple2<Integer, String>(contigPair.getInt(0), contigPair.getString(1)));
+            }
+
+            return contigPairList.iterator();
+        }
+    }
+
+
+
+    class DSMergeReverseComplementaryContigs implements MapPartitionsFunction<Row, Row>, Serializable{
+        //List<Row> exceededContig = new ArrayList<Row>();
+        List<Row> uniqueContig = new ArrayList<Row>();
+        List<String> tempContig = new ArrayList<String>();
+        String exceededContig = "";
+        Row initialContig;
+        String initialContigString;
+        String initialContigStringRC;
+
+        int initialLength;
+        float minLonger = param.minLonger;
+        float minIdentity = param.minIdentity;
+
+
+        public Iterator<Row> call (Iterator<Row> sIterator){
+
+            if (sIterator.hasNext()) {
+                initialContig = sIterator.next();
+                initialContigString = initialContig.getString(1);
+                initialLength = initialContigString.length();
+                initialContigStringRC = reverseComplement(initialContigString);
+                String forwardRCKmer;
+                String backwardRCKmer;
+
+            //    System.out.println(initialContig);
+            //    System.out.println(initialContigStringRC);
+
+               // if (param.kmerSize >initialLength){ // not happening
+                if (initialLength > 2*param.kmerSize) {
+                    forwardRCKmer = initialContigStringRC.substring(param.kmerSize, 2 * param.kmerSize );    // ----->----->----------------------------------
+                    backwardRCKmer = initialContigStringRC.substring(initialLength - 2 * param.kmerSize, initialLength - param.kmerSize);     // ---------------------------------->----->-----
+                }else{
+                    forwardRCKmer = initialContigStringRC.substring(0, param.kmerSize);
+                    backwardRCKmer = initialContigStringRC.substring(initialLength-param.kmerSize,initialLength);
+                }
+
+//                System.out.println(forwardRCKmer);
+//                System.out.println(backwardRCKmer);
+
+                /**
+                 * store others in a list
+                 */
+                if (sIterator.hasNext()) { // in case there is only one element
+
+                    /**
+                     * load all rest
+                     */
+                    while (sIterator.hasNext()) {
+                        String contig;
+                        Row s = sIterator.next();
+                        contig = s.getString(1);
+
+                        tempContig.add(contig);
+                    }
+
+                    while (tempContig.size() > 0) { // not empty
+                        boolean tempContigMarker = false;
+
+                        for (int i = 0; i < tempContig.size(); i++) {
+
+                            String searchableString;
+
+                            if (tempContig.get(i).length() > 2*param.searchableLength){
+                                searchableString = tempContig.get(i).substring(0,param.searchableLength) + tempContig.get(i).substring(tempContig.get(i).length() - param.searchableLength, tempContig.get(i).length());
+                            }else{
+                                searchableString = tempContig.get(i);
+                            }
+
+                            if (searchableString.contains(forwardRCKmer)) {
+                                tempContigMarker = true;
+                                initialContigString = tempContig.get(0); // the first has already been removed
+                                initialLength = initialContigString.length();
+                                initialContigStringRC = reverseComplement(initialContigString);
+
+                                if (initialLength > 2*param.kmerSize) {
+                                    forwardRCKmer = initialContigStringRC.substring(param.kmerSize, 2 * param.kmerSize);    // ----->----->----------------------------------
+                                    backwardRCKmer = initialContigStringRC.substring(initialLength - 2 * param.kmerSize, initialLength - param.kmerSize);     // ---------------------------------->----->-----
+                                }else{
+                                    forwardRCKmer = initialContigStringRC.substring(0, param.kmerSize);
+                                    backwardRCKmer = initialContigStringRC.substring(initialLength-param.kmerSize,initialLength);
+                                }
+
+                                tempContig.remove(0);
+                                break;
+                            }
+                        }
+
+                        if (tempContigMarker == false) { // check another k-mer
+
+                            for (int i =0; i< tempContig.size(); i++){
+
+                                String searchableString;
+
+                                if (tempContig.get(i).length() > 2*param.searchableLength){
+                                    searchableString = tempContig.get(i).substring(0,param.searchableLength) + tempContig.get(i).substring(tempContig.get(i).length() - param.searchableLength, tempContig.get(i).length());
+                                }else{
+                                    searchableString = tempContig.get(i);
+                                }
+
+                                if (searchableString.contains(backwardRCKmer)) {
+                                    tempContigMarker = true;
+                                    initialContigString = tempContig.get(0); // the first has already been removed
+                                    initialLength = initialContigString.length();
+                                    initialContigStringRC = reverseComplement(initialContigString);
+
+                                    if (initialLength > 2*param.kmerSize) {
+                                        forwardRCKmer = initialContigStringRC.substring(param.kmerSize, 2 * param.kmerSize);    // ----->----->----------------------------------
+                                        backwardRCKmer = initialContigStringRC.substring(initialLength - 2 * param.kmerSize, initialLength - param.kmerSize);     // ---------------------------------->----->-----
+                                    }else{
+                                        forwardRCKmer = initialContigStringRC.substring(0, param.kmerSize);
+                                        backwardRCKmer = initialContigStringRC.substring(initialLength-param.kmerSize,initialLength);
+                                    }
+
+                                    tempContig.remove(0);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (tempContigMarker == false) { // still no match, then add initial
+                            uniqueContig.add(RowFactory.create(initialContigString));
+
+                            initialContigString = tempContig.get(0); // the first has already been removed
+                            initialLength = initialContigString.length();
+                            initialContigStringRC = reverseComplement(initialContigString);
+
+                            if (initialLength > 2*param.kmerSize) {
+                                forwardRCKmer = initialContigStringRC.substring(param.kmerSize, 2 * param.kmerSize);    // ----->----->----------------------------------
+                                backwardRCKmer = initialContigStringRC.substring(initialLength - 2 * param.kmerSize, initialLength - param.kmerSize);     // ---------------------------------->----->-----
+                            }else{
+                                forwardRCKmer = initialContigStringRC.substring(0, param.kmerSize);
+                                backwardRCKmer = initialContigStringRC.substring(initialLength-param.kmerSize,initialLength);
+                            }
+
+                            tempContig.remove(0);
+                        }
+                    }
+
+                    if (initialContigString.length() > 0){
+                        uniqueContig.add(RowFactory.create(initialContigString));
+                    }
+
+                }else{
+                    uniqueContig.add(RowFactory.create(initialContigString));
+                }
+            }
+
+            return uniqueContig.iterator();
+        }
+
+        public String reverseComplement(String forward){
+            String reverseComplementNucleotides;
+
+
+            char[] nucleotides = forward.toCharArray();
+            int nucleotideNum = nucleotides.length;
+            char[] nucleotidesRC = new char[nucleotideNum];
+
+            for (int i=0; i<nucleotideNum; i++){
+                nucleotidesRC[nucleotideNum-i-1] = complementary(nucleotides[i]);
+            }
+
+            reverseComplementNucleotides = new String(nucleotidesRC);
+            return reverseComplementNucleotides;
+        }
+
+        public char complementary (char a){
+            if (a == 'A' || a == 'a'){
+                return 'T';
+            }else if (a == 'T' || a == 't' || a == 'U' || a == 'u'){
+                return 'A';
+            }else if (a == 'C' || a == 'c'){
+                return 'G';
+            }else if (a == 'G' || a == 'g'){
+                return 'C';
+            }else {
+                return 'N';
+            }
+        }
+
+    }
+
+
+    class DSContigInputParser implements MapPartitionsFunction<String, Row>, Serializable{
+        public Iterator<Row> call (Iterator<String> sIterator){
+            List<Row> contigList = new ArrayList<Row>();
+            String Contig="";
+
+            while (sIterator.hasNext()){
+                String newString = sIterator.next();
+
+                if (newString.startsWith(">") && Contig.length() <100){
+                    Contig ="";
+                }else if (newString.startsWith(">") && Contig.length() >=100){
+
+                    contigList.add(RowFactory.create(Contig.length(), Contig));
+
+                    Contig = "";
+                }else{
+                    Contig += newString;
+                }
+            }
+
+            if (Contig.length() >=100){
+
+                contigList.add(RowFactory.create(Contig.length(), Contig));
+            }
+
+            return contigList.iterator();
+        }
+    }
+
+
+
+
+    class DSKmerToContigLength implements MapPartitionsFunction<Row, Row>, Serializable{
+        public Iterator<Row> call (Iterator<Row> sIterator){
+            List<Row> contigList = new ArrayList<Row>();
+
+            while (sIterator.hasNext()) {
+                Row s = sIterator.next();
+                if (s.getInt(1) == 1) {
+                    String contig = s.getString(0) + s.getString(2);
+                    int length = contig.length();
+                    if (length >= param.minContig) {
+
+
+                        contigList.add(RowFactory.create(length, contig));
+                    }
+                } else { // (randomReflexivMarker == 2) {
+                    String contig = s.getString(2) + s.getString(0);
+                    int length = contig.length();
+                    if (length >= param.minContig) {
+
+                        contigList.add(RowFactory.create(length, contig));
+                    }
+                }
+            }
+
+            return contigList.iterator();
+
+        }
+    }
+
+    class DSFormatContigs implements MapPartitionsFunction<Row, Row>, Serializable{
+
+        public Iterator<Row> call (Iterator<Row> sIterator){
+            List<Row> contigList = new ArrayList<Row>();
+
+            while (sIterator.hasNext()) {
+                Row s = sIterator.next();
+
+                String contig = s.getString(0);
+                int length = contig.length();
+                if (length >= param.minContig) {
+                    String ID = ">Contig-" + length;
+                    String formatedContig = changeLine(contig, length, 100);
+                    contigList.add(RowFactory.create(ID, formatedContig));
+                }
+            }
+
+            return contigList.iterator();
+        }
+
+        public String changeLine(String oneLine, int lineLength, int limitedLength){
+            String blockLine = "";
+            int fold = lineLength / limitedLength;
+            int remainder = lineLength % limitedLength;
+            if (fold ==0) {
+                blockLine = oneLine;
+            }else if (fold == 1 && remainder == 0){
+                blockLine = oneLine;
+            }else if (fold >1 && remainder == 0){
+                for (int i =0 ; i<fold-1 ; i++ ){
+                    blockLine += oneLine.substring(i*limitedLength, (i+1)*limitedLength) + "\n";
+                }
+                blockLine += oneLine.substring((fold-1)*limitedLength);
+            }else {
+                for (int i =0 ; i<fold ; i++ ){
+                    blockLine += oneLine.substring(i*limitedLength, (i+1)*limitedLength) + "\n";
+                }
+                blockLine += oneLine.substring(fold*limitedLength);
+            }
+
+            return blockLine;
+        }
+    }
+
 
     class DSKmerToContig implements MapPartitionsFunction<Row, Row>, Serializable{
 
@@ -2512,6 +2775,7 @@ public class ReflexivDSMain implements Serializable{
         }
     }
 
+
     class DSFilterForkReflectedSubKmer implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> HighCoverageSubKmer = new ArrayList<Row>();
         Integer HighCoverLastCoverage = 0;
@@ -2528,7 +2792,7 @@ public class ReflexivDSMain implements Serializable{
                             RowFactory.create(subKmer.getLong(0), subKmer.getInt(1), subKmer.getLong(2), -1, subKmer.getInt(4))
                     );
                 }else {
-                    if (subKmer.getLong(0) == HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1).getLong(0)) {
+                    if (subKmer.getLong(0) == HighCoverageSubKmer.get(HighCoverageSubKmer.size()-1).getLong(1)) {
                         if (subKmer.getInt(3) > HighCoverLastCoverage) {
                             HighCoverLastCoverage = subKmer.getInt(3);
                             HighCoverageSubKmer.set(HighCoverageSubKmer.size()-1,
@@ -2568,6 +2832,8 @@ public class ReflexivDSMain implements Serializable{
             return HighCoverageSubKmer.iterator();
         }
     }
+
+
 
     class DSFilterForkReflectedSubKmerWithErrorCorrection implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> HighCoverageSubKmer = new ArrayList<Row>();
@@ -2645,6 +2911,7 @@ public class ReflexivDSMain implements Serializable{
         }
     }
 
+
     class DSForwardSubKmerExtraction implements MapPartitionsFunction<Row, Row>, Serializable {
         List<Row> TupleList = new ArrayList<Row>();
         Long suffixBinary;
@@ -2713,6 +2980,8 @@ public class ReflexivDSMain implements Serializable{
             return TupleList.iterator();
         }
     }
+
+
 
     class DSkmerRandomReflection implements MapPartitionsFunction<Row, Row>, Serializable{
         /* 0 stands for forward sub-kmer */
@@ -2898,6 +3167,7 @@ public class ReflexivDSMain implements Serializable{
         }
     }
 
+
     class KmerBinarizer implements MapPartitionsFunction<Row, Row>, Serializable {
 
         List<Row> kmerList = new ArrayList<Row>();
@@ -2975,6 +3245,9 @@ public class ReflexivDSMain implements Serializable{
         }
 
     }
+
+
+
 
     class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable{
         long maxKmerBits= ~((~0L) << (2*param.kmerSize));

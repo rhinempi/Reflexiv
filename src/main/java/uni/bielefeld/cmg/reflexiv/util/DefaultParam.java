@@ -59,9 +59,11 @@ public class DefaultParam implements Serializable{
     public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;
     public int kmerSizeResidue = kmerSize % 32;
-    public int subKmerSizeResidue= subKmerSize % 31;
+    public int kmerSizeResidueAssemble = kmerSize % 31;
+    public int subKmerSizeResidue= (subKmerSize-1) % 31 +1;
     public int kmerBinarySlots = kmerSize / 32 +1;   /* for kmer counting, each slot stores 32 mer */
-    public int subKmerBinarySlots = subKmerSize / 31 +1; /* for assembly, each slot stores 31 mer */
+    public int kmerBinarySlotsAssemble = (kmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load entire k-mer */
+    public int subKmerBinarySlots = (subKmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load k-1 mer */
 
 
     public int kmerBits = (1 << (kmerSize*2)) - 1;
@@ -83,6 +85,10 @@ public class DefaultParam implements Serializable{
 
     public int shufflePartition=200;
 
+    public float minLonger=60.0f;
+    public float minIdentity=90.0f;
+    public int searchableLength= 3000;
+
 
     /**
      * This method initiates the K-mer size parameter.
@@ -101,6 +107,36 @@ public class DefaultParam implements Serializable{
      */
     public void setSubKmerSize(int s){
         subKmerSize = s;
+    }
+
+    /**
+     *
+     */
+    public void setKmerBinarySlots(int s){
+        kmerBinarySlots = s / 32 +1;
+    }
+
+    public void setSubKmerBinarySlots(int s){
+        subKmerBinarySlots = (s-1) / 31 +1;
+    }
+
+    public void setKmerSizeResidueAssemble(int s){
+        kmerSizeResidueAssemble = s % 31;
+    }
+
+    public void setKmerBinarySlotsAssemble(int s){
+        kmerBinarySlotsAssemble = (s-1) / 31 +1;
+    }
+
+    /**
+     *
+     */
+    public void setKmerSizeResidue(int s){
+        kmerSizeResidue = s % 32;
+    }
+
+    public void setSubKmerSizeResidue(int s){
+        subKmerSizeResidue= (s -1) % 31 +1;
     }
 
     /**

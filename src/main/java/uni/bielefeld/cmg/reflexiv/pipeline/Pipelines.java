@@ -92,6 +92,26 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSMainPipe64(){
+        ReflexivDSMain64 rflPipe = new ReflexivDSMain64();
+        rflPipe.setParam(param);
+        if (param.inputKmerPath != null){
+            rflPipe.assemblyFromKmer();
+        }else {
+            rflPipe.assembly();
+        }
+    }
+
+    public void reflexivDSMergerPipe(){
+        ReflexivDSMerger rflPipe = new ReflexivDSMerger();
+        rflPipe.setParam(param);
+        if (param.inputKmerPath != null){
+            rflPipe.assemblyFromKmer();
+        }else {
+            rflPipe.assembly();
+        }
+    }
+
 
     /**
      * This method starts the Reflexiv counter pipeline
@@ -106,6 +126,12 @@ public class Pipelines implements Pipeline, Serializable{
         ReflexivDataFrameCounter rflPipe = new ReflexivDataFrameCounter();
         rflPipe.setParam(param);
         rflPipe.assembly();
+    }
+
+    public void reflexivDS64CounterPipe(){
+        ReflexivDataFrameCounter64 rfPipe = new ReflexivDataFrameCounter64();
+        rfPipe.setParam(param);
+        rfPipe.assembly();
     }
 
 
