@@ -58,11 +58,17 @@ public class DefaultParam implements Serializable{
 
     public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;
+
+    // for kmer counting
     public int kmerSizeResidue = kmerSize % 32;
-    public int kmerSizeResidueAssemble = kmerSize % 31;
-    public int subKmerSizeResidue= (subKmerSize-1) % 31 +1;
     public int kmerBinarySlots = kmerSize / 32 +1;   /* for kmer counting, each slot stores 32 mer */
+
+    // for loading kmer in assembly
+    public int kmerSizeResidueAssemble = kmerSize % 31;
     public int kmerBinarySlotsAssemble = (kmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load entire k-mer */
+
+    // for sub kmer in assembly
+    public int subKmerSizeResidue= (subKmerSize-1) % 31 +1;
     public int subKmerBinarySlots = (subKmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load k-1 mer */
 
 
@@ -88,6 +94,8 @@ public class DefaultParam implements Serializable{
     public float minLonger=60.0f;
     public float minIdentity=90.0f;
     public int searchableLength= 3000;
+
+    public int scramble = 2;
 
 
     /**
