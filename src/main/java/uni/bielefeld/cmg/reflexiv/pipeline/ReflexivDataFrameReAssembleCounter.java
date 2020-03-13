@@ -54,7 +54,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameCounter implements Serializable{
+public class ReflexivDataFrameReAssembleCounter implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -105,7 +105,9 @@ public class ReflexivDataFrameCounter implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
-        Dataset<Long> KmerBinaryDS;
+        Dataset<String> ContigDS;
+        Dataset<Row> KmerBinaryDS;
+        Dataset<Row> ContigBinaryDS;
         Dataset<Row> DFKmerBinaryCount;
         Dataset<Row> DFKmerCount;
 
@@ -127,12 +129,27 @@ public class ReflexivDataFrameCounter implements Serializable{
             FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
         }
 
-        ReverseComplementKmerBinaryExtractionFromDataset DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset();
-        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, Encoders.LONG());
+        ContigDS = spark.read().text(param.inputContigPath).as(Encoders.STRING());
 
-        DFKmerBinaryCount = KmerBinaryDS.groupBy("value")
-                .count()
-                .toDF("kmer","count");
+        LoadContigFromText ContigReader= new LoadContigFromText();
+        ContigDS = ContigDS.mapPartitions(ContigReader, Encoders.STRING());
+
+        StructType kmerBinaryStruct = new StructType();
+        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.LongType, false);
+        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
+        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
+
+        ReverseComplementKmerBinaryExtractionFromContig DSExtractRCKmerBinaryFromFasta = new ReverseComplementKmerBinaryExtractionFromContig();
+        ContigBinaryDS = ContigDS.mapPartitions(DSExtractRCKmerBinaryFromFasta, kmerBinaryEncoder);
+
+        ReverseComplementKmerBinaryExtractionFromDataset DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset();
+        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, kmerBinaryEncoder);
+
+        KmerBinaryDS = KmerBinaryDS.union(ContigBinaryDS);
+
+        DFKmerBinaryCount = KmerBinaryDS.groupBy("kmerBlocks")
+                .sum()
+                .toDF("kmerBlocks","count");
 
         if (param.minKmerCoverage >1) {
             DFKmerBinaryCount = DFKmerBinaryCount.filter(col("count")
@@ -149,20 +166,60 @@ public class ReflexivDataFrameCounter implements Serializable{
 
         DFKmerCount = DFKmerBinaryCount.mapPartitions(BinaryKmerToString, kmerCountEncoder);
 
-        if (param.gzip) {
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }else{
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }
+        DFKmerCount.write().
+                mode(SaveMode.Overwrite).
+                format("csv").
+                option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                save(param.outputPath + "/Count_" + param.kmerSize);
 
         spark.stop();
+    }
+
+    class LoadContigFromText implements MapPartitionsFunction<String, String>, Serializable{
+        List<String> contigList = new ArrayList<String>();
+        String contig="";
+        String contigID="";
+        int ContigNum=0;
+
+        public Iterator<String> call(Iterator<String> s){
+            if (!s.hasNext()){
+                return contigList.iterator();
+            }
+
+            while (s.hasNext()){
+                String line = s.next();
+
+                if (line.startsWith(">") && ContigNum==0){
+                    ContigNum++;
+
+                    String[] head = line.split("\\s+");
+                    contigID = head[0];
+                    contig="";
+
+                }else if (line.startsWith(">") && ContigNum !=0){
+                    ContigNum++;
+                    if (contig.length() < param.kmerSize){
+                        info.readMessage("Contig : " + contigID + "is shorter than a Kmer, skip it.");
+                        info.screenDump();
+                    }else{
+                        contigList.add(contigID + "\n" + contig);
+                    }
+
+                    String[] head = line.split("\\s+");
+                    contigID = head[0];
+                    contig="";
+                }else{
+                    contig+=line;
+                }
+            }
+
+            if (ContigNum >0) {
+                contigList.add(contigID + "\n" + contig);
+                return contigList.iterator();
+            }else{
+                return contigList.iterator();
+            }
+        }
     }
 
     /**
@@ -243,13 +300,10 @@ public class ReflexivDataFrameCounter implements Serializable{
         }
     }
 
-    /**
-     *
-     */
-    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable{
+    class ReverseComplementKmerBinaryExtractionFromContig implements MapPartitionsFunction<String, Row>, Serializable{
         long maxKmerBits= ~((~0L) << (2*param.kmerSize));
 
-        List<Long> kmerList = new ArrayList<Long>();
+        List<Row> kmerList = new ArrayList<Row>();
         int readLength;
         String[] units;
         String read;
@@ -257,7 +311,86 @@ public class ReflexivDataFrameCounter implements Serializable{
         long nucleotideInt;
         long nucleotideIntComplement;
 
-        public Iterator<Long> call(Iterator<String> s){
+        public Iterator<Row> call(Iterator<String> s){
+
+            while (s.hasNext()) {
+                units = s.next().split("\\n");
+
+                read = units[1];
+                readLength = read.length();
+
+                if (readLength - param.kmerSize <= 1 ) {
+                    continue;
+                }
+
+                Long nucleotideBinary = 0L;
+                Long nucleotideBinaryReverseComplement = 0L;
+
+                for (int i = 0; i < readLength; i++) {
+                    nucleotide = read.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinary <<= 2;
+                    nucleotideBinary |= nucleotideInt;
+                    if (i >= param.kmerSize) {
+                        nucleotideBinary &= maxKmerBits;
+                    }
+
+                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
+                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
+
+                    if (i >= param.kmerSize) {
+                        nucleotideBinaryReverseComplement >>>= 2;
+                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
+                    } else {
+                        nucleotideIntComplement <<= 2 * (i);
+                    }
+                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+
+                    // reach the first complete K-mer
+                    if (i >= param.kmerSize - 1) {
+                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
+                            kmerList.add(RowFactory.create(nucleotideBinary, param.minKmerCoverage));
+                        } else {
+                            kmerList.add(RowFactory.create(nucleotideBinaryReverseComplement, param.minKmerCoverage));
+                        }
+                    }
+                }
+            }
+            return kmerList.iterator();
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+    }
+
+    /**
+     *
+     */
+    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Row>, Serializable{
+        long maxKmerBits= ~((~0L) << (2*param.kmerSize));
+
+        List<Row> kmerList = new ArrayList<Row>();
+        int readLength;
+        String[] units;
+        String read;
+        char nucleotide;
+        long nucleotideInt;
+        long nucleotideIntComplement;
+
+        public Iterator<Row> call(Iterator<String> s){
 
             while (s.hasNext()) {
                 units = s.next().split("\\n");
@@ -299,9 +432,9 @@ public class ReflexivDataFrameCounter implements Serializable{
                     // reach the first complete K-mer
                     if (i - param.frontClip >= param.kmerSize - 1) {
                         if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
-                            kmerList.add(nucleotideBinary);
+                            kmerList.add(RowFactory.create(nucleotideBinary, 1));
                         } else {
-                            kmerList.add(nucleotideBinaryReverseComplement);
+                            kmerList.add(RowFactory.create(nucleotideBinaryReverseComplement, 1));
                         }
                     }
                 }

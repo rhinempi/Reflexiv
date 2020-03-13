@@ -72,6 +72,10 @@ public class MainOfReAssembler {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivReAssemblerPipe();
+        if (param.kmerSize>31) {
+            pipes.reflexivDSReAssemblerPipe();
+        }else{
+            pipes.reflexivDSReAssemblerPipe64();
+        }
     }
 }

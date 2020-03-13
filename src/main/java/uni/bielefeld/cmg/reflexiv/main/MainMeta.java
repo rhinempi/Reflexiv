@@ -1,13 +1,13 @@
 package uni.bielefeld.cmg.reflexiv.main;
 
 
+import org.apache.commons.cli.ParseException;
 import uni.bielefeld.cmg.reflexiv.pipeline.Pipelines;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import uni.bielefeld.cmg.reflexiv.util.Parameter;
 
 import java.io.IOException;
-import org.apache.commons.cli.ParseException;
 
 /**
  * Created by rhinempi on 22.07.2017.
@@ -45,7 +45,7 @@ import org.apache.commons.cli.ParseException;
  * @version %I%, %G%
  * @see
  */
-public class Main {
+public class MainMeta {
 
     /**
      * Main Java method specified in the Manifest file for Reflexiv run.
@@ -71,10 +71,14 @@ public class Main {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
+        pipes.reflexivDSIterativeAssemblerPipe();
+
+        /*
         if (param.kmerSize>31){
-            pipes.reflexivDSMainPipe64();
+            pipes.reflexivDSMainMetaPipe64();
         }else{
             pipes.reflexivDSMainPipe();
         }
+        */
     }
 }

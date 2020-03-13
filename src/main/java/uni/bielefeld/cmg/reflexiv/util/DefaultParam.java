@@ -71,6 +71,10 @@ public class DefaultParam implements Serializable{
     public int subKmerSizeResidue= (subKmerSize-1) % 31 +1;
     public int subKmerBinarySlots = (subKmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load k-1 mer */
 
+    // metagenome assembly
+    public int kmerIncrease = 10;
+    public int maxKmerSize = 93;
+
 
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;
@@ -82,6 +86,7 @@ public class DefaultParam implements Serializable{
     public boolean bubble= true;
 
     public boolean cache = false;
+    public boolean cacheLocal = false;
     public boolean gzip = false;
     public int partitions = 0;
     public int maximumIteration = 100;
@@ -97,6 +102,18 @@ public class DefaultParam implements Serializable{
 
     public int scramble = 2;
 
+
+    public void setAllbyKmerSize(int k){
+        this.subKmerSize= k-1;
+        setKmerSize(k);
+        setSubKmerSize(subKmerSize);
+        setKmerBinarySlots(k);
+        setKmerSizeResidue(k);
+        setSubKmerBinarySlots(subKmerSize);
+        setSubKmerSizeResidue(subKmerSize);
+        setKmerSizeResidueAssemble(k);
+        setKmerBinarySlotsAssemble(k);
+    }
 
     /**
      * This method initiates the K-mer size parameter.
@@ -163,5 +180,25 @@ public class DefaultParam implements Serializable{
      */
     public void setKmerOverlap(int o){
         kmerOverlap = o;
+    }
+
+    public void setInputKmerPath(String s){
+        inputKmerPath = s;
+    }
+
+    public void setInputFqPath(String s){
+        inputFqPath = s;
+    }
+
+    public void setInputContigPath(String s){
+        inputContigPath = s;
+    }
+
+    public void setCacheLocal(boolean c){
+        cacheLocal = c;
+    }
+
+    public void setGzip(boolean c){
+        gzip = c;
     }
 }

@@ -1,7 +1,6 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
-import com.oracle.jrockit.jfr.DataType;
 import org.apache.spark.api.java.function.FilterFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
@@ -55,7 +54,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameCounter64 implements Serializable{
+public class ReflexivDataFrameReAssembleCounter64 implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -106,7 +105,9 @@ public class ReflexivDataFrameCounter64 implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
+        Dataset<String> ContigDS;
         Dataset<Row> KmerBinaryDS;
+        Dataset<Row> KmerBinaryDSContig;
         Dataset<Row> DFKmerBinaryCount;
         Dataset<Row> DFKmerCount;
 
@@ -124,9 +125,15 @@ public class ReflexivDataFrameCounter64 implements Serializable{
         }
         if (param.cache) {
             FastqDS.cache();
-        } else if (param.cacheLocal){
+        }else if (param.cacheLocal){
             FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
         }
+
+        ContigDS = spark.read().text(param.inputContigPath).as(Encoders.STRING());
+
+        LoadContigFromText ContigReader= new LoadContigFromText();
+        ContigDS = ContigDS.mapPartitions(ContigReader, Encoders.STRING());
+       // ContigDS = ContigDS.filter(FilterDSUnit);
 
         StructType kmerBinaryStruct = new StructType();
         kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -136,17 +143,14 @@ public class ReflexivDataFrameCounter64 implements Serializable{
         ReverseComplementKmerBinaryExtractionFromDataset64 DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset64();
         KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, kmerBinaryEncoder);
 
-       // PrintElement ElementPrinter = new PrintElement();
-      //  KmerBinaryDS = KmerBinaryDS.mapPartitions(ElementPrinter, kmerBinaryEncoder);
+        ReverseComplementKmerBinaryExtractionFromContig64 DSExtractRCKmerBinaryFromFasta = new ReverseComplementKmerBinaryExtractionFromContig64();
+        KmerBinaryDSContig = ContigDS.mapPartitions(DSExtractRCKmerBinaryFromFasta, kmerBinaryEncoder);
 
+        KmerBinaryDS = KmerBinaryDS.union(KmerBinaryDSContig);
 
-      //  KmerBinaryDS = KmerBinaryDS.sort("kmerBlocks");
-      //  KmerBinaryDS.cache();
-
-     //   KmerBinaryDS = KmerBinaryDS.mapPartitions(ElementPrinter, kmerBinaryEncoder);
 
         DFKmerBinaryCount = KmerBinaryDS.groupBy("kmerBlocks")
-                .count()
+                .sum()
                 .toDF("kmerBlocks","count");
 
         if (param.minKmerCoverage >1) {
@@ -162,19 +166,14 @@ public class ReflexivDataFrameCounter64 implements Serializable{
         ExpressionEncoder<Row> kmerCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
 
         DFKmerCount = DFKmerBinaryCount.mapPartitions(BinaryKmerToString, kmerCountEncoder);
+      //  DSNullFilter filterNullObject = new DSNullFilter();
+     //   DFKmerCount= DFKmerCount.filter(filterNullObject);
 
-        if (param.gzip) {
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }else{
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }
+        DFKmerCount.write().
+                mode(SaveMode.Overwrite).
+                format("csv").
+                option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                save(param.outputPath + "/Count_" + param.kmerSize);
 
         spark.stop();
     }
@@ -232,6 +231,15 @@ public class ReflexivDataFrameCounter64 implements Serializable{
     /**
      *
      */
+    class DSNullFilter implements FilterFunction<Row>, Serializable{
+        public boolean call(Row s){
+            return s != null;
+        }
+    }
+
+    /**
+     *
+     */
     class DSFastqUnitFilter implements FilterFunction<String>, Serializable{
         public boolean call(String s){
             return s != null;
@@ -282,6 +290,395 @@ public class ReflexivDataFrameCounter64 implements Serializable{
                 theSameList.add(sIterator);
             }
             return theSameList.iterator();
+        }
+    }
+
+
+    class LoadContigFromText implements MapPartitionsFunction<String, String>, Serializable{
+        List<String> contigList = new ArrayList<String>();
+        String contig="";
+        String contigID="";
+        int ContigNum=0;
+
+        public Iterator<String> call(Iterator<String> s){
+            if (!s.hasNext()){
+                return contigList.iterator();
+            }
+
+            while (s.hasNext()){
+                String line = s.next();
+
+                if (line.startsWith(">") && ContigNum==0){
+                    ContigNum++;
+
+                    String[] head = line.split("\\s+");
+                    contigID = head[0];
+                    contig="";
+
+                }else if (line.startsWith(">") && ContigNum !=0){
+                    ContigNum++;
+                    if (contig.length() < param.kmerSize){
+                        info.readMessage("Contig : " + contigID + "is shorter than a Kmer, skip it.");
+                        info.screenDump();
+                    }else{
+                        contigList.add(contigID + "\n" + contig);
+                    }
+
+                    String[] head = line.split("\\s+");
+                    contigID = head[0];
+                    contig="";
+                }else{
+                    contig+=line;
+                }
+            }
+
+            if (ContigNum >0) {
+                contigList.add(contigID + "\n" + contig);
+                return contigList.iterator();
+            }else{
+                return contigList.iterator();
+            }
+
+
+        }
+    }
+
+    class ReverseComplementKmerBinaryExtractionFromContig64 implements MapPartitionsFunction<String, Row>, Serializable{
+        long maxKmerBits= ~((~0L) << (2*param.kmerSizeResidue));
+
+        List<Row> kmerList = new ArrayList<Row>();
+        int readLength;
+        String[] units;
+        String read;
+        char nucleotide;
+        long nucleotideInt;
+        long nucleotideIntComplement;
+
+        public Iterator<Row> call(Iterator<String> s){
+
+            while (s.hasNext()) {
+                units = s.next().split("\\n");
+
+                read = units[1];
+                readLength = read.length();
+
+                //            System.out.println(read);
+
+                if (readLength - param.kmerSize +1 <= 0 ) {
+                    continue;
+                }
+
+                Long nucleotideBinary = 0L;
+                Long nucleotideBinaryReverseComplement = 0L;
+                long[] nucleotideBinarySlot = new long[param.kmerBinarySlots];
+                long[] nucleotideBinaryReverseComplementSlot = new long[param.kmerBinarySlots];
+
+                for (int i = 0; i < readLength; i++) {
+                    nucleotide = read.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+
+                    // forward kmer in bits
+                    if (i <= param.kmerSize-1) {
+                        nucleotideBinary <<= 2;
+                        nucleotideBinary |= nucleotideInt;
+
+                        if ((i +1) % 32 == 0) { // each 32 nucleotides fill a slot
+                            nucleotideBinarySlot[(i +1) / 32 - 1] = nucleotideBinary;
+                            nucleotideBinary = 0L;
+                        }
+
+                        if (i  == param.kmerSize-1) { // start completing the first kmer
+                            nucleotideBinary &= maxKmerBits;
+                            nucleotideBinarySlot[(i+1) / 32] = nucleotideBinary; // (i-param.frontClip+1)/32 == nucleotideBinarySlot.length -1
+                            nucleotideBinary = 0L;
+
+                            // reverse complement
+
+                        }
+                    }else{
+                        // the last block, which is shorter than 32 mer
+                        Long transitBit1 = nucleotideBinarySlot[param.kmerBinarySlots-1] >>> 2*(param.kmerSizeResidue-1) ;  // 0000**----------  -> 000000000000**
+                        // for the next block
+                        Long transitBit2; // for the next block
+
+                        // update the last block of kmer binary array
+                        nucleotideBinarySlot[param.kmerBinarySlots-1] <<= 2;    // 0000-------------  -> 00------------00
+                        nucleotideBinarySlot[param.kmerBinarySlots-1] |= nucleotideInt;  // 00------------00  -> 00------------**
+                        nucleotideBinarySlot[param.kmerBinarySlots-1] &= maxKmerBits; // 00------------**  -> 0000----------**
+
+                        // the rest
+                        for (int j = param.kmerBinarySlots-2; j >=0; j--) {
+                            transitBit2 = nucleotideBinarySlot[j] >>> (2*31);   // **---------------  -> 0000000000000**
+                            nucleotideBinarySlot[j] <<=2;    // ---------------  -> --------------00
+                            nucleotideBinarySlot[j] |= transitBit1;  // -------------00 -> -------------**
+                            transitBit1= transitBit2;
+                        }
+                    }
+
+                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
+                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
+
+                    if (i <= param.kmerSize -1){
+                        if (i< param.kmerSizeResidue-1){
+                            nucleotideIntComplement <<=2 * (i);   //
+                            nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+                        }else if (i== param.kmerSizeResidue-1){
+                            nucleotideIntComplement <<=2 * (i);
+                            nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+                            nucleotideBinaryReverseComplementSlot[param.kmerBinarySlots-1] = nucleotideBinaryReverseComplement; // param.kmerBinarySlot-1 = nucleotideBinaryReverseComplementSlot.length -1
+                            nucleotideBinaryReverseComplement =0L;
+
+                            /**
+                             * param.kmerSizeResidue is the last block length;
+                             * i-param.frontClip is the index of the nucleotide on the sequence;
+                             * +1 change index to length
+                             */
+                        }else if ((i-param.kmerSizeResidue +1) % 32 ==0){  //
+
+                            nucleotideIntComplement <<= 2 * ((i -param.kmerSizeResidue) % 32); // length (i- param.frontClip-param.kmerSizeResidue +1) -1 shift
+                            nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+
+                            // filling the blocks in a reversed order
+                            nucleotideBinaryReverseComplementSlot[param.kmerBinarySlots - ((i-param.kmerSizeResidue +1)/32) -1]= nucleotideBinaryReverseComplement;
+                            nucleotideBinaryReverseComplement=0L;
+                        } else{
+                            nucleotideIntComplement <<= 2 * ((i -param.kmerSizeResidue) % 32); // length (i- param.frontClip-param.kmerSizeResidue +1) -1 shift
+                            nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+                        }
+                    }else {
+                        // the first transition bit from the first block
+                        long transitBit1 = nucleotideBinaryReverseComplementSlot[0] << 2*31;
+                        long transitBit2;
+
+                        nucleotideBinaryReverseComplementSlot[0] >>>= 2;
+                        nucleotideIntComplement <<= 2*31;
+                        nucleotideBinaryReverseComplementSlot[0] |= nucleotideIntComplement;
+
+                        for (int j=1; j<param.kmerBinarySlots-1; j++){
+                            transitBit2 = nucleotideBinaryReverseComplementSlot[j] << 2*31;
+                            nucleotideBinaryReverseComplementSlot[j] >>>= 2;
+                            // transitBit1 <<= 2*31;
+                            nucleotideBinaryReverseComplementSlot[j] |= transitBit1;
+                            transitBit1 = transitBit2;
+                        }
+
+                        nucleotideBinaryReverseComplementSlot[param.kmerBinarySlots-1] >>>= 2;
+                        transitBit1 >>>= 2*(31-param.kmerSizeResidue+1);
+                        nucleotideBinaryReverseComplementSlot[param.kmerBinarySlots-1] |= transitBit1;
+                    }
+
+                    /*
+                    if (i - param.frontClip >= param.kmerSize) {
+                        nucleotideBinaryReverseComplement >>>= 2;
+                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
+                    } else {
+                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
+                    }
+                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
+*/
+                    // reach the first complete K-mer
+                    if (i >= param.kmerSize - 1) {
+
+/*
+                        for (int k=31; k>=0;k--){
+                            long a = nucleotideBinarySlot[0] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                       // System.out.println();
+
+                        for (int k=31; k>=0;k--){
+                            long a = nucleotideBinarySlot[1] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                      //  System.out.println();
+
+                        for (int k=31; k>=0;k--){
+                            long a = nucleotideBinarySlot[2] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                        for (int k=31; k>=0;k--){
+                            long a = nucleotideBinarySlot[3] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                        for (int k=31; k>=0;k--){
+                            long a = nucleotideBinarySlot[4] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                        for (int k=30; k>=0;k--){
+                            long a = nucleotideBinarySlot[5] >>> 2*k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+
+                        System.out.println();
+
+                        for (int k = 31; k >= 0; k--) {
+                            long a = nucleotideBinaryReverseComplementSlot[0] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                     //   System.out.println();
+
+
+                            for (int k = 31; k >= 0; k--) {
+                                long a = nucleotideBinaryReverseComplementSlot[1] >>> 2 * k;
+                                a &= 3L;
+                                char b = BinaryToNucleotide(a);
+                                System.out.print(b);
+                            }
+                  //          System.out.println();
+
+                            for (int k = 31; k >= 0; k--) {
+                                long a = nucleotideBinaryReverseComplementSlot[2] >>> 2 * k;
+                                a &= 3L;
+                                char b = BinaryToNucleotide(a);
+                                System.out.print(b);
+                            }
+
+                        for (int k = 31; k >= 0; k--) {
+                            long a = nucleotideBinaryReverseComplementSlot[3] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                        for (int k = 31; k >= 0; k--) {
+                            long a = nucleotideBinaryReverseComplementSlot[4] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+                        for (int k = 30; k >= 0; k--) {
+                            long a = nucleotideBinaryReverseComplementSlot[5] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+
+
+
+
+                            System.out.println();
+                            System.out.println();
+                            */
+
+
+                        if (compareLongArrayBlocks(nucleotideBinarySlot, nucleotideBinaryReverseComplementSlot) == true) {
+                            // System.out.println(nucleotideBinarySlot[0] + " forward " + nucleotideBinarySlot[1] + " rc " + nucleotideBinaryReverseComplementSlot[0]);
+
+                            long[] nucleotideBinarySlotPreRow = new long[param.kmerBinarySlots];
+                            for (int j=0; j<nucleotideBinarySlot.length; j++){
+                                nucleotideBinarySlotPreRow[j] = nucleotideBinarySlot[j];
+                            }
+                            kmerList.add(RowFactory.create(nucleotideBinarySlotPreRow, param.minKmerCoverage));  // the number does not matter, as the count is based on units
+                        } else {
+                            //  System.out.println(nucleotideBinaryReverseComplementSlot[0] + " RC " + nucleotideBinaryReverseComplementSlot[1] + " forward " + nucleotideBinarySlot[0]);
+
+                            long[] nucleotideBinaryReverseComplementSlotPreRow = new long[param.kmerBinarySlots];
+                            for (int j=0; j<nucleotideBinarySlot.length; j++){
+                                nucleotideBinaryReverseComplementSlotPreRow[j] = nucleotideBinaryReverseComplementSlot[j];
+                            }
+                            kmerList.add(RowFactory.create(nucleotideBinaryReverseComplementSlotPreRow, param.minKmerCoverage));
+                        }
+                    }
+                }
+            }
+
+            return kmerList.iterator();
+        }
+
+        private boolean compareLongArrayBlocks(long[] forward, long[] reverse){
+            for (int i=0; i<forward.length; i++){
+
+                // binary comparison from left to right, because of signed long
+                if (i<forward.length-1) {
+                    for (int j = 0; j < 32; j++) {
+                        long shiftedBinary1 = forward[i] >>> (2 * (31 - j));
+                        shiftedBinary1 &= 3L;
+                        long shiftedBinary2 = reverse[i] >>> (2 * (31 - j));
+                        shiftedBinary2 &= 3L;
+
+                        if (shiftedBinary1 < shiftedBinary2) {
+                            return true;
+                        } else if (shiftedBinary1 > shiftedBinary2) {
+                            return false;
+                        }
+                    }
+                }else{
+                    for (int j = 0; j < param.kmerSizeResidue; j++) {
+                        long shiftedBinary1 = forward[i] >>> (2 * (param.kmerSizeResidue -1 - j));
+                        shiftedBinary1 &= 3L;
+                        long shiftedBinary2 = reverse[i] >>> (2 * (param.kmerSizeResidue -1 - j));
+                        shiftedBinary2 &= 3L;
+
+                        if (shiftedBinary1 < shiftedBinary2) {
+                            return true;
+                        } else if (shiftedBinary1 > shiftedBinary2) {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // should not happen
+            return true;
+        }
+
+        // for testing, remove afterwards
+        private char BinaryToNucleotide (Long twoBits){
+            char nucleotide;
+            if (twoBits == 0L){
+                nucleotide = 'A';
+            }else if (twoBits == 1L){
+                nucleotide = 'C';
+            }else if (twoBits == 2L){
+                nucleotide = 'G';
+            }else{
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
+        private boolean compareLongArray (Long[] a, Long[] b){
+
+            return true;
+        }
+
+        private Long[] shiftLongArrayBinary (Long[] previousKmer){
+            return previousKmer;
         }
     }
 

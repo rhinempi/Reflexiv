@@ -4,6 +4,7 @@ package uni.bielefeld.cmg.reflexiv.pipeline;
 import com.oracle.jrockit.jfr.DataType;
 import org.apache.avro.generic.GenericData;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -606,7 +607,11 @@ public class ReflexivDSMain implements Serializable{
         TagRowContigID DSIdLabeling = new TagRowContigID();
         ContigRDD = ContigsRDDIndex.flatMap(DSIdLabeling);
 
-        ContigRDD.saveAsTextFile(param.outputPath);
+        if (param.gzip) {
+            ContigRDD.saveAsTextFile(param.outputPath + "/Assemble_" + param.kmerSize, GzipCodec.class);
+        }else{
+            ContigRDD.saveAsTextFile(param.outputPath + "/Assemble_" + param.kmerSize);
+        }
 
         spark.stop();
     }
@@ -1026,13 +1031,102 @@ public class ReflexivDSMain implements Serializable{
 
                         newReflexivLongArray[0]=newReflexivLong;
                     }
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivSubKmer >> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
 
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    if (newReflexivLongArray.length >=2){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[1] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=3){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[2] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=4){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[3] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayLoop random " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
                                             randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
                             )
                     );
                 }else{
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = currentSubKmer.getLong(0)>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = (Long)currentSubKmer.getSeq(2).apply(0) >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    if (newReflexivLongArray.length >=2){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(1) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=3){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(2) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=4){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(3) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayLoop random same " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(currentSubKmer);
                 }
             }else{ /* currentSubKmer.getInt(1) == 2 */
@@ -1043,6 +1137,51 @@ public class ReflexivDSMain implements Serializable{
                 Long newReflexivLong;
 
                 if (randomReflexivMarker == 2) {
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = currentSubKmer.getLong(0)>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = (Long)currentSubKmer.getSeq(2).apply(0) >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    if (newReflexivLongArray.length >=2){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(1) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=3){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(2) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=4){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = (Long)currentSubKmer.getSeq(2).apply(3) >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayLoop random same " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(currentSubKmer);
                 }else{ /* randomReflexivMarker == 1 */
                     if (blockSize > 1){
@@ -1097,7 +1236,51 @@ public class ReflexivDSMain implements Serializable{
 
                         newReflexivLongArray[0]=newReflexivLong;
                     }
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivSubKmer >> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
 
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    if (newReflexivLongArray.length >=2){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[1] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=3){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[2] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    if (newReflexivLongArray.length >=4){
+                        for (int k = 30; k >= 0; k--) {
+                            long a = newReflexivLongArray[3] >>> 2 * k;
+                            a &= 3L;
+                            char b = BinaryToNucleotide(a);
+                            System.out.print(b);
+                        }
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayLoop random " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
                                             randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
@@ -1107,6 +1290,8 @@ public class ReflexivDSMain implements Serializable{
 
             }
 
+
+
             /* an action of randomization */
 
             if (randomReflexivMarker == 1 ){
@@ -1115,6 +1300,22 @@ public class ReflexivDSMain implements Serializable{
                 randomReflexivMarker = 1;
             }
         }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
+
         /**
          *
          * @param currentSubKmer
@@ -1144,7 +1345,11 @@ public class ReflexivDSMain implements Serializable{
             if (concatenateLength%31 !=0 ){
                 concatBlockSize++;
             }
-
+/*
+            if (concatBlockSize ==0) {
+                System.out.println("concateBlockSize: " + concatBlockSize);
+            }
+*/
             long maxSuffixLengthBinary = ~((~0L) << 2*forwardFirstSuffixLength);
             long maxPrefixLengthBinary = ~((~0L) << 2*reflexedFirstPrefixLength);
 
@@ -1264,6 +1469,52 @@ public class ReflexivDSMain implements Serializable{
                         newReflexivLongArray[0] = (Long)reflexedSubKmer.getSeq(2).apply(0);
                     }
                 }
+/*
+                for (int l = 30; l >= 0; l--) {
+                    long a = newReflexivSubKmer >> 2 * l;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+
+                System.out.print(" ");
+                for (int l = 30; l >= 0; l--) {
+                    long a = newReflexivLongArray[0] >>> 2 * l;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+                if (newReflexivLongArray.length >=2){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newReflexivLongArray[1] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                if (newReflexivLongArray.length >=3){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newReflexivLongArray[2] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                if (newReflexivLongArray.length >=4){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newReflexivLongArray[3] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                System.out.println(" DSExtendReflexivKmerToArrayLoop extend " + randomReflexivMarker);
+                */
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -1381,9 +1632,9 @@ public class ReflexivDSMain implements Serializable{
                             newForwardLongArray[0] = newForwardLong;
                         } else { // reflexedFirstPrefixLength < param.subKmerSize
                             Long maxSecondBlockRestBinary = ~((~0L) << 2 * (31 - param.subKmerSize + reflexedFirstPrefixLength));
-                            newForwardLong |= ((Long)reflexedSubKmer.getSeq(2).apply(1) & maxSecondBlockRestBinary) >>> 2 * (31 - param.subKmerSize - forwardFirstSuffixLength);
+                            newForwardLong = ((Long)reflexedSubKmer.getSeq(2).apply(1) & maxSecondBlockRestBinary) >>> 2 * (31 - param.subKmerSize - forwardFirstSuffixLength);
                             newForwardLong |= 1L << 2 * (forwardFirstSuffixLength + reflexedFirstPrefixLength); // add C marker
-                            newForwardLongArray[1] = newForwardLong;
+                            newForwardLongArray[0] = newForwardLong;
                         }
                     }
 
@@ -1530,6 +1781,53 @@ public class ReflexivDSMain implements Serializable{
                         }
                     }
                 }
+
+                /*
+                for (int l = 30; l >= 0; l--) {
+                    long a = newForwardSubKmer >> 2 * l;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+
+                System.out.print(" ");
+                for (int l = 30; l >= 0; l--) {
+                    long a = newForwardLongArray[0] >>> 2 * l;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+                if (newForwardLongArray.length >=2){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newForwardLongArray[1] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                if (newForwardLongArray.length >=3){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newForwardLongArray[2] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                if (newForwardLongArray.length >=4){
+                    for (int l = 30; l >= 0; l--) {
+                        long a = newForwardLongArray[3] >>> 2 * l;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+                }
+
+                System.out.println(" DSExtendReflexivKmerToArrayLoop extend " + randomReflexivMarker);
+                */
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -1778,6 +2076,24 @@ public class ReflexivDSMain implements Serializable{
                         newReflexivLongArray[0]=newReflexivLong;
                     }
 
+                    /*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivSubKmer >> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
                                             randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
@@ -1786,6 +2102,26 @@ public class ReflexivDSMain implements Serializable{
                 }else{
                     newReflexivLongArray = new Long[1];
                     newReflexivLongArray[0] = currentSubKmer.getLong(2);
+/*
+
+                    for (int k = 30; k >= 0; k--) {
+                        long a = currentSubKmer.getLong(0) >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
+*/
+
                     reflexivKmerConcatList.add(
                             RowFactory.create(currentSubKmer.getLong(0),
                                             currentSubKmer.getInt(1), newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
@@ -1801,6 +2137,24 @@ public class ReflexivDSMain implements Serializable{
                 if (randomReflexivMarker == 2) {
                     newReflexivLongArray = new Long[1];
                     newReflexivLongArray[0] = currentSubKmer.getLong(2);
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = currentSubKmer.getLong(0) >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(
                             RowFactory.create(currentSubKmer.getLong(0),
                                             currentSubKmer.getInt(1), newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
@@ -1826,7 +2180,24 @@ public class ReflexivDSMain implements Serializable{
                         newReflexivLongArray = new Long[1];
                         newReflexivLongArray[0]=newReflexivLong;
                     }
+/*
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivSubKmer >> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
 
+                    System.out.print(" ");
+                    for (int k = 30; k >= 0; k--) {
+                        long a = newReflexivLongArray[0] >>> 2 * k;
+                        a &= 3L;
+                        char b = BinaryToNucleotide(a);
+                        System.out.print(b);
+                    }
+
+                    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
+*/
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
                                             randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
@@ -1844,6 +2215,21 @@ public class ReflexivDSMain implements Serializable{
                 randomReflexivMarker = 1;
             }
         }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
         /**
          *
          * @param currentSubKmer
@@ -1903,7 +2289,24 @@ public class ReflexivDSMain implements Serializable{
                         newReflexivLongArray[0] = newReflexivLong;
                     }
                 }
+/*
+                for (int k = 30; k >= 0; k--) {
+                    long a = newReflexivSubKmer >> 2 * k;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
 
+                System.out.print(" ");
+                for (int k = 30; k >= 0; k--) {
+                    long a = newReflexivLongArray[0] >>> 2 * k;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+                System.out.println(" DSExtendReflexivKmerToArrayFirstTime extend 1");
+*/
                 if (bubbleDistance <0) {
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
@@ -1965,7 +2368,24 @@ public class ReflexivDSMain implements Serializable{
                         newForwardLongArray[0] = newForwardLong;
                     }
                 }
+/*
+                for (int k = 30; k >= 0; k--) {
+                    long a = newForwardSubKmer >> 2 * k;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
 
+                System.out.print(" ");
+                for (int k = 30; k >= 0; k--) {
+                    long a = newForwardLongArray[0] >>> 2 * k;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+                System.out.println(" DSExtendReflexivKmerToArrayFirstTime extend 2");
+*/
                 if (bubbleDistance <0) {
                     reflexivKmerConcatList.add(
                             RowFactory.create(newForwardSubKmer,

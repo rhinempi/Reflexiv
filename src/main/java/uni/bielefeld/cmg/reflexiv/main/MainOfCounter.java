@@ -72,6 +72,10 @@ public class MainOfCounter {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivDS64CounterPipe();
+        if (param.kmerSize>31) {
+            pipes.reflexivDS64CounterPipe();
+        }else{
+            pipes.reflexivDSCounterPipe();
+        }
     }
 }

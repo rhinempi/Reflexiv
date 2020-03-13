@@ -2,6 +2,7 @@ package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -9,8 +10,6 @@ import org.apache.spark.api.java.function.FilterFunction;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
-import org.apache.spark.io.CompressionCodec;
-import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -65,7 +64,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSMain64 implements Serializable {
+public class ReflexivDSReAssembler64 implements Serializable {
     private long time;
     private DefaultParam param;
 
@@ -133,12 +132,7 @@ public class ReflexivDSMain64 implements Serializable {
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
         kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
+
         Dataset<Row> ReflexivSubKmerDS;
         StructType ReflexivKmerStruct = new StructType();
         ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
