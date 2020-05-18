@@ -1,12 +1,15 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.Serializable;
+import java.io.*;
+import java.nio.file.Files;
+import org.apache.hadoop.fs.Path;
+import java.nio.file.Paths;
 
 /**
  * Created by rhinempi on 22.07.2017.
@@ -92,6 +95,14 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSMercyPipe(){
+        ReflexivDSMainMercy rflPipe = new ReflexivDSMainMercy();
+        rflPipe.setParam(param);
+
+            rflPipe.assembly();
+
+    }
+
     public void reflexivDSMainPipe64(){
         ReflexivDSMain64 rflPipe = new ReflexivDSMain64();
         rflPipe.setParam(param);
@@ -161,84 +172,157 @@ public class Pipelines implements Pipeline, Serializable{
      * This method starts the Reflexiv reassembler pipeline
      */
     public void reflexivDSReAssemblerPipe(){
-        ReflexivDSReAssembler rflPipe = new ReflexivDSReAssembler();
-        rflPipe.setParam(param);
+        ReflexivDSReAssembler rfPipe = new ReflexivDSReAssembler();
+        rfPipe.setParam(param);
         if (param.inputKmerPath != null){
-            rflPipe.assemblyFromKmer();
+            rfPipe.assemblyFromKmer();
         }else {
-            rflPipe.assembly();
+            rfPipe.assembly();
         }
     }
 
     public void reflexivDSReAssemblerPipe64(){
-        ReflexivDSReAssembler64 rflPipe = new ReflexivDSReAssembler64();
-        rflPipe.setParam(param);
+        ReflexivDSReAssembler64 rfPipe = new ReflexivDSReAssembler64();
+        rfPipe.setParam(param);
         if (param.inputKmerPath != null){
-            rflPipe.assemblyFromKmer();
+            rfPipe.assemblyFromKmer();
         }else {
-            rflPipe.assembly();
+            rfPipe.assembly();
+        }
+    }
+
+    public void reflexivDSDecompresserPipe(){
+        ReflexivDataFrameDecompresser rfPipe = new ReflexivDataFrameDecompresser();
+        rfPipe.setParam(param);
+        rfPipe.assembly();
+    }
+
+    private boolean checkOutputFile(String file) throws IOException {
+        if (file.startsWith("hdfs")){
+            Configuration conf = new Configuration();
+            String header = file.substring(0,file.indexOf(":9000")+5);
+            conf.set("fs.default.name", header);
+            FileSystem hdfs = FileSystem.get(conf);
+
+            return hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)));
+        }else{
+            return Files.exists(Paths.get(file));
         }
     }
 
     /**
      *
      */
-    public void reflexivDSIterativeAssemblerPipe(){
-        param.setCacheLocal(true);
+    public void reflexivDSIterativeAssemblerPipe() throws IOException {
+
+
+
+        // step 1 decompress
+        if (!checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
+            reflexivDSDecompresserPipe();
+        }
         param.setGzip(true);
 
-        if (param.kmerSize <=31){
-            reflexivDSCounterPipe();
-        }else{
-            reflexivDS64CounterPipe();
+        // step 2 k-mer counting with smallest kmer size
+        param.setInputFqPath(param.outputPath + "/Read_Repartitioned/part*.txt.gz");
+        if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize)) {
+            if (param.kmerSize <= 31) {
+                reflexivDSCounterPipe();
+            } else {
+                reflexivDS64CounterPipe();
+            }
         }
 
         param.setInputKmerPath(param.outputPath + "/Count_" + param.kmerSize + "/part*.csv.gz");
         param.setInputContigPath(param.outputPath + "/Assemble_" + param.kmerSize);
-        param.setCacheLocal(false);
-        param.setInputFqPath(param.outputPath + "/Read_Repartitioned/part*.txt.gz");
+ //       param.setInputFqPath(param.outputPath + "/Read_Repartitioned/part*.txt.gz");
+        param.setMinContig(param.kmerSize + param.kmerIncrease);
 
-        if (param.kmerSize <= 31){
-            reflexivDSMainPipe();
-        }else {
-            reflexivDSMainPipe64();
+ //       param.setPartitions(param.partitions/10);
+ //       param.setShufflePartition(param.shufflePartition/10);
+
+        // step 3 assemble smallest kmer size normally
+        if (!checkOutputFile(param.outputPath + "/Assemble_" + param.kmerSize)){
+            if (param.kmerSize <= 31) {
+                reflexivDSMainPipe();
+            } else {
+                reflexivDSMainPipe64();
+            }
         }
 
+        // step 4 repeat each kmer size
         while(param.kmerSize + param.kmerIncrease < param.maxKmerSize){
             param.kmerSize += param.kmerIncrease;
-            param.setAllbyKmerSize(param.kmerSize);
 
-            if (param.kmerSize <=31){
-                reflexivDSReAssembleCounterPipe();
-            }else {
-                reflexivDS64ReAssembleCounterPipe();
+            param.setAllbyKmerSize(param.kmerSize);
+            param.setRCmerge(false);
+
+        //    param.setPartitions(param.partitions*10);
+        //    param.setShufflePartition(param.shufflePartition*10);
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize)) {
+                if (param.kmerSize <= 31) {
+                    reflexivDSReAssembleCounterPipe();
+                } else {
+                    reflexivDS64ReAssembleCounterPipe();
+                }
+            }
+
+
+            param.setInputKmerPath(param.outputPath + "/Count_" + param.kmerSize + "/part*.csv.gz");
+            param.setMinContig(param.kmerSize + param.kmerIncrease);
+
+            if (param.kmerSize >31 && param.kmerSize <61){
+                param.setMinErrorCoverage(param.minKmerCoverage * 4);
+            } else if (param.kmerSize >= 61 && param.kmerSize <=81 ){
+                param.setMinErrorCoverage(param.minKmerCoverage * 3);
+            }else if (param.kmerSize >81){
+                param.setMinErrorCoverage(param.minKmerCoverage * 2);
+            }
+
+       //     param.setPartitions(param.partitions/10);
+       //     param.setShufflePartition(param.shufflePartition/10);
+
+            if (!checkOutputFile(param.outputPath + "/Assemble_" + param.kmerSize)) {
+                if (param.kmerSize <= 31) {
+                    reflexivDSMainPipe();
+                } else {
+                    reflexivDSMainPipe64();
+                }
             }
 
             param.setInputContigPath(param.outputPath + "/Assemble_" + param.kmerSize);
-            param.setInputKmerPath(param.outputPath + "/Count_" + param.kmerSize + "/part*.csv.gz");
-
-            if (param.kmerSize <= 31){
-                reflexivDSMainPipe();
-            }else {
-                reflexivDSMainPipe64();
-            }
         }
 
         param.kmerSize = param.maxKmerSize;
         param.setAllbyKmerSize(param.kmerSize);
 
-        if (param.kmerSize <=31){
-            reflexivDSReAssembleCounterPipe();
-        }else {
-            reflexivDS64ReAssembleCounterPipe();
+   //     param.setPartitions(param.partitions*10);
+   //     param.setShufflePartition(param.shufflePartition*10);
+
+        if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize )){
+            if (param.kmerSize <= 31) {
+                reflexivDSReAssembleCounterPipe();
+            } else {
+                reflexivDS64ReAssembleCounterPipe();
+            }
         }
+  //      param.setPartitions(param.partitions/10);
+  //      param.setShufflePartition(param.shufflePartition/10);
 
         param.setInputKmerPath(param.outputPath + "/Count_" + param.kmerSize + "/part*.csv.gz");
         param.setGzip(false);
-        if (param.kmerSize <= 31){
-            reflexivDSMainPipe();
-        }else {
-            reflexivDSMainPipe64();
+        param.setRCmerge(true);
+
+        if (checkOutputFile(param.outputPath + "/Assemble_" + param.kmerSize )){
+            if (param.kmerSize <= 31) {
+                reflexivDSReAssemblerPipe();
+            } else {
+                reflexivDSReAssemblerPipe64();
+            }
+        }else{
+            info.readMessage("Result already exist! Choose a new directory to restart a new assembly");
+            info.screenDump();
         }
     }
 

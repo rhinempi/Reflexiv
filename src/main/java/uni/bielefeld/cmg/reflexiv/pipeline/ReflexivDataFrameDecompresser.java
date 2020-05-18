@@ -54,7 +54,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameCounter implements Serializable{
+public class ReflexivDataFrameDecompresser implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -105,9 +105,6 @@ public class ReflexivDataFrameCounter implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
-        Dataset<Long> KmerBinaryDS;
-        Dataset<Row> DFKmerBinaryCount;
-        Dataset<Row> DFKmerCount;
 
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
@@ -121,92 +118,12 @@ public class ReflexivDataFrameCounter implements Serializable{
         if (param.partitions > 0) {
             FastqDS = FastqDS.repartition(param.partitions);
         }
-        if (param.cache) {
-            FastqDS.cache();
-        }
 
-        ReverseComplementKmerBinaryExtractionFromDataset DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset();
-        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, Encoders.LONG());
-
-        DFKmerBinaryCount = KmerBinaryDS.groupBy("value")
-                .count()
-                .toDF("kmer","count");
-
-        if (param.minKmerCoverage >1) {
-            DFKmerBinaryCount = DFKmerBinaryCount.filter(col("count")
-                    .geq(param.minKmerCoverage));
-        }
-
-        if (param.maxKmerCoverage < 10000000){
-            DFKmerBinaryCount = DFKmerBinaryCount.filter(col("count")
-                    .leq(param.maxKmerCoverage));
-        }
-
-        DSBinaryKmerToString BinaryKmerToString = new DSBinaryKmerToString();
-
-        StructType kmerCountTupleStruct = new StructType();
-        kmerCountTupleStruct= kmerCountTupleStruct.add("kmer", DataTypes.StringType, false);
-        kmerCountTupleStruct= kmerCountTupleStruct.add("count", DataTypes.LongType, false);
-
-        ExpressionEncoder<Row> kmerCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-
-        DFKmerCount = DFKmerBinaryCount.mapPartitions(BinaryKmerToString, kmerCountEncoder);
-
-        if (param.gzip) {
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }else{
-            DFKmerCount.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/Count_" + param.kmerSize);
-        }
+        FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
 
         spark.stop();
     }
 
-    /**
-     *
-     */
-    class DSBinaryKmerToString implements MapPartitionsFunction<Row, Row>, Serializable{
-        List<Row> reflexivKmerStringList = new ArrayList<Row>();
-
-        public Iterator<Row> call(Iterator<Row> sIterator){
-            while (sIterator.hasNext()){
-                String subKmer = "";
-                Row s = sIterator.next();
-                for (int i=1; i<=param.kmerSize;i++){
-                    Long currentNucleotideBinary = s.getLong(0) >>> 2*(param.kmerSize - i);
-                    currentNucleotideBinary &= 3L;
-                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
-                }
-
-                reflexivKmerStringList.add (
-                        RowFactory.create(subKmer, s.getLong(1))
-                        // new Row(); Tuple2<String, Integer>(subKmer, s._2)
-                );
-            }
-            return reflexivKmerStringList.iterator();
-        }
-
-        private char BinaryToNucleotide (Long twoBits){
-            char nucleotide;
-            if (twoBits == 0){
-                nucleotide = 'A';
-            }else if (twoBits == 1){
-                nucleotide = 'C';
-            }else if (twoBits == 2){
-                nucleotide = 'G';
-            }else{
-                nucleotide = 'T';
-            }
-            return nucleotide;
-        }
-    }
 
     /**
      *

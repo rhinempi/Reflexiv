@@ -125,8 +125,6 @@ public class ReflexivDataFrameReAssembleCounter implements Serializable{
         }
         if (param.cache) {
             FastqDS.cache();
-        }else if (param.cacheLocal){
-            FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
         }
 
         ContigDS = spark.read().text(param.inputContigPath).as(Encoders.STRING());
@@ -148,12 +146,17 @@ public class ReflexivDataFrameReAssembleCounter implements Serializable{
         KmerBinaryDS = KmerBinaryDS.union(ContigBinaryDS);
 
         DFKmerBinaryCount = KmerBinaryDS.groupBy("kmerBlocks")
-                .sum()
+                .sum("count")
                 .toDF("kmerBlocks","count");
 
         if (param.minKmerCoverage >1) {
             DFKmerBinaryCount = DFKmerBinaryCount.filter(col("count")
                     .geq(param.minKmerCoverage));
+        }
+
+        if (param.maxKmerCoverage < 10000000){
+            DFKmerBinaryCount = DFKmerBinaryCount.filter(col("count")
+                    .leq(param.maxKmerCoverage));
         }
 
         DSBinaryKmerToString BinaryKmerToString = new DSBinaryKmerToString();

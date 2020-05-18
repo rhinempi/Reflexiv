@@ -383,16 +383,16 @@ public class ParameterOfReAssembler {
             if (outfile.exists()) {
                 info.readParagraphedMessages("Output file : \n\t" + param.outputPath + "\nalready exists, will be overwrite.");
                 info.screenDump();
-                Runtime.getRuntime().exec("rm -rf " + param.outputPath);
+              //  Runtime.getRuntime().exec("rm -rf " + param.outputPath);
             }
 
 
-        } catch (IOException e) { // Don`t catch this, NaNaNaNa, U can`t touch this.
+        } /*catch (IOException e) { // Don`t catch this, NaNaNaNa, U can`t touch this.
             info.readMessage("Parameter settings incorrect.");
             info.screenDump();
             e.printStackTrace();
             System.exit(0);
-        } catch (RuntimeException e) {
+        } */catch (RuntimeException e) {
             info.readMessage("Parameter settings incorrect.");
             info.screenDump();
             e.printStackTrace();

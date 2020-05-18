@@ -1,32 +1,36 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FilterFunction;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.io.CompressionCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import scala.Tuple2;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
+import scala.collection.generic.ClassTagTraversableFactory;
+import scala.reflect.ClassTag;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 import static org.apache.spark.sql.functions.col;
 
@@ -110,6 +114,17 @@ public class ReflexivDSMain64 implements Serializable {
                 .getOrCreate();
 
         return spark;
+    }
+
+    private Hashtable<List<Long>, Integer> SubKmerProbRowToHash(Row[] s){
+        Hashtable<List<Long>, Integer> ProbHash = new Hashtable<List<Long>, Integer>();
+        for (int i =0; i<s.length;i++){
+            List<Long> Key = Arrays.asList((Long[]) s[i].get(0));
+            Integer Value = s[i].getInt(1);
+            ProbHash.put(Key, Value);
+        }
+
+        return ProbHash;
     }
 
     /**
@@ -360,6 +375,8 @@ public class ReflexivDSMain64 implements Serializable {
      */
     public void assemblyFromKmer() {
         SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
+        SparkContext sc = spark.sparkContext();
+        JavaSparkContext jsc = JavaSparkContext.fromSparkContext(sc);
 
         info.readMessage("Initiating Spark context ...");
         info.screenDump();
@@ -367,6 +384,7 @@ public class ReflexivDSMain64 implements Serializable {
         info.screenDump();
 
         Dataset<Row> KmerCountDS;
+        Dataset<String> FastqDS;
 
         Dataset<Row> KmerBinaryCountDS;
         StructType kmerCountTupleStruct = new StructType();
@@ -393,6 +411,7 @@ public class ReflexivDSMain64 implements Serializable {
         ExpressionEncoder<Row> ReflexivKmerStringEncoder = RowEncoder.apply(ReflexivKmerStringStruct);
 
         Dataset<Row> ReflexivLongSubKmerDS;
+        Dataset<Row> ReflexivLongFragmentDS;
         StructType ReflexivLongKmerStruct = new StructType();
         ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
         ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("reflection", DataTypes.IntegerType, false);
@@ -410,6 +429,11 @@ public class ReflexivDSMain64 implements Serializable {
         ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
 
+        Dataset<Row> ContigProbRows;
+        StructType ReflexivSubKmerProbStruct = new StructType();
+        ReflexivSubKmerProbStruct = ReflexivSubKmerProbStruct.add("subkmerBinary", DataTypes.createArrayType(DataTypes.LongType), false);
+        ReflexivSubKmerProbStruct = ReflexivSubKmerProbStruct.add("marker", DataTypes.IntegerType, false);
+        ExpressionEncoder<Row> ReflexivSubKmerProbEncoder = RowEncoder.apply(ReflexivSubKmerProbStruct);
 
         Dataset<Row> ContigRows;
         StructType ContigLongKmerStringStruct = new StructType();
@@ -594,6 +618,75 @@ public class ReflexivDSMain64 implements Serializable {
 
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
+        if (param.mercy) {
+
+            DSLowCoverageSubKmerExtraction lowCoverageSubKmerExtractor = new DSLowCoverageSubKmerExtraction();
+
+            ContigProbRows = ReflexivLongSubKmerDS.mapPartitions(lowCoverageSubKmerExtractor, ReflexivSubKmerProbEncoder);
+
+            Row[] ProbSubKmerArray = (Row[]) ContigProbRows.collect();
+
+            Hashtable<List<Long>, Integer> ProbSubKmerTable = SubKmerProbRowToHash(ProbSubKmerArray);
+            final Broadcast<Hashtable<List<Long>, Integer>> ProbSubKmerArrayBroadCast = jsc.broadcast(ProbSubKmerTable);
+            DSLowCoverageReadDetection LowCoverageReadDetector = new DSLowCoverageReadDetection(ProbSubKmerArrayBroadCast);
+
+
+            FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
+
+            DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
+            FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
+
+            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+
+            FastqDS = FastqDS.filter(FilterDSUnit);
+
+            if (param.partitions > 0) {
+                FastqDS = FastqDS.repartition(param.partitions);
+            }
+            if (param.cache) {
+                FastqDS.cache();
+            }
+
+            ReflexivLongFragmentDS = FastqDS.mapPartitions(LowCoverageReadDetector, ReflexivLongKmerEncoder);
+
+            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.union(ReflexivLongFragmentDS);
+            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
+
+            iterations = 6;
+
+            while (iterations <= param.maximumIteration) {
+                iterations++;
+                if (iterations >= param.minimumIteration){
+                    if (iterations % 3 == 0) {
+
+                        /**
+                         *  problem ------------------------------------------v
+                         */
+                        ReflexivLongSubKmerDS.cache();
+                        long currentContigNumber = ReflexivLongSubKmerDS.count();
+                        if (contigNumber == currentContigNumber) {
+                            break;
+                        } else {
+                            contigNumber = currentContigNumber;
+                        }
+
+                        if (partitionNumber >= 16) {
+                            if (currentContigNumber / partitionNumber <= 20) {
+                                partitionNumber = partitionNumber / 4 + 1;
+                                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
+                            }
+                        }
+                    }
+                }
+
+                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
+            }
+
+            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+
+        }
 
         /**
          *
@@ -720,6 +813,971 @@ public class ReflexivDSMain64 implements Serializable {
     }
 
 
+    class DSLowCoverageSubKmerExtraction implements  MapPartitionsFunction<Row, Row>, Serializable{
+        List<Row> subKmerProb = new ArrayList<Row>();
+        int randomReflexivMarker =1;
+        //long maxSubKmerBinary = ~((~0L) << 2*param.subKmerSize);
+        long maxSubKmerBinary = ~((~0L) << 2 * 31);
+        long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
+        int contigIndex = 0;
+        long maxSubKmerResidueBinary = ~((~0L) << 2 * param.subKmerSizeResidue);
+
+        public Iterator<Row> call (Iterator<Row> sIterator){
+
+            while(sIterator.hasNext()){
+                Row s = sIterator.next();
+                contigIndex++;
+
+                int contigLength = param.subKmerSize + (s.getSeq(2).length()-1) * 31;
+                int firstSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros((Long)s.getSeq(2).apply(0))/2 + 1);
+                contigLength += firstSuffixLength;
+
+                if (contigLength <61) continue;
+
+                if (s.getInt(3)>=-5 && s.getInt(3)<0){
+                    if (s.getInt(1) == 1){
+                        long[] subKmerBinary = new long[s.getSeq(0).length()];
+                        for (int i=0 ; i<s.getSeq(0).length(); i++) {
+                            subKmerBinary[i] = (Long) s.getSeq(0).apply(i);
+                        }
+                        int marker = (contigIndex | (1<<31));  // 1 as right extendable
+                        subKmerProb.add(
+                                RowFactory.create(subKmerBinary, marker)
+                        );
+                    }else{
+                        randomReflexivMarker =1;
+                        Row newS = singleKmerRandomizer(s);
+                        long[] subKmerBinary = new long[newS.getSeq(0).length()];
+                        for (int i=0 ; i<newS.getSeq(0).length(); i++) {
+                            subKmerBinary[i] = (Long) newS.getSeq(0).apply(i);
+                        }
+                        int marker = (contigIndex| (1<<31));  // 1 as right extendable
+                        subKmerProb.add(
+                                RowFactory.create(subKmerBinary, marker)
+                        );
+                    }
+                }
+
+                if (s.getInt(4)>=-5 && s.getInt(4)<0){
+                    if (s.getInt(1) == 1){
+                        randomReflexivMarker =2;
+                        Row newS = singleKmerRandomizer(s);
+                        long[] subKmerBinary = new long[newS.getSeq(0).length()];
+                        for (int i=0 ; i<newS.getSeq(0).length(); i++) {
+                            subKmerBinary[i] = (Long) newS.getSeq(0).apply(i);
+                        }
+                        int marker = contigIndex ; // 0 as left extendable
+                        subKmerProb.add(
+                                RowFactory.create(subKmerBinary, marker)
+                        );
+                    }else {
+                        long[] subKmerBinary = new long[s.getSeq(0).length()];
+                        for (int i=0 ; i<s.getSeq(0).length(); i++) {
+                            subKmerBinary[i] = (Long) s.getSeq(0).apply(i);
+                        }
+                        int marker = contigIndex ; // 0 as left extendable
+                        subKmerProb.add(
+                                RowFactory.create(subKmerBinary, marker)
+                        );
+                    }
+                }
+
+            }
+/*
+            int maxMarkerBinary =  ~((~0) << 31);
+            for (int i=0; i<subKmerProb.size(); i++){
+                long subKmerBinary = subKmerProb.get(i).getLong(0);
+                int marker = subKmerProb.get(i).getInt(1);
+
+                System.out.print("extracted probs: ");
+
+                for (int j = 31; j>=0; j--){
+                    long a = subKmerBinary >>> 2 *j;
+                    a &= 3L;
+                    char b = BinaryToNucleotide(a);
+                    System.out.print(b);
+                }
+
+                int direction = marker >>> 31;
+                int contigID = marker & maxMarkerBinary;
+                System.out.println(" " + direction + " " + contigID);
+            }
+*/
+            return subKmerProb.iterator();
+        }
+
+        public Row singleKmerRandomizer(Row currentSubKmer) {
+            int blockSize = currentSubKmer.getSeq(2).length();
+
+            Long[] newReflexivLongArray = new Long[blockSize];
+
+            if (currentSubKmer.getInt(1) == 1) {
+                int firstSuffixBlockLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) currentSubKmer.getSeq(2).apply(0)) / 2 + 1);
+                long maxSuffixLengthBinary = ~((~0L) << (2 * firstSuffixBlockLength));
+                long[] newReflexivSubKmer = new long[param.subKmerBinarySlots];
+                Long newReflexivLong;
+
+                if (randomReflexivMarker == 2) {
+                    if (blockSize > 1) {
+
+                        if (firstSuffixBlockLength >= param.subKmerSizeResidue) {
+                            if (blockSize >= param.subKmerBinarySlots) {
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(blockSize - 1) & maxSubKmerResidueBinary);
+
+                                long transit1 = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) >>> (2 * param.subKmerSizeResidue);
+                                long transit2 = 0L;
+                                for (int i = param.subKmerBinarySlots - 2; i >= 0; i--) {
+                                    int j = blockSize - param.subKmerBinarySlots + i; // index of suffix long array
+                                    transit2 = (Long) currentSubKmer.getSeq(2).apply(j) >>> (2 * param.subKmerSizeResidue);
+
+                                    newReflexivSubKmer[i] = transit1;
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(j) << 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                    transit1 = transit2;
+                                }
+
+                                for (int i = blockSize - param.subKmerBinarySlots; i > 0; i--) {
+                                    int j = param.subKmerBinarySlots + i - 1; // index of the new prefix long array
+                                    newReflexivLongArray[j] = ((Long) currentSubKmer.getSeq(2).apply(i) >>> 2 * param.subKmerSizeResidue);
+                                    newReflexivLongArray[j] |= (Long) currentSubKmer.getSeq(2).apply(i - 1) << 2 * (31 - param.subKmerSizeResidue);
+                                    newReflexivLongArray[j] &= maxSubKmerBinary;
+                                }
+
+                                //   if (blockSize== param.subKmerBinarySlots){ // in the context of blockSize >= param.subKmerBinarySlots
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) >>> (2 * param.subKmerSizeResidue);
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * (firstSuffixBlockLength - param.subKmerSizeResidue));
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * firstSuffixBlockLength);
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] &= maxSubKmerBinary;
+                                //  }
+
+                                for (int i = param.subKmerBinarySlots - 2; i > 0; i--) {
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(i - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - firstSuffixBlockLength);
+                                newReflexivLongArray[0] |= (1L << 2 * firstSuffixBlockLength); // add C marker in the front
+                            } else { // blockSize < param.subKmerSizeResidue
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(blockSize - 1) & maxSubKmerResidueBinary);
+
+                                long transit1 = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) >>> (2 * param.subKmerSizeResidue);
+                                long transit2 = 0L;
+                                for (int i = param.subKmerBinarySlots - 2; i >= param.subKmerBinarySlots - blockSize; i--) {
+                                    int j = blockSize - param.subKmerBinarySlots + i; // index of suffix long array
+                                    transit2 = (Long) currentSubKmer.getSeq(2).apply(j) >>> (2 * param.subKmerSizeResidue);
+
+                                    newReflexivSubKmer[i] = transit1;
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(j) << 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                    transit1 = transit2;
+                                }
+
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) >>> (2 * param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * (firstSuffixBlockLength - param.subKmerSizeResidue));
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * firstSuffixBlockLength);
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] &= maxSubKmerBinary;
+
+                                for (int i = param.subKmerBinarySlots - blockSize - 2; i >= 0; i--) {
+                                    int j = blockSize + i; // index of the subkmer
+
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(j) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(0).apply(j - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                for (int i = blockSize - 1; i > 0; i--) {
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(i - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - firstSuffixBlockLength);
+                                newReflexivLongArray[0] |= (1L << 2 * firstSuffixBlockLength); // add C marker in the front
+                            }
+                        } else { // firstSuffixBlockLength < param.subKmerSizeResidue
+                            if (blockSize >= param.subKmerBinarySlots) {
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(blockSize - 1) & maxSubKmerResidueBinary);
+
+                                long transit1 = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) >>> (2 * param.subKmerSizeResidue);
+                                long transit2 = 0L;
+                                for (int i = param.subKmerBinarySlots - 2; i > 0; i--) {
+                                    int j = blockSize - param.subKmerBinarySlots + i; // index of suffix long array
+                                    transit2 = (Long) currentSubKmer.getSeq(2).apply(j) >>> (2 * param.subKmerSizeResidue);
+
+                                    newReflexivSubKmer[i] = transit1;
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(j) << 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                    transit1 = transit2;
+                                }
+
+                                newReflexivSubKmer[0] = transit1;
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivSubKmer[0] |= ((Long) currentSubKmer.getSeq(2).apply(blockSize - param.subKmerBinarySlots) << 2 * (31 - param.subKmerSizeResidue));
+                                }else { // (blockSize== param.subKmerBinarySlots){
+                                    newReflexivSubKmer[0] |= (((Long) currentSubKmer.getSeq(2).apply(blockSize - param.subKmerBinarySlots) & maxSuffixLengthBinary) << 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivSubKmer[0] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-1) << 2*(31-param.subKmerSizeResidue + firstSuffixBlockLength));
+                                }
+                                newReflexivSubKmer[0] &= maxSubKmerBinary;
+
+                                //newReflexivSubKmer[0] = transit1;
+                                //newReflexivSubKmer[0] |= ((Long) currentSubKmer.getSeq(2).apply(blockSize-param.subKmerBinarySlots) << 2*(31-param.subKmerSizeResidue));
+
+
+                                for (int i = blockSize - param.subKmerBinarySlots; i > 1; i--) {
+                                    int j = param.subKmerBinarySlots + i - 1; // index of the new prefix long array
+                                    newReflexivLongArray[j] = ((Long) currentSubKmer.getSeq(2).apply(i) >>> 2 * param.subKmerSizeResidue);
+                                    newReflexivLongArray[j] |= (Long) currentSubKmer.getSeq(2).apply(i - 1) << 2 * (31 - param.subKmerSizeResidue);
+                                    newReflexivLongArray[j] &= maxSubKmerBinary;
+                                }
+
+                                if (param.subKmerBinarySlots < blockSize) {
+                                    newReflexivLongArray[param.subKmerBinarySlots] = ((Long) currentSubKmer.getSeq(2).apply(1) >>> 2 * param.subKmerSizeResidue);
+                                    newReflexivLongArray[param.subKmerBinarySlots] |= ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary)<< 2 * (31 - param.subKmerSizeResidue);
+                                    newReflexivLongArray[param.subKmerBinarySlots] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * (31 + firstSuffixBlockLength - param.subKmerSizeResidue));
+                                    newReflexivLongArray[param.subKmerBinarySlots] &= maxSubKmerBinary;
+                                }
+
+                                //   if (blockSize== param.subKmerBinarySlots){ // in the context of blockSize >= param.subKmerBinarySlots
+                                //  newReflexivLongArray[param.subKmerBinarySlots-1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) >>> (2 * param.subKmerSizeResidue);
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) >>> 2 * (param.subKmerSizeResidue - firstSuffixBlockLength));
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * firstSuffixBlockLength);
+                                newReflexivLongArray[param.subKmerBinarySlots - 1] &= maxSubKmerBinary;
+                                //  }
+
+                                for (int i = param.subKmerBinarySlots - 2; i > 0; i--) {
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(i - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - firstSuffixBlockLength);
+                                newReflexivLongArray[0] |= (1L << 2 * firstSuffixBlockLength); // add C marker in the front
+                            } else { // blockSize < param.subKmerSizeResidue
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(blockSize - 1) & maxSubKmerResidueBinary);
+
+                                long transit1 = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) >>> (2 * param.subKmerSizeResidue);
+                                long transit2 = 0L;
+                                for (int i = param.subKmerBinarySlots - 2; i > param.subKmerBinarySlots - blockSize; i--) {
+                                    int j = blockSize - param.subKmerBinarySlots + i; // index of suffix long array
+                                    transit2 = (Long) currentSubKmer.getSeq(2).apply(j) >>> (2 * param.subKmerSizeResidue);
+
+                                    newReflexivSubKmer[i] = transit1;
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(j) << 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                    transit1 = transit2;
+                                }
+
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize] = (Long) currentSubKmer.getSeq(2).apply(1) >>> 2 * param.subKmerSizeResidue;
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize] |= ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) << 2 * (31 - param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * (31 - param.subKmerSizeResidue + firstSuffixBlockLength));
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize] &= maxSubKmerBinary;
+
+                                // newReflexivSubKmer[param.subKmerBinarySlots-blockSize-1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) >>> (2 * param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) >>> 2 * (param.subKmerSizeResidue - firstSuffixBlockLength));
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * firstSuffixBlockLength);
+                                newReflexivSubKmer[param.subKmerBinarySlots - blockSize - 1] &= maxSubKmerBinary;
+
+                                for (int i = param.subKmerBinarySlots - blockSize - 2; i >= 0; i--) {
+                                    int j = blockSize + i; // index of the subkmer
+
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(j) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(0).apply(j - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                for (int i = blockSize - 1; i > 0; i--) {
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(i - 1) << 2 * firstSuffixBlockLength);
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - firstSuffixBlockLength);
+                                newReflexivLongArray[0] |= (1L << 2 * firstSuffixBlockLength); // add C marker in the front
+                            }
+                        }
+
+
+                    } else { // block size ==1
+                        if (firstSuffixBlockLength > param.subKmerSizeResidue) { // firstSuffixBlockLength is longer than the length of the last block (element) of sub kmer long array
+                            //long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * (firstSuffixBlockLength - param.subKmerSizeResidue);
+                            long transitBit1 = (((Long)currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) >>> 2 * param.subKmerSizeResidue);
+                            long transitBit2 = 0L;
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSubKmerResidueBinary);
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 2] = ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-1) << 2* (firstSuffixBlockLength-param.subKmerSizeResidue));
+                            newReflexivSubKmer[param.subKmerBinarySlots - 2] |= transitBit1;
+                            newReflexivSubKmer[param.subKmerBinarySlots - 2] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-2) << 2*firstSuffixBlockLength);
+                            newReflexivSubKmer[param.subKmerBinarySlots - 2] &= maxSubKmerBinary;
+                            transitBit1 = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-2) >>> 2 * (31 - firstSuffixBlockLength);
+
+                            for (int i = param.subKmerBinarySlots - 3; i >= 0; i--) {
+                                transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+
+                                newReflexivSubKmer[i] = ((Long) currentSubKmer.getSeq(0).apply(i) << 2 * firstSuffixBlockLength);
+                                newReflexivSubKmer[i] |= transitBit1;
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivLong = transitBit1;
+                            newReflexivLong |= (1L << 2 * firstSuffixBlockLength);
+                            newReflexivLongArray[0] = newReflexivLong;
+
+                        } else if (firstSuffixBlockLength == param.subKmerSizeResidue) {
+                            long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                            long transitBit2 = 0L;
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = ((Long) currentSubKmer.getSeq(2).apply(0) & maxSubKmerResidueBinary);
+
+                            for (int i = param.subKmerBinarySlots - 2; i >= 0; i--) {
+                                transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+
+                                newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(i) << 2 * firstSuffixBlockLength;
+                                newReflexivSubKmer[i] |= transitBit1;
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivLong = transitBit2;
+                            newReflexivLong |= (1L << 2 * firstSuffixBlockLength);
+                            newReflexivLongArray[0] = newReflexivLong;
+
+                        } else { //firstSuffixBlockLength < param.subKmerSizeResidue
+                            long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) >>> 2 * (param.subKmerSizeResidue - firstSuffixBlockLength);
+                            long transitBit2 = 0L;
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) << 2 * firstSuffixBlockLength;
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary);
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                            for (int i = param.subKmerBinarySlots - 2; i >= 0; i--) {
+                                transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * (31 - firstSuffixBlockLength);
+
+                                newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(i) << 2 * firstSuffixBlockLength;
+                                newReflexivSubKmer[i] |= transitBit1;
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivLong = transitBit2;
+                            newReflexivLong |= (1L << 2 * firstSuffixBlockLength); // add C marker
+                            newReflexivLongArray[0] = newReflexivLong;
+                        }
+                    }
+
+
+                    return RowFactory.create(newReflexivSubKmer,
+                                    randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
+                            );
+
+                } else {
+
+
+                    return currentSubKmer;
+                }
+            } else { /* currentSubKmer.getInt(1) == 2 */
+                int firstPrefixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) currentSubKmer.getSeq(2).apply(0)) / 2 + 1);
+                long maxPrefixLengthBinary = ~((~0L) << (2 * firstPrefixLength));
+                long[] newReflexivSubKmer = new long[param.subKmerBinarySlots];
+                long newReflexivLong = 0L;
+
+
+                if (randomReflexivMarker == 2) {
+
+                    return currentSubKmer;
+                } else { /* randomReflexivMarker == 1 */
+                    if (blockSize > 1) {
+                        if (firstPrefixLength >= param.subKmerSizeResidue) {
+                            if (blockSize >= param.subKmerBinarySlots) {
+                                for (int i = 0; i < param.subKmerBinarySlots - 1; i++) {
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(2).apply(i) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(i + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = (Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots - 1) >>> 2 * (firstPrefixLength - param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots - 1) << 2 * param.subKmerSizeResidue;
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivLongArray[0] |= ((Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots) >>> 2 * (31 - param.subKmerSizeResidue));
+                                } else {
+                                    newReflexivLongArray[0] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - param.subKmerSizeResidue));
+                                }
+                                newReflexivLongArray[0] &= maxPrefixLengthBinary;
+                                newReflexivLongArray[0] |= (1L << 2 * firstPrefixLength); // add C marker in the front
+
+                                for (int i = 1; i < blockSize - param.subKmerBinarySlots; i++) {
+                                    int j = param.subKmerBinarySlots + i - 1;
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(2).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(2).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] &= maxSubKmerBinary;
+                                }
+
+                                for (int i = blockSize - param.subKmerBinarySlots + 1; i < blockSize - 1; i++) {
+                                    int j = i - blockSize + param.subKmerBinarySlots - 1; // index of subKmer
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[blockSize - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * param.subKmerSizeResidue;
+                                newReflexivLongArray[blockSize - 1] |= (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                                newReflexivLongArray[blockSize - 1] &= maxSubKmerBinary;
+
+                            } else { // blockSize < param.subKmerBinarySlots
+                                for (int i = 0; i < blockSize - 1; i++) {
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(2).apply(i) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(i + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivSubKmer[blockSize - 1] = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) << 2 * (31 - firstPrefixLength);
+                                newReflexivSubKmer[blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * firstPrefixLength);
+                                newReflexivSubKmer[blockSize - 1] &= maxSubKmerBinary;
+
+                                for (int i = blockSize; i < param.subKmerBinarySlots - 1; i++) {
+                                    int j = i - blockSize; // index of subKmer
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize - 1) >>> 2 * (firstPrefixLength - param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                                newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize - 1) << 2 * param.subKmerSizeResidue;
+                                newReflexivLongArray[0] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize) >>> 2 * (31 - param.subKmerSizeResidue));
+                                newReflexivLongArray[0] &= maxPrefixLengthBinary;
+                                newReflexivLongArray[0] |= (1L << 2 * firstPrefixLength);
+
+                                for (int i = 1; i < blockSize - 1; i++) {
+                                    int j = param.subKmerBinarySlots - blockSize - 1 + i;
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[blockSize - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * param.subKmerSizeResidue;
+                                newReflexivLongArray[blockSize - 1] |= (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                                newReflexivLongArray[blockSize - 1] &= maxSubKmerBinary;
+                            }
+                        } else { // firstPrefixLength < param.subKmerSizeResidue
+                            if (blockSize >= param.subKmerBinarySlots) {
+                                newReflexivSubKmer[0] =((Long) currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * (31 - firstPrefixLength);
+                                newReflexivSubKmer[0] |= ((Long) currentSubKmer.getSeq(2).apply(1) >>> 2 * firstPrefixLength);
+                                newReflexivSubKmer[0] &= maxSubKmerBinary;
+
+                                for (int i = 1; i < param.subKmerBinarySlots - 1; i++) {
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(2).apply(i) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(2).apply(i + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = (Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots - 1) << 2 * (param.subKmerSizeResidue - firstPrefixLength);
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivSubKmer[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots) >>> 2 * (31 - param.subKmerSizeResidue + firstPrefixLength));
+                                } else { // blockSize == param.subKmerBinarySlots
+                                    newReflexivSubKmer[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - param.subKmerSizeResidue + firstPrefixLength));
+                                }
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(2).apply(param.subKmerBinarySlots) >>> 2 * (31 - param.subKmerSizeResidue);
+                                } else { // blockSize == param.subKmerBinarySlots
+                                    newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - param.subKmerSizeResidue);
+                                }
+                                newReflexivLongArray[0] &= maxPrefixLengthBinary;
+                                newReflexivLongArray[0] |= (1L << 2 * firstPrefixLength);
+
+                                for (int i = 1; i < blockSize - param.subKmerBinarySlots; i++) {
+                                    int j = param.subKmerBinarySlots + i - 1;
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(2).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(2).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                if (blockSize > param.subKmerBinarySlots) {
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[blockSize - param.subKmerBinarySlots] &= maxSubKmerBinary;
+                                }
+
+                                for (int i = blockSize - param.subKmerBinarySlots + 1; i < blockSize - 1; i++) {
+                                    int j = i - blockSize + param.subKmerBinarySlots - 1; // index of subKmer
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[blockSize - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * param.subKmerSizeResidue;
+                                newReflexivLongArray[blockSize - 1] |= (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                                newReflexivLongArray[blockSize - 1] &= maxSubKmerBinary;
+
+
+                            } else { // blockSize < param.subKmerBinarySlots
+                                newReflexivSubKmer[0] = ( (Long) currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * (31 - firstPrefixLength);
+                                newReflexivSubKmer[0] |= ((Long) currentSubKmer.getSeq(2).apply(1) >>> 2 * firstPrefixLength);
+                                newReflexivSubKmer[0] &= maxSubKmerBinary;
+                                for (int i = 1; i < blockSize - 1; i++) {
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(2).apply(i) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |=( (Long) currentSubKmer.getSeq(2).apply(i + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivSubKmer[blockSize - 1] = (Long) currentSubKmer.getSeq(2).apply(blockSize - 1) << 2 * (31 - firstPrefixLength);
+                                newReflexivSubKmer[blockSize - 1] |= ((Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * firstPrefixLength);
+                                newReflexivSubKmer[blockSize - 1] &= maxSubKmerBinary;
+
+                                for (int i = blockSize; i < param.subKmerBinarySlots - 1; i++) {
+                                    int j = i - blockSize; // index of subKmer
+                                    newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * (31 - firstPrefixLength);
+                                    newReflexivSubKmer[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * firstPrefixLength);
+                                    newReflexivSubKmer[i] &= maxSubKmerBinary;
+                                }
+
+                                // newReflexivSubKmer[param.subKmerBinarySlots-1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-blockSize-1) >>> 2*(firstPrefixLength-param.subKmerSizeResidue);
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize - 1) << 2 * (param.subKmerSizeResidue - firstPrefixLength);
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize) >>> 2 * (31 - param.subKmerSizeResidue + firstPrefixLength));
+                                newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                                // newReflexivLongArray[0] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots-blockSize) << 2*param.subKmerSizeResidue;
+                                newReflexivLongArray[0] = ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - blockSize) >>> 2 * (31 - param.subKmerSizeResidue));
+                                newReflexivLongArray[0] &= maxPrefixLengthBinary;
+                                newReflexivLongArray[0] |= (1L << 2 * firstPrefixLength);
+
+                                for (int i = 1; i < blockSize - 1; i++) {
+                                    int j = param.subKmerBinarySlots - blockSize + i -1;
+                                    newReflexivLongArray[i] = (Long) currentSubKmer.getSeq(0).apply(j) << 2 * param.subKmerSizeResidue;
+                                    newReflexivLongArray[i] |= ((Long) currentSubKmer.getSeq(0).apply(j + 1) >>> 2 * (31 - param.subKmerSizeResidue));
+                                    newReflexivLongArray[i] &= maxSubKmerBinary;
+                                }
+
+                                newReflexivLongArray[blockSize - 1] = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 2) << 2 * param.subKmerSizeResidue;
+                                newReflexivLongArray[blockSize - 1] |= (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                                newReflexivLongArray[blockSize - 1] &= maxSubKmerBinary;
+                            }
+                        }
+
+                    } else { /* blockSize == 1*/
+                        if (firstPrefixLength > param.subKmerSizeResidue) {
+                            long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(0) & maxPrefixLengthBinary;
+
+                            newReflexivSubKmer[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * firstPrefixLength;
+                            newReflexivSubKmer[0] |= (((Long) currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * (31 - firstPrefixLength));
+                            newReflexivSubKmer[0] &= maxSubKmerBinary;
+
+                            for (int i = 1; i < param.subKmerBinarySlots - 1; i++) {
+                                long transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) & maxPrefixLengthBinary;
+
+                                newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * firstPrefixLength;
+                                newReflexivSubKmer[i] |= (transitBit1 << 2 * (31 - firstPrefixLength));
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = transitBit1 >>> 2*(firstPrefixLength- param.subKmerSizeResidue);
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                            newReflexivLong = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                            newReflexivLong |= (transitBit1 << 2 * param.subKmerSizeResidue);
+                            newReflexivLong &= maxPrefixLengthBinary;
+                            newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker in the front
+
+                            newReflexivLongArray[0] = newReflexivLong;
+                        } else if (firstPrefixLength == param.subKmerSizeResidue) {
+                            long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(0) & maxPrefixLengthBinary;
+
+                            newReflexivSubKmer[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * firstPrefixLength;
+                            newReflexivSubKmer[0] |= (((Long) currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * (31 - firstPrefixLength));
+                            newReflexivSubKmer[0] &= maxSubKmerBinary;
+
+                            for (int i = 1; i < param.subKmerBinarySlots - 1; i++) {
+                                long transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) & maxPrefixLengthBinary;
+
+                                newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * firstPrefixLength;
+                                newReflexivSubKmer[i] |= (transitBit1 << 2 * (31 - firstPrefixLength));
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = transitBit1;
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+                            newReflexivLong = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1);
+                            newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker
+
+                            newReflexivLongArray[0] = newReflexivLong;
+                        } else {
+                            long transitBit1 = (Long) currentSubKmer.getSeq(0).apply(0) & maxPrefixLengthBinary;
+
+                            newReflexivSubKmer[0] = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * firstPrefixLength;
+                            newReflexivSubKmer[0] |= (((Long) currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * (31 - firstPrefixLength));
+                            newReflexivSubKmer[0] &= maxSubKmerBinary;
+
+                            for (int i = 1; i < param.subKmerBinarySlots - 1; i++) {
+                                long transitBit2 = (Long) currentSubKmer.getSeq(0).apply(i) & maxPrefixLengthBinary;
+
+                                newReflexivSubKmer[i] = (Long) currentSubKmer.getSeq(0).apply(i) >>> 2 * firstPrefixLength;
+                                newReflexivSubKmer[i] |= (transitBit1 << 2 * (31 - firstPrefixLength));
+                                newReflexivSubKmer[i] &= maxSubKmerBinary;
+
+                                transitBit1 = transitBit2;
+                            }
+
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] = transitBit1 << 2 * (param.subKmerSizeResidue - firstPrefixLength);
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] |= ((Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) >>> 2 * firstPrefixLength);
+                            newReflexivSubKmer[param.subKmerBinarySlots - 1] &= maxSubKmerResidueBinary;
+
+
+                            newReflexivLong = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) & maxPrefixLengthBinary;
+                            newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker
+                            newReflexivLongArray[0] = newReflexivLong;
+                        }
+                    }
+
+                    return
+                            RowFactory.create(newReflexivSubKmer,
+                                    randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
+                            );
+                }
+
+            }
+        }
+
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
+    }
+
+    class DSLowCoverageReadDetection implements MapPartitionsFunction<String, Row>, Serializable{
+        long maxSubKmerBits= ~((~0L) << (2*param.subKmerSize));
+        int maxContigIndexBits = ~((~0) << 31);
+        Hashtable<List<Long>, Integer> probTable;
+
+        List<Row> fragmentList = new ArrayList<Row>();
+        int readLength;
+        String[] units;
+        String read;
+        char nucleotide;
+        long nucleotideInt;
+        long nucleotideIntComplement;
+
+        public DSLowCoverageReadDetection(Broadcast<Hashtable<List<Long>, Integer>> s){
+            probTable = s.value();
+        }
+
+        public Iterator<Row> call(Iterator<String> s){
+
+            while (s.hasNext()) {
+                units = s.next().split("\\n");
+                read = units[1];
+                String RCread = reverseComplement(read);
+
+                readLength = read.length();
+
+                if (readLength - param.subKmerSize<= 1) {
+                    continue;
+                }
+
+                Long nucleotideBinary = 0L;
+                Long nucleotideBinaryReverseComplement = 0L;
+
+
+                int probedContigID =-1;
+                int probedLeftIndex =-1;
+                int probedRightIndex = -1;
+
+                for (int i = 0; i < readLength; i++) {
+                    nucleotide = read.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinary <<= 2;
+                    nucleotideBinary |= nucleotideInt;
+                    if (i >= param.subKmerSize) {
+                        nucleotideBinary &= maxSubKmerBits;
+                    }
+
+                    // reach the first complete K-mer
+                    if (i >= param.subKmerSize - 1) {
+                        if (probTable.containsKey(nucleotideBinary)){
+                            int marker = (probTable.get(nucleotideBinary)& maxContigIndexBits);
+                            int direction = ((probTable.get(nucleotideBinary) >>> 31) & 1);
+/*
+                            System.out.print("find a match: ");
+
+                            for (int j=param.subKmerSize-1; j>=0; j--){
+                                long a = nucleotideBinary  >>> 2 *j;
+                                a &= 3L;
+                                char b = BinaryToNucleotide(a);
+                                System.out.print(b);
+                            }
+
+                            System.out.println(" " + marker + " " + direction);
+*/
+                            if (direction == 0) { // left extendable
+                                if (probedLeftIndex == -1) {
+                                    probedContigID = marker;
+                                    probedLeftIndex = i;
+                                }else{ // != -1 anthor left extendable, usually not possible
+                                    continue;
+                                }
+                            }else if (direction == 1){ // right extendable
+                                if (probedRightIndex == -1){
+                                    if (probedContigID == marker ){
+                                        continue;
+                                    } else{
+                                        probedRightIndex =i;
+                                    }
+                                }else { // != 1 anther right extendable, usually not possible
+                                    if (probedContigID == marker ){
+                                        continue;
+                                    } else{
+                                        probedRightIndex =i;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (probedLeftIndex >=0 && probedRightIndex >=0 && probedLeftIndex < probedRightIndex){
+                    String lowCoverageFragment = read.substring(probedLeftIndex-param.subKmerSize+1, probedRightIndex+1);
+                    System.out.println("forward: " + lowCoverageFragment);
+                    fragmentList.add(
+                            reflexivKmerExtractionFromLowCoverageFragment(lowCoverageFragment)
+                    );
+                }
+
+                probedLeftIndex =-1;
+                probedRightIndex =-1;
+                probedContigID =-1;
+
+                for (int i = 0; i < readLength; i++) {
+                    nucleotide = RCread.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinaryReverseComplement <<= 2;
+                    nucleotideBinaryReverseComplement |= nucleotideInt;
+                    if (i >= param.subKmerSize) {
+                        nucleotideBinaryReverseComplement &= maxSubKmerBits;
+                    }
+
+                    // reach the first complete K-mer
+                    if (i >= param.subKmerSize - 1) {
+                        if (probTable.containsKey(nucleotideBinaryReverseComplement)){
+                            int marker = (probTable.get(nucleotideBinaryReverseComplement) & maxContigIndexBits);
+                            int direction = ((probTable.get(nucleotideBinaryReverseComplement) >>> 31) & 1);
+/*
+                            System.out.print("find a RC match: ");
+
+                            for (int j=param.subKmerSize-1; j>=0; j--){
+                                long a = nucleotideBinaryReverseComplement  >>> 2 *j;
+                                a &= 3L;
+                                char b = BinaryToNucleotide(a);
+                                System.out.print(b);
+                            }
+
+                            System.out.println(" " + marker + " " + direction);
+*/
+                            if (direction == 0) { // left extendable
+                                if (probedLeftIndex == -1) {
+                                    probedContigID = marker ;
+                                    probedLeftIndex = i;
+                                }else{ // != -1 anthor left extendable, usually not possible
+                                    continue;
+                                }
+                            }else if (direction == 1){ // right extendable
+                                if (probedRightIndex == -1){
+                                    if (probedContigID == marker ){
+                                        continue;
+                                    } else{
+                                        probedRightIndex =i;
+                                    }
+                                }else { // != 1 anther right extendable, usually not possible
+                                    if (probedContigID == marker ){
+                                        continue;
+                                    } else{
+                                        probedRightIndex =i;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (probedLeftIndex >=0 && probedRightIndex >=0 && probedLeftIndex < probedRightIndex){
+                    String lowCoverageRCFragment = RCread.substring(probedLeftIndex-param.subKmerSize+1, probedRightIndex+1);
+                    System.out.println("RC: " + lowCoverageRCFragment);
+                    fragmentList.add(
+                            reflexivKmerExtractionFromLowCoverageFragment(lowCoverageRCFragment)
+                    );
+                }
+
+            }
+            return fragmentList.iterator();
+        }
+
+        private String reverseComplement(String forward){
+            String reverseComplementNucleotides;
+
+
+            char[] nucleotides = forward.toCharArray();
+            int nucleotideNum = nucleotides.length;
+            char[] nucleotidesRC = new char[nucleotideNum];
+
+            for (int i=0; i<nucleotideNum; i++){
+                nucleotidesRC[nucleotideNum-i-1] = complementary(nucleotides[i]);
+            }
+
+            reverseComplementNucleotides = new String(nucleotidesRC);
+            return reverseComplementNucleotides;
+        }
+
+        private char complementary (char a){
+            if (a == 'A' || a == 'a'){
+                return 'T';
+            }else if (a == 'T' || a == 't' || a == 'U' || a == 'u'){
+                return 'A';
+            }else if (a == 'C' || a == 'c'){
+                return 'G';
+            }else if (a == 'G' || a == 'g'){
+                return 'C';
+            }else {
+                return 'N';
+            }
+        }
+
+        private Row reflexivKmerExtractionFromLowCoverageFragment(String s){
+            int remain = s.length() - param.subKmerSize;
+            long nucleotideBinary=0L;
+            long[] remainNucleotidesArray = new long[remain/31+1];
+            int firstBlock = remain % 31;
+            long maxFirstBlockBinary = ~((~0L) << (2 * firstBlock));
+            char nucleotideNT;
+            long nucleotideNTInt;
+
+            for (int i = 0; i < param.subKmerSize; i++){
+                nucleotideNT = s.charAt(i);
+                if (nucleotideNT >= 256) nucleotideNT = 255;
+                nucleotideNTInt = nucleotideValue(nucleotideNT);
+                // forward kmer in bits
+                nucleotideBinary <<= 2;
+                nucleotideBinary |= nucleotideNTInt;
+            }
+
+            for (int i = param.subKmerSize; i < s.length(); i++){
+                nucleotideNT = s.charAt(i);
+                if (nucleotideNT >= 256) nucleotideNT = 255;
+                nucleotideNTInt = nucleotideValue(nucleotideNT);
+
+                if (i-param.subKmerSize - firstBlock >=0) {
+                    remainNucleotidesArray[((i - param.subKmerSize - firstBlock) / 31)+1] <<= 2;
+                    remainNucleotidesArray[((i - param.subKmerSize - firstBlock) / 31)+1] |= nucleotideNTInt;
+                }else {
+                    remainNucleotidesArray[0] <<=2;
+                    remainNucleotidesArray[0] |= nucleotideNTInt;
+                }
+
+                if (i-param.subKmerSize == firstBlock-1){
+                    remainNucleotidesArray[0] &= maxFirstBlockBinary;
+                    remainNucleotidesArray[0] |= (1L << 2*firstBlock); // add C markers in front
+                }
+            }
+/*
+            System.out.print("binarized: ");
+
+            for (int i=param.subKmerSize-1; i>=0; i--){
+                long a = nucleotideBinary  >>> 2 *i;
+                a &= 3L;
+                char b = BinaryToNucleotide(a);
+                System.out.print(b);
+            }
+
+            for (int i=firstBlock-1; i>=0; i--){
+                long a = remainNucleotidesArray[0]  >>> 2 *i;
+                a &= 3L;
+                char b = BinaryToNucleotide(a);
+                System.out.print(b);
+            }
+
+            for (int i=30; i>=0; i--){
+                long a = remainNucleotidesArray[1]  >>> 2 *i;
+                a &= 3L;
+                char b = BinaryToNucleotide(a);
+                System.out.print(b);
+            }
+
+            System.out.println();
+*/
+            return RowFactory.create(nucleotideBinary,
+                    1, remainNucleotidesArray, -10000000, -10000000
+            );
+        }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+    }
+
+
     /**
      * interface class for RDD implementation, used in step 5
      */
@@ -821,6 +1879,9 @@ public class ReflexivDSMain64 implements Serializable {
                     //     subString += ">----<";
                 }
 
+                int length = subKmer.length() + subString.length();
+                System.out.println("Length: " + length + " " + s.getInt(3) + " " + s.getInt(4));
+
                 reflexivKmerStringList.add(
                         RowFactory.create(subKmer,
                                 s.getInt(1), subString, s.getInt(3), s.getInt(4)
@@ -896,6 +1957,7 @@ public class ReflexivDSMain64 implements Serializable {
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
+
             /* receive the first sub-kmer, set new units */
                 if (lineMarker == 1) {
                     resetSubKmerGroup(s);
@@ -972,8 +2034,8 @@ public class ReflexivDSMain64 implements Serializable {
                                             reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s.getInt(4) - tmpBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(4) - currentBlockSize >= 0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(4) - currentBlockSize);
+                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(3) - currentBlockSize >= 0) {
+                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(3) - currentBlockSize);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
                                         } else {
@@ -1278,77 +2340,6 @@ public class ReflexivDSMain64 implements Serializable {
                         }
                     }
 
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivSubKmer.length >=4){
-                        for (int k = 16; k >= 0; k--) {
-                            long a = newReflexivSubKmer[3] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivLongArray.length >=2){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[1] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=4){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[3] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-                    */
-
-                 //   System.out.println(" DSExtendReflexivKmerToArrayLoop random " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
@@ -1357,77 +2348,6 @@ public class ReflexivDSMain64 implements Serializable {
                     );
                 } else {
 
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(0).apply(0)>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(0).apply(1)>>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(0).apply(2)>>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=4){
-                        for (int k = 16; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(0).apply(3)>>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(2).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivLongArray.length >=2){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(1) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=4){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(3) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-                    */
-
-             //       System.out.println(" DSExtendReflexivKmerToArrayLoop random same " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(currentSubKmer);
                 }
@@ -1439,76 +2359,6 @@ public class ReflexivDSMain64 implements Serializable {
 
 
                 if (randomReflexivMarker == 2) {
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(0).apply(0)>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(0).apply(1)>>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(0).apply(2)>>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=4){
-                        for (int k = 16; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(0).apply(3)>>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long)currentSubKmer.getSeq(2).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivLongArray.length >=2){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(1) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=4){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = (Long)currentSubKmer.getSeq(2).apply(3) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-                */
-               //     System.out.println(" DSExtendReflexivKmerToArrayLoop random same " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(currentSubKmer);
                 } else { /* randomReflexivMarker == 1 */
@@ -1770,76 +2620,6 @@ public class ReflexivDSMain64 implements Serializable {
                             newReflexivLongArray[0] = newReflexivLong;
                         }
                     }
-/*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivSubKmer.length >=4){
-                        for (int k = 16; k >= 0; k--) {
-                            long a = newReflexivSubKmer[3] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivLongArray.length >=2){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[1] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=3){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    if (newReflexivLongArray.length >=4){
-                        for (int k = 30; k >= 0; k--) {
-                            long a = newReflexivLongArray[3] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-*/
-                  //  System.out.println(" DSExtendReflexivKmerToArrayLoop random " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
@@ -2341,76 +3121,6 @@ public class ReflexivDSMain64 implements Serializable {
                     }
                 }
             }
-/*
-
-            for (int k = 30; k >= 0; k--) {
-                long a = newReflexivSubKmer[0] >> 2 * k;
-                a &= 3L;
-                char b = BinaryToNucleotide(a);
-                System.out.print(b);
-            }
-
-            for (int k = 30; k >= 0; k--) {
-                long a = newReflexivSubKmer[1] >>> 2 * k;
-                a &= 3L;
-                char b = BinaryToNucleotide(a);
-                System.out.print(b);
-            }
-
-            if (newReflexivSubKmer.length >=3){
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivSubKmer[2] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-            }
-
-            if (newReflexivSubKmer.length >=4){
-                for (int k = 16; k >= 0; k--) {
-                    long a = newReflexivSubKmer[3] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-            }
-
-            System.out.print(" ");
-            for (int k = 30; k >= 0; k--) {
-                long a = newReflexivLongArray[0] >>> 2 * k;
-                a &= 3L;
-                char b = BinaryToNucleotide(a);
-                System.out.print(b);
-            }
-
-            if (newReflexivLongArray.length >=2){
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivLongArray[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-            }
-
-            if (newReflexivLongArray.length >=3){
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivLongArray[2] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-            }
-
-            if (newReflexivLongArray.length >=4){
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivLongArray[3] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-            }
-*/
-           // System.out.println(" DSExtendReflexivKmerToArrayLoop extend 2");
 
 
             Row newReflectedKmer;
@@ -2524,6 +3234,8 @@ public class ReflexivDSMain64 implements Serializable {
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
+
+
             /* receive the first sub-kmer, set new units */
                 if (lineMarker == 1) {
                     resetSubKmerGroup(s);
@@ -2595,8 +3307,8 @@ public class ReflexivDSMain64 implements Serializable {
                                             reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s.getInt(4) - tmpReflexivKmerSuffixLength);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(4) - currentReflexivKmerSuffixLength >= 0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(4) - currentReflexivKmerSuffixLength);
+                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(3) - currentReflexivKmerSuffixLength >= 0) {
+                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(3) - currentReflexivKmerSuffixLength);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
                                         } else {
@@ -2737,39 +3449,6 @@ public class ReflexivDSMain64 implements Serializable {
                         newReflexivLongArray[0] = newReflexivLong;
                     }
 
-/*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-*/
-                  //  System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
@@ -2779,39 +3458,6 @@ public class ReflexivDSMain64 implements Serializable {
                 } else {
                     newReflexivLongArray = new long[1];
                     newReflexivLongArray[0] = currentSubKmer.getLong(2);
-/*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(1) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = (Long) currentSubKmer.getSeq(0).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-*/
-                //    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(currentSubKmer.getSeq(0),
@@ -2828,42 +3474,6 @@ public class ReflexivDSMain64 implements Serializable {
                 if (randomReflexivMarker == 2) {
                     newReflexivLongArray = new long[1];
                     newReflexivLongArray[0] = currentSubKmer.getLong(2);
-
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(1) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = (Long) currentSubKmer.getSeq(0).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                    */
-
-                //    System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
-
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(currentSubKmer.getSeq(0),
@@ -2947,41 +3557,6 @@ public class ReflexivDSMain64 implements Serializable {
                         newReflexivLong |= (1L << 2 * currentPrefixLength); // add C marker
                         newReflexivLongArray[0] = newReflexivLong;
                     }
-
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLongArray[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                    */
-
-                 //   System.out.println(" DSExtendReflexivKmerToArrayFirstTime random " + randomReflexivMarker);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer,
@@ -3129,41 +3704,6 @@ public class ReflexivDSMain64 implements Serializable {
                         newReflexivLongArray[0] |= transitBit2;
                     }
                 }
-
-/*
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivSubKmer[0] >> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivSubKmer[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (newReflexivSubKmer.length >=3){
-                    for (int k = 5; k >= 0; k--) {
-                        long a = newReflexivSubKmer[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                System.out.print(" ");
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivLongArray[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-                */
-
-            //    System.out.println(" DSExtendReflexivKmerToArrayFirstTime extend 1");
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -3318,41 +3858,6 @@ public class ReflexivDSMain64 implements Serializable {
                         newForwardLongArray[0] |= (1L << 2 * concatenateLength);
                     }
                 }
-                /*
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardSubKmer[0] >> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardSubKmer[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (newForwardSubKmer.length >=3){
-                    for (int k = 5; k >= 0; k--) {
-                        long a = newForwardSubKmer[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                System.out.print(" ");
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardLongArray[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-                */
-
-             //   System.out.println(" DSExtendReflexivKmerToArrayFirstTime extend 2");
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -3461,6 +3966,7 @@ public class ReflexivDSMain64 implements Serializable {
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
+
             /* receive the first sub-kmer, set new units */
                 if (lineMarker == 1) {
                     resetSubKmerGroup(s);
@@ -3532,8 +4038,8 @@ public class ReflexivDSMain64 implements Serializable {
                                             reflexivExtend(tmpReflexivKmerExtendList.get(i), s, s.getInt(4) - tmpReflexivKmerSuffixLength);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
-                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(4) - currentReflexivKmerSuffixLength >= 0) {
-                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(4) - currentReflexivKmerSuffixLength);
+                                        } else if (tmpReflexivKmerExtendList.get(i).getInt(3) >= 0 && tmpReflexivKmerExtendList.get(i).getInt(3) - currentReflexivKmerSuffixLength >= 0) {
+                                            reflexivExtend(tmpReflexivKmerExtendList.get(i), s, tmpReflexivKmerExtendList.get(i).getInt(3) - currentReflexivKmerSuffixLength);
                                             tmpReflexivKmerExtendList.remove(i); /* already extended */
                                             break;
                                         } else {
@@ -3673,81 +4179,10 @@ public class ReflexivDSMain64 implements Serializable {
                         newReflexivLong |= (1L << 2 * currentSuffixLength); // add C marker
                     }
 
-/*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLong >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-*/
-                 //   System.out.println(" DSExtendReflexivKmer random " + randomReflexivMarker + " " + currentSubKmer.getInt(3) + " " + currentSubKmer.getInt(4));
-
-
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer, randomReflexivMarker, newReflexivLong, currentSubKmer.getInt(3), currentSubKmer.getInt(4))
                     );
                 } else {
-
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(1) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = (Long) currentSubKmer.getSeq(0).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = currentSubKmer.getLong(2) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-*/
-                 //   System.out.println(" DSExtendReflexivKmer random " + randomReflexivMarker + " " + currentSubKmer.getInt(3) + " " + currentSubKmer.getInt(4));
-
                     reflexivKmerConcatList.add(currentSubKmer);
                 }
             } else { /* currentSubKmer._2._1() == 2 */
@@ -3758,40 +4193,6 @@ public class ReflexivDSMain64 implements Serializable {
 
 
                 if (randomReflexivMarker == 2) {
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(0) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = (Long) currentSubKmer.getSeq(0).apply(1) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (currentSubKmer.getSeq(0).length() >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = (Long) currentSubKmer.getSeq(0).apply(2) >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = currentSubKmer.getLong(2) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                    */
-
-                 //   System.out.println(" DSExtendReflexivKmer random " + randomReflexivMarker + " " + currentSubKmer.getInt(3) + " " + currentSubKmer.getInt(4));
 
                     reflexivKmerConcatList.add(currentSubKmer);
                 } else { /* randomReflexivMarker == 1 */
@@ -3866,41 +4267,6 @@ public class ReflexivDSMain64 implements Serializable {
                         newReflexivLong = (Long) currentSubKmer.getSeq(0).apply(param.subKmerBinarySlots - 1) & maxSuffixLengthBinary;
                         newReflexivLong |= (1L << 2 * currentPrefixLength); // add C marker
                     }
-
-                    /*
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[0] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivSubKmer[1] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-
-                    if (newReflexivSubKmer.length >=3) {
-                        for (int k = 5; k >= 0; k--) {
-                            long a = newReflexivSubKmer[2] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                    }
-
-                    System.out.print(" ");
-                    for (int k = 30; k >= 0; k--) {
-                        long a = newReflexivLong >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                    */
-
-                 //   System.out.println(" DSExtendReflexivKmer random " + randomReflexivMarker + " " + currentSubKmer.getInt(3) + " " + currentSubKmer.getInt(4));
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer, randomReflexivMarker, newReflexivLong, currentSubKmer.getInt(3), currentSubKmer.getInt(4))
@@ -4010,40 +4376,6 @@ public class ReflexivDSMain64 implements Serializable {
                     //newReflexivLong |= (1L<<2*forwardSuffixLength); // add C marker
                 }
 
-                /*
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivSubKmer[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivSubKmer[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (newReflexivSubKmer.length >=3) {
-                    for (int k = 5; k >= 0; k--) {
-                        long a = newReflexivSubKmer[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                System.out.print(" ");
-                for (int k = 30; k >= 0; k--) {
-                    long a = newReflexivLong >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-                */
-
-            //    System.out.println(" DSExtendReflexivKmer extend " + randomReflexivMarker);
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -4137,41 +4469,6 @@ public class ReflexivDSMain64 implements Serializable {
                     newForwardLong <<= 2 * forwardSuffixLength;
                     newForwardLong |= (forwardSubKmer.getLong(2) & maxSuffixLengthBinary);
                 }
-                /*
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardSubKmer[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardSubKmer[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (newForwardSubKmer.length >=3) {
-                    for (int k = 5; k >= 0; k--) {
-                        long a = newForwardSubKmer[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                System.out.print(" ");
-                for (int k = 30; k >= 0; k--) {
-                    long a = newForwardLong >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-                */
-
-             //   System.out.println(" DSExtendReflexivKmer extend " + randomReflexivMarker);
 
                 if (bubbleDistance < 0) {
                     reflexivKmerConcatList.add(
@@ -4319,14 +4616,14 @@ public class ReflexivDSMain64 implements Serializable {
                 Row subKmer = s.next();
                 if (HighCoverageSubKmer.size() == 0) {
                     HighCoverageSubKmer.add(
-                            RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1)
+                            RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1-subKmer.getInt(3))
                     );
                 } else {
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
                         if (subKmer.getInt(3) > HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getInt(3)) {
                             if (HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getInt(3) <= param.minErrorCoverage && subKmer.getInt(3) >= 2 * HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getInt(3)) {
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1)
+                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1-subKmer.getInt(3))
                                 );
                             } else {
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
@@ -4348,7 +4645,7 @@ public class ReflexivDSMain64 implements Serializable {
                             if (subKmer.getInt(3) <= param.minErrorCoverage && HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getInt(3) >= 2 * subKmer.getInt(3)) {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1)
+                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1-subKmer.getInt(3))
                                 );
                             } else {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
@@ -4359,7 +4656,7 @@ public class ReflexivDSMain64 implements Serializable {
                         }
                     } else {
                         HighCoverageSubKmer.add(
-                                RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1)
+                                RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), -1-subKmer.getInt(3))
                         );
                     }
                 }
@@ -4460,7 +4757,7 @@ public class ReflexivDSMain64 implements Serializable {
                 if (HighCoverageSubKmer.size() == 0) {
                     HighCoverLastCoverage = subKmer.getInt(3);
                     HighCoverageSubKmer.add(
-                            RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), -1, subKmer.getInt(4))
+                            RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), -1-subKmer.getInt(3), subKmer.getInt(4))
                     );
                 } else {
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
@@ -4468,7 +4765,7 @@ public class ReflexivDSMain64 implements Serializable {
                             if (HighCoverLastCoverage <= param.minErrorCoverage && subKmer.getInt(3) >= 2 * HighCoverLastCoverage) {
                                 HighCoverLastCoverage = subKmer.getInt(3);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
-                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), -1, subKmer.getInt(4))
+                                        RowFactory.create(subKmer.getSeq(0), subKmer.getInt(1), subKmer.getLong(2), -1-subKmer.getInt(3), subKmer.getInt(4))
                                 );
                             } else {
                                 HighCoverLastCoverage = subKmer.getInt(3);
@@ -4499,7 +4796,7 @@ public class ReflexivDSMain64 implements Serializable {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
-                                                subKmer.getInt(1), subKmer.getLong(2), -1, subKmer.getInt(4))
+                                                subKmer.getInt(1), subKmer.getLong(2), subKmer.getInt(3), subKmer.getInt(4))
                                 );
                             } else {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
@@ -4513,7 +4810,7 @@ public class ReflexivDSMain64 implements Serializable {
                         HighCoverLastCoverage = subKmer.getInt(3);
                         HighCoverageSubKmer.add(
                                 RowFactory.create(subKmer.getSeq(0),
-                                        subKmer.getInt(1), subKmer.getLong(2), -1, subKmer.getInt(4))
+                                        subKmer.getInt(1), subKmer.getLong(2), -1-subKmer.getInt(3), subKmer.getInt(4))
                         );
                     }
                 }
@@ -4566,34 +4863,6 @@ public class ReflexivDSMain64 implements Serializable {
                     }
                     prefixBinarySlot[param.kmerBinarySlotsAssemble - 1] = ((long[]) kmerTuple.get(0))[param.kmerBinarySlotsAssemble - 1] >>> 2;
                 }
-
-/*
-                for (int k = 30; k >= 0; k--) {
-                    long a = prefixBinarySlot[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = prefixBinarySlot[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (prefixBinarySlot.length>=3) {
-                    for (int k = 5; k >= 0; k--) {
-                        long a = prefixBinarySlot[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-                */
-
-             //   System.out.println(" " + suffixBinary + "DSForwardSubKmerExtraction");
 
                 TupleList.add(
                         RowFactory.create(prefixBinarySlot, 1, suffixBinary, kmerTuple.getInt(1), kmerTuple.getInt(1))
@@ -4666,69 +4935,6 @@ public class ReflexivDSMain64 implements Serializable {
                     transmitBit1 = transmitBit2;
                 }
 
-                /*
-                for (int k = 30; k >= 0; k--) {
-                    long a = (Long) kmerTuple.getSeq(0).apply(0) >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = (Long) kmerTuple.getSeq(0).apply(1) >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (prefixBinarySlot.length >=3){
-                    for (int k = 5; k >= 0; k--) {
-                        long a = (Long) kmerTuple.getSeq(0).apply(2) >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-              //  System.out.println();
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = prefixBinarySlot[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = prefixBinarySlot[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (prefixBinarySlot.length >=3){
-                    for (int k = 5; k >= 0; k--) {
-                        long a = prefixBinarySlot[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                System.out.print(" ");
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = suffixBinary >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-                */
-
-             //   System.out.println(" DSReflectedSubKmerExtractionFromForward");
-
                 TupleList.add(
                         RowFactory.create(prefixBinarySlot, 2, suffixBinary, kmerTuple.getInt(3), kmerTuple.getInt(4))
                 );
@@ -4768,6 +4974,7 @@ public class ReflexivDSMain64 implements Serializable {
 
                 singleKmerRandomizer(kmerTuple);
             }
+
             return reflexivKmerConcatList.iterator();
         }
 
@@ -5012,77 +5219,6 @@ public class ReflexivDSMain64 implements Serializable {
                 kmerList.add(RowFactory.create(forwardKmer, kmerTuple.getInt(1)));
                 kmerList.add(RowFactory.create(reverseComplement, kmerTuple.getInt(1)));
 
-                /*
-                for (int k = 30; k >= 0; k--) {
-                    long a = forwardKmer[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = forwardKmer[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (forwardKmer.length >=3) {
-                    for (int k = 6; k >= 0; k--) {
-                        long a = forwardKmer[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                if (forwardKmer.length>=4) {
-                    for (int k = 0; k >= 0; k--) {
-                        long a = forwardKmer[3] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-             //   System.out.println();
-
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = reverseComplement[0] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                for (int k = 30; k >= 0; k--) {
-                    long a = reverseComplement[1] >>> 2 * k;
-                    a &= 3L;
-                    char b = BinaryToNucleotide(a);
-                    System.out.print(b);
-                }
-
-                if (reverseComplement.length >=3) {
-                    for (int k = 6; k >= 0; k--) {
-                        long a = reverseComplement[2] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-
-                if (forwardKmer.length>=4) {
-                    for (int k = 30; k >= 0; k--) {
-                        long a = reverseComplement[3] >>> 2 * k;
-                        a &= 3L;
-                        char b = BinaryToNucleotide(a);
-                        System.out.print(b);
-                    }
-                }
-                */
-
-             //   System.out.println();
-             //   System.out.println();
             }
 
             return kmerList.iterator();
@@ -5235,7 +5371,6 @@ public class ReflexivDSMain64 implements Serializable {
                 read = units[1];
                 readLength = read.length();
 
-                //            System.out.println(read);
 
                 if (readLength - param.kmerSize - param.endClip +1 <= 0 || param.frontClip > readLength) {
                     continue;
@@ -5353,106 +5488,7 @@ public class ReflexivDSMain64 implements Serializable {
                     // reach the first complete K-mer
                     if (i - param.frontClip >= param.kmerSize - 1) {
 
-/*
-                        for (int k=31; k>=0;k--){
-                            long a = nucleotideBinarySlot[0] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
 
-                       // System.out.println();
-
-                        for (int k=31; k>=0;k--){
-                            long a = nucleotideBinarySlot[1] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                      //  System.out.println();
-
-                        for (int k=31; k>=0;k--){
-                            long a = nucleotideBinarySlot[2] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-                        for (int k=31; k>=0;k--){
-                            long a = nucleotideBinarySlot[3] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-                        for (int k=31; k>=0;k--){
-                            long a = nucleotideBinarySlot[4] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-                        for (int k=30; k>=0;k--){
-                            long a = nucleotideBinarySlot[5] >>> 2*k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-
-                        System.out.println();
-
-                        for (int k = 31; k >= 0; k--) {
-                            long a = nucleotideBinaryReverseComplementSlot[0] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-                     //   System.out.println();
-
-
-                            for (int k = 31; k >= 0; k--) {
-                                long a = nucleotideBinaryReverseComplementSlot[1] >>> 2 * k;
-                                a &= 3L;
-                                char b = BinaryToNucleotide(a);
-                                System.out.print(b);
-                            }
-                  //          System.out.println();
-
-                            for (int k = 31; k >= 0; k--) {
-                                long a = nucleotideBinaryReverseComplementSlot[2] >>> 2 * k;
-                                a &= 3L;
-                                char b = BinaryToNucleotide(a);
-                                System.out.print(b);
-                            }
-
-                        for (int k = 31; k >= 0; k--) {
-                            long a = nucleotideBinaryReverseComplementSlot[3] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-                        for (int k = 31; k >= 0; k--) {
-                            long a = nucleotideBinaryReverseComplementSlot[4] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-                        for (int k = 30; k >= 0; k--) {
-                            long a = nucleotideBinaryReverseComplementSlot[5] >>> 2 * k;
-                            a &= 3L;
-                            char b = BinaryToNucleotide(a);
-                            System.out.print(b);
-                        }
-
-
-
-
-                            System.out.println();
-                            System.out.println();
-                            */
 
 
                         if (compareLongArrayBlocks(nucleotideBinarySlot, nucleotideBinaryReverseComplementSlot) == true) {

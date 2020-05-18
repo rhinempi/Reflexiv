@@ -80,9 +80,9 @@ public class DefaultParam implements Serializable{
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
     public int minKmerCoverage = 2;
-    public int maxKmerCoverage = 100000;
-    public int minErrorCoverage = minKmerCoverage; // equal to minKmerCoverage
-    public int minContig = 100;
+    public int maxKmerCoverage = 10000000;
+    public int minErrorCoverage = minKmerCoverage * 6; // equal to minKmerCoverage
+    public int minContig = 300;
     public boolean bubble= true;
 
     public boolean cache = false;
@@ -101,6 +101,10 @@ public class DefaultParam implements Serializable{
     public int searchableLength= 3000;
 
     public int scramble = 2;
+
+    public boolean RCmerge = true;
+
+    public boolean mercy = true;
 
 
     public void setAllbyKmerSize(int k){
@@ -173,6 +177,10 @@ public class DefaultParam implements Serializable{
         minErrorCoverage = s;
     }
 
+    public void setMinKmerCoverage(int s){
+        minKmerCoverage = s;
+    }
+
     /**
      * This method initiates the overlap between k-mers.
      *
@@ -200,5 +208,21 @@ public class DefaultParam implements Serializable{
 
     public void setGzip(boolean c){
         gzip = c;
+    }
+
+    public void setMinContig(int c){
+        minContig =c;
+    }
+
+    public void setPartitions(int c){
+        partitions = c;
+    }
+
+    public void setShufflePartition(int c){
+        shufflePartition =c;
+    }
+
+    public void setRCmerge(boolean c){
+        RCmerge = c;
     }
 }

@@ -68,9 +68,11 @@ public class Parameter {
     private static final String
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
+            INPUT_CONTIG= "contig",
             INPUT_KMER= "kmerc",
             OUTPUT_FILE = "outfile",
             KMER_SIZE = "kmer",
+            OUTPUT_CODEC="gzip",
             OVERLAP = "overlap",
             MINITERATIONS = "miniter",
             MAXITERATIONS = "maxiter",
@@ -80,6 +82,7 @@ public class Parameter {
             MAXCOVER= "maxcov",
             MINERROR= "error",
             BUBBLE = "bubble",
+            MERCY = "mercy",
             MINLENGTH = "minlength",
             MINCONTIG = "mincontig",
             PARTITIONS = "partition",
@@ -99,6 +102,7 @@ public class Parameter {
 
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
+        parameterMap.put(INPUT_CONTIG, o++);
         parameterMap.put(INPUT_KMER, o++);
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(KMER_SIZE, o++);
@@ -114,7 +118,9 @@ public class Parameter {
         parameterMap.put(MINCONTIG, o++);
         parameterMap.put(PARTITIONS, o++);
         parameterMap.put(SHUFFLEPARTITIONS, o++);
+        parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(BUBBLE, o++);
+        parameterMap.put(MERCY, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
         parameterMap.put(HELP2, o++);
@@ -136,6 +142,10 @@ public class Parameter {
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
                 .create(INPUT_FASTA));
 
+        parameter.addOption(OptionBuilder.withArgName("input contig file")
+                .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
+                .create(INPUT_CONTIG));
+
         parameter.addOption(OptionBuilder.withArgName("input Kmer file")
                 .hasArg().withDescription("Input counted kmer file, tabular file format or spark RDD pair text file")
                 .create(INPUT_KMER));
@@ -155,6 +165,14 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("remove bubbles")
                 .hasArg(false).withDescription("Set to NOT remove bubbles.")
                 .create(BUBBLE));
+
+        parameter.addOption(OptionBuilder.withArgName("without mercy k-mer")
+                .hasArg(false).withDescription("Set to DISable mercy k-mer.")
+                .create(MERCY));
+
+        parameter.addOption(OptionBuilder.withArgName("output compression")
+                .hasArg(false).withDescription("Set to compress output files")
+                .create(OUTPUT_CODEC));
 
         parameter.addOption(OptionBuilder.withArgName("minimum iterations")
                 .hasArg().withDescription("Minimum iterations for contig construction")
@@ -260,6 +278,10 @@ public class Parameter {
                 System.exit(0);
             }
 
+            if (cl.hasOption(OUTPUT_CODEC)) {
+                param.gzip =true;
+            }
+
 			/* Checking all parameters */
 
             String value;
@@ -310,6 +332,14 @@ public class Parameter {
 
             if (cl.hasOption(BUBBLE)){
                 param.bubble =false;
+            }
+
+            if (cl.hasOption(MERCY)){
+                param.mercy = false;
+            }
+
+            if (cl.hasOption(CACHE)){
+                param.cache = true;
             }
 
             if ((value = cl.getOptionValue(MINITERATIONS)) != null){
@@ -386,6 +416,7 @@ public class Parameter {
             }
 
             if ((value = cl.getOptionValue(MINCONTIG)) != null){
+
                 if (Integer.decode(value) >= 0 ){
                     param.minContig = Integer.decode(value);
                 }else{
@@ -406,6 +437,16 @@ public class Parameter {
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");
             }
 
+            // both kmer count and input fastq exist, input fastq will be used for mercy k-mer
+            if (cl.getOptionValue(INPUT_KMER) != null &&  cl.getOptionValue(INPUT_FASTQ) != null) {
+                param.inputKmerPath = cl.getOptionValue(INPUT_KMER);
+                param.inputFqPath = cl.getOptionValue(INPUT_FASTQ);
+            }
+
+            if (cl.getOptionValue(INPUT_CONTIG) !=null){
+                param.inputContigPath = cl.getOptionValue(INPUT_CONTIG);
+            }
+
             if ((value = cl.getOptionValue(OUTPUT_FILE)) != null){
                 param.outputPath = value;
             }else{
@@ -417,16 +458,16 @@ public class Parameter {
             if (outfile.exists()) {
                 info.readParagraphedMessages("Output file : \n\t" + param.outputPath + "\nalready exists, will be overwrite.");
                 info.screenDump();
-                Runtime.getRuntime().exec("rm -rf " + param.outputPath);
+               // Runtime.getRuntime().exec("rm -rf " + param.outputPath);
             }
 
 
-        } catch (IOException e) { // Don`t catch this, NaNaNaNa, U can`t touch this.
+        } /*catch (IOException e) { // Don`t catch this, NaNaNaNa, U can`t touch this.
             info.readMessage("Parameter settings incorrect.");
             info.screenDump();
             e.printStackTrace();
             System.exit(0);
-        } catch (RuntimeException e) {
+        }*/ catch (RuntimeException e) {
             info.readMessage("Parameter settings incorrect.");
             info.screenDump();
             e.printStackTrace();
