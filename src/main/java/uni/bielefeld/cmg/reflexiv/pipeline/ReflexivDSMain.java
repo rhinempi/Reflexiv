@@ -22,6 +22,7 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.ArrayType;
 import scala.Tuple2;
 import scala.Tuple4;
+import scala.collection.Seq;
 import scala.collection.mutable.HashTable;
 import scala.reflect.ClassTag;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
@@ -604,10 +605,10 @@ public class ReflexivDSMain implements Serializable{
         }
 
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-/*
+
         if (param.mercy==true) {
 
-  //          ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.localCheckpoint();
+            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.localCheckpoint();
 
             DSLowCoverageSubKmerExtraction lowCoverageSubKmerExtractor = new DSLowCoverageSubKmerExtraction();
 
@@ -637,6 +638,22 @@ public class ReflexivDSMain implements Serializable{
             }
 
             ReflexivLongFragmentDS = FastqDS.mapPartitions(LowCoverageReadDetector, ReflexivLongKmerEncoder);
+            ReflexivLongFragmentDS = ReflexivLongFragmentDS.cache(); // remove after
+
+            ReflexivLongFragmentDS = ReflexivLongFragmentDS.sort("k-1");
+            long beforeFilter = ReflexivLongFragmentDS.count();
+            System.out.println("mark before low cover filter: " + beforeFilter);
+
+            DSFilterRepeatLowCoverageFragment repeatLowCoverageFragmentFilter = new DSFilterRepeatLowCoverageFragment();
+            ReflexivLongFragmentDS = ReflexivLongFragmentDS.mapPartitions(repeatLowCoverageFragmentFilter, ReflexivLongKmerEncoder);
+
+            ReflexivLongFragmentDS = ReflexivLongFragmentDS.sort("k-1");
+            long middleFilter = ReflexivLongFragmentDS.count();
+            System.out.println("mark middle low cover filter: " + middleFilter);
+
+            ReflexivLongFragmentDS = ReflexivLongFragmentDS.mapPartitions(repeatLowCoverageFragmentFilter, ReflexivLongKmerEncoder);
+            long afterFilter = ReflexivLongFragmentDS.count();
+            System.out.println("mark after low cover filter: " + afterFilter);
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.union(ReflexivLongFragmentDS);
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
@@ -652,7 +669,7 @@ public class ReflexivDSMain implements Serializable{
                         /**
                          *  problem ------------------------------------------v
                          */
-        /*
+
                         ReflexivLongSubKmerDS.cache();
                         long currentContigNumber = ReflexivLongSubKmerDS.count();
                         if (contigNumber == currentContigNumber) {
@@ -677,7 +694,7 @@ public class ReflexivDSMain implements Serializable{
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
         }
-*/
+
         /**
          *
          */
@@ -925,6 +942,295 @@ public class ReflexivDSMain implements Serializable{
     /**
      *
      */
+
+    class DSFilterRepeatLowCoverageFragment implements MapPartitionsFunction<Row, Row>, Serializable {
+
+        /* marker to identify similar SubKmers in the loop sequence */
+        private int lineMarker = 1;
+
+        /* 1 stands for forward sub-kmer */
+        /* 2 stands for reflexiv sub-kmer */
+        // private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
+        private int randomReflexivMarker = 2;
+
+        long maxSubKmerResidueBinary = ~((~0L) << 2 * param.subKmerSizeResidue);
+        long maxSubKmerBinary = ~((~0L) << 2 * 31);
+
+        long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
+
+
+        //long maxBlockBinary = ~((~0L) << 2*31); // a block has 31 nucleotide
+
+
+        /* temporary capsule to store identical SubKmer units */
+        List<Row> tmpReflexivKmerExtendList = new ArrayList<Row>();
+
+        /* return capsule of extend Tuples for next iteration*/
+        List<Row> reflexivKmerConcatList = new ArrayList<Row>();
+
+        /**
+         *
+         * @param sIterator is the input data structure Tuple2<SubKmer, Tuple2<Marker, TheRestSequence>>
+         *          s._1 represents sub kmer sequence
+         *          s._2._1 represents sub kmer marker: 1, for forward sub kmer;
+         *                                              2, for reverse (reflexiv) sub kmer;
+         *          s._2._2 represents the rest sequence.
+         *          s._2._2 represents the coverage of the K-mer
+         * @return a list of extended Tuples for next iteration
+         */
+        public Iterator<Row> call(Iterator<Row> sIterator) {
+
+            randomReflexivMarker=1; // in this class, randomReflexivMarker is constantly set to 1
+
+            if (param.scramble ==3){
+                randomReflexivMarker =1;
+            }
+
+            while (sIterator.hasNext()) {
+                Row s = sIterator.next();
+
+            /* receive the first sub-kmer, set new units */
+                if (lineMarker == 1) {
+                    resetSubKmerGroup(s);
+
+                    // return reflexivKmerConcatList.iterator();
+                }
+
+            /* removal condition */
+                /**
+                 * Deprecated function for killer k-mers
+                 */
+
+            /* next element of RDD */
+                else {/* if (lineMarker >= 2){ */
+                /* initiate a new capsule for the current sub-kmer group */
+                    //      reflexivKmerConcatList = new ArrayList<Tuple2<Long, Tuple4<Integer, Long, Integer, Integer>>>();
+
+                    if (tmpReflexivKmerExtendList.size() == 0) {
+                        directKmerComparison(s);
+                    } else { /* tmpReflexivKmerExtendList.size() != 0 */
+                        if (subKmerSlotComparator(s.getLong(0), tmpReflexivKmerExtendList.get(0).getLong(0))){
+                            continue;
+                        }else{
+                            singleKmerRandomizer(tmpReflexivKmerExtendList.get(0));
+                            resetSubKmerGroup(s);
+                        }
+                    }// end of else condition
+
+                    lineMarker++;
+                    // return reflexivKmerConcatList.iterator();
+                }
+            } // while loop
+
+            if (tmpReflexivKmerExtendList.size() != 0) {
+                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
+                    singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
+                }
+            }
+
+            //      int kmernumber = reflexivKmerConcatList.size();
+            //     System.out.println("Double afterwards extendable number: " + kmernumber);
+            return reflexivKmerConcatList.iterator();
+        }
+
+        public void singleKmerRandomizer(Row currentSubKmer){
+            int blockSize = currentSubKmer.getSeq(2).length();
+            Long[] newReflexivLongArray= new Long[blockSize];
+
+            if (currentSubKmer.getInt(1) == 1){
+                int firstSuffixBlockLength = Long.SIZE/2 - (Long.numberOfLeadingZeros((Long)currentSubKmer.getSeq(2).apply(0))/2 + 1);
+                long maxSuffixLengthBinary = ~((~0L) << (2*firstSuffixBlockLength));
+                Long newReflexivSubKmer;
+                Long newReflexivLong;
+
+                if (randomReflexivMarker == 2) {
+                    if ( blockSize > 1) {
+                        newReflexivSubKmer = (Long)currentSubKmer.getSeq(2).apply(blockSize-1) & maxSubKmerBinary;
+
+                        // 3rd block and so on
+                        for (int i=blockSize-1; i>1; i--){
+                            newReflexivLong=(Long)currentSubKmer.getSeq(2).apply(i) >>> 2*param.subKmerSize;
+                            newReflexivLong|= ((Long)currentSubKmer.getSeq(2).apply(i-1) << 2*(31-param.subKmerSize));
+                            newReflexivLong&= maxBlockBinary;
+                            newReflexivLongArray[i] = newReflexivLong;
+                        }
+
+                        // 2nd block
+                        newReflexivLong=(Long)currentSubKmer.getSeq(2).apply(1) >>> 2*param.subKmerSize;
+                        newReflexivLong|= ((Long)currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary) << 2*(31-param.subKmerSize);
+                        if (firstSuffixBlockLength < param.subKmerSize){
+                            newReflexivLong |= (currentSubKmer.getLong(0) << 2*(31 - param.subKmerSize + firstSuffixBlockLength));
+                        }
+                        newReflexivLong&= maxBlockBinary;
+                        newReflexivLongArray[1] = newReflexivLong;
+
+                        // 1st block
+                        if (firstSuffixBlockLength < param.subKmerSize){
+                            newReflexivLong = currentSubKmer.getLong(0) >>> 2*(param.subKmerSize - firstSuffixBlockLength);
+                            newReflexivLong |= (1L << 2 * firstSuffixBlockLength);
+                        }else {
+                            newReflexivLong = (Long)currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary; //remove C marker
+                            newReflexivLong >>>= 2 * param.subKmerSize;
+                            newReflexivLong |= (currentSubKmer.getLong(0) << 2 * (firstSuffixBlockLength - param.subKmerSize));
+                            newReflexivLong |= (1L << 2 * firstSuffixBlockLength); // add C marker
+                        }
+                        newReflexivLongArray[0] = newReflexivLong;
+                    }else{
+                        if (firstSuffixBlockLength >= param.subKmerSize){
+                            newReflexivSubKmer = (Long)currentSubKmer.getSeq(2).apply(0) & maxSubKmerBinary;
+
+                            newReflexivLong = (Long)currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary;
+                            newReflexivLong >>>= 2*param.subKmerSize;
+                            newReflexivLong |= (currentSubKmer.getLong(0) << 2*(firstSuffixBlockLength-param.subKmerSize));
+                            newReflexivLong |= (1L << (2 * firstSuffixBlockLength)); // add C marker in the front
+                        }else {
+                            newReflexivSubKmer = currentSubKmer.getLong(0) << (firstSuffixBlockLength * 2);
+                            newReflexivSubKmer &= maxSubKmerBinary;
+                            newReflexivSubKmer |= ((Long)currentSubKmer.getSeq(2).apply(0) & maxSuffixLengthBinary);
+
+                            newReflexivLong = currentSubKmer.getLong(0) >>> (2 * (param.subKmerSize - firstSuffixBlockLength));
+                            newReflexivLong |= (1L << (2 * firstSuffixBlockLength)); // add C marker in the front
+                        }
+
+                        newReflexivLongArray[0]=newReflexivLong;
+                    }
+
+                    reflexivKmerConcatList.add(
+                            RowFactory.create(newReflexivSubKmer,
+                                    randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
+                            )
+                    );
+                }else{
+
+                    reflexivKmerConcatList.add(currentSubKmer);
+                }
+            }else{ /* currentSubKmer.getInt(1) == 2 */
+                int firstPrefixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros((Long)currentSubKmer.getSeq(2).apply(0))/2 + 1);
+                long maxPrefixLengthBinary = ~((~0L) << (2*firstPrefixLength));
+
+                Long newReflexivSubKmer;
+                Long newReflexivLong;
+
+                if (randomReflexivMarker == 2) {
+
+                    reflexivKmerConcatList.add(currentSubKmer);
+                }else{ /* randomReflexivMarker == 1 */
+                    if (blockSize > 1){
+                        // the subKmer
+                        if (firstPrefixLength >= param.subKmerSize) {
+                            newReflexivSubKmer = ((Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) >>> 2* (firstPrefixLength-param.subKmerSize); // also removed C marker
+                        }else{
+                            newReflexivSubKmer = (Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary; // remove C marker
+                            newReflexivSubKmer <<= 2*(param.subKmerSize-firstPrefixLength);
+                            newReflexivSubKmer |= ((Long)currentSubKmer.getSeq(2).apply(1) >>> 2*(31- param.subKmerSize + firstPrefixLength));
+                        }
+
+                        // the last block
+                        newReflexivLong = (Long)currentSubKmer.getSeq(2).apply(blockSize - 1) << 2 * param.subKmerSize;
+                        newReflexivLong |= currentSubKmer.getLong(0);
+                        newReflexivLong &= maxBlockBinary;
+                        newReflexivLongArray[blockSize - 1] = newReflexivLong;
+
+                        // 2nd and so on
+                        for (int i=blockSize-2; i>=1;i--){
+                            newReflexivLong = (Long)currentSubKmer.getSeq(2).apply(i) << 2*param.subKmerSize;
+                            newReflexivLong |= ((Long)currentSubKmer.getSeq(2).apply(i+1) >>> 2*(31- param.subKmerSize));
+                            newReflexivLong &=maxBlockBinary;
+                            newReflexivLongArray[i] = newReflexivLong;
+                        }
+
+                        // 1st
+                        newReflexivLong = (Long)currentSubKmer.getSeq(2).apply(1) >>> 2*(31-param.subKmerSize);
+                        if (firstPrefixLength >= param.subKmerSize) {
+                            newReflexivLong |= (((Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2 * param.subKmerSize);
+                        }
+                        newReflexivLong &= maxPrefixLengthBinary;
+                        newReflexivLong |= (1L << 2*firstPrefixLength); // add C marker
+                        newReflexivLongArray[0] = newReflexivLong;
+
+                    }else{ /* blockSize = 1)*/
+                        if (firstPrefixLength >= param.subKmerSize) {
+                            newReflexivSubKmer = ((Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) >>> 2*(firstPrefixLength - param.subKmerSize);
+                            newReflexivSubKmer &= maxSubKmerBinary; // remove header, including C marker
+
+                            newReflexivLong = ((Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << 2*param.subKmerSize;
+                            newReflexivLong |= currentSubKmer.getLong(0);
+                            newReflexivLong &= maxPrefixLengthBinary; // remove header, including C marker
+                            newReflexivLong |= (1L << 2*firstPrefixLength); // add C marker
+                        }else {
+                            newReflexivSubKmer = ((Long)currentSubKmer.getSeq(2).apply(0) & maxPrefixLengthBinary) << (2 * (param.subKmerSize - firstPrefixLength));
+                            newReflexivSubKmer |= (currentSubKmer.getLong(0) >>> (2 * firstPrefixLength));
+
+                            newReflexivLong = currentSubKmer.getLong(0) & maxPrefixLengthBinary;
+                            newReflexivLong |= (1L << 2 * firstPrefixLength); // add C marker in the front
+                        }
+
+                        newReflexivLongArray[0]=newReflexivLong;
+                    }
+
+                    reflexivKmerConcatList.add(
+                            RowFactory.create(newReflexivSubKmer,
+                                    randomReflexivMarker, newReflexivLongArray, currentSubKmer.getInt(3), currentSubKmer.getInt(4)
+                            )
+                    );
+                }
+
+            }
+
+
+
+            /* an action of randomization */
+
+            if (randomReflexivMarker == 1 ){
+                randomReflexivMarker = 2;
+            }else { /* randomReflexivMarker == 2 */
+                randomReflexivMarker = 1;
+            }
+        }
+
+        /**
+         *
+         * @param currentSubKmer
+         */
+        public void directKmerComparison(Row currentSubKmer) {
+            tmpReflexivKmerExtendList.add(currentSubKmer);
+        }
+
+        /**
+         *
+         * @param S
+         */
+        public void resetSubKmerGroup(Row S) {
+            if (lineMarker == 1) {
+                lineMarker = 2;
+            } else {
+                lineMarker = 3; /* reset to new sub-kmer group */
+            }
+            /* re-reflex all single kmers in the sub-kmer group */
+//            if (tmpReflexivKmerExtendList.size() != 0) {
+//                for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) {
+            //                   singleKmerRandomizer(tmpReflexivKmerExtendList.get(i));
+            //               }
+            //          }
+
+            tmpReflexivKmerExtendList = new ArrayList<Row>();
+            tmpReflexivKmerExtendList.add(S
+                    //   RowFactory.create(S.getLong(0),
+                    //                   S.getInt(1), S.get(2), S.getInt(3), S.getInt(4)
+                    //   )
+            );
+        }
+
+        private boolean subKmerSlotComparator(Long a, Long b) {
+
+            if (!a.equals(b)) {
+                return false;
+            }else{
+
+                return true;
+            }
+        }
+    }
 
     class DSLowCoverageSubKmerExtraction implements  MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> subKmerProb = new ArrayList<Row>();
@@ -1257,7 +1563,7 @@ public class ReflexivDSMain implements Serializable{
 
                 if (probedLeftIndex >=0 && probedRightIndex >=0 && probedLeftIndex < probedRightIndex){
                     String lowCoverageFragment = read.substring(probedLeftIndex-param.subKmerSize+1, probedRightIndex+1);
-                    System.out.println("forward: " + lowCoverageFragment);
+          //          System.out.println("forward: " + lowCoverageFragment);
                     fragmentList.add(
                             reflexivKmerExtractionFromLowCoverageFragment(lowCoverageFragment)
                     );
@@ -1323,7 +1629,7 @@ public class ReflexivDSMain implements Serializable{
 
                 if (probedLeftIndex >=0 && probedRightIndex >=0 && probedLeftIndex < probedRightIndex){
                     String lowCoverageRCFragment = RCread.substring(probedLeftIndex-param.subKmerSize+1, probedRightIndex+1);
-                    System.out.println("RC: " + lowCoverageRCFragment);
+//                    System.out.println("RC: " + lowCoverageRCFragment);
                     fragmentList.add(
                         reflexivKmerExtractionFromLowCoverageFragment(lowCoverageRCFragment)
                     );

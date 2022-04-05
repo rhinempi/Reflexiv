@@ -1,8 +1,8 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
-import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -13,19 +13,14 @@ import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.io.CompressionCodec;
-import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
-import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import scala.Tuple2;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
-import scala.collection.generic.ClassTagTraversableFactory;
-import scala.reflect.ClassTag;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
@@ -69,7 +64,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSMain64 implements Serializable {
+public class ReflexivDSKmerProcessing64 implements Serializable {
     private long time;
     private DefaultParam param;
 
@@ -130,248 +125,6 @@ public class ReflexivDSMain64 implements Serializable {
         return ProbHash;
     }
 
-    /**
-     *
-     */
-    public void assembly() {
-        SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
-
-        info.readMessage("Initiating Spark context ...");
-        info.screenDump();
-        info.readMessage("Start Spark framework");
-        info.screenDump();
-
-        Dataset<String> FastqDS;
-        Dataset<Row> KmerBinaryDS;
-
-        Dataset<Row> KmerBinaryCountLongDS;
-        Dataset<Row> KmerBinaryCountDS;
-
-        StructType kmerCountTupleStruct = new StructType();
-        kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
-        Dataset<Row> ReflexivSubKmerDS;
-        StructType ReflexivKmerStruct = new StructType();
-        ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("extension", DataTypes.LongType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivSubKmerEncoder = RowEncoder.apply(ReflexivKmerStruct);
-
-        Dataset<Row> ReflexivSubKmerStringDS;
-        StructType ReflexivKmerStringStruct = new StructType();
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivKmerStringEncoder = RowEncoder.apply(ReflexivKmerStringStruct);
-
-        Dataset<Row> ReflexivLongSubKmerDS;
-        StructType ReflexivLongKmerStruct = new StructType();
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerEncoder = RowEncoder.apply(ReflexivLongKmerStruct);
-
-        Dataset<Row> ReflexivLongSubKmerStringDS;
-        StructType ReflexivLongKmerStringStruct = new StructType();
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
-
-        Dataset<Row> ContigRows;
-        StructType ContigLongKmerStringStruct = new StructType();
-        ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("ID", DataTypes.StringType, false);
-        ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("contig", DataTypes.StringType, false);
-        ExpressionEncoder<Row> ContigStringEncoder = RowEncoder.apply(ContigLongKmerStringStruct);
-
-        JavaRDD<Row> ContigRowsRDD;
-        JavaPairRDD<Row, Long> ContigsRDDIndex;
-        JavaRDD<String> ContigRDD;
-
-        FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
-
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-        FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-        FastqDS = FastqDS.filter(FilterDSUnit);
-
-        if (param.partitions > 0) {
-            FastqDS = FastqDS.repartition(param.partitions);
-        }
-        if (param.cache) {
-            FastqDS.cache();
-        }
-
-        ReverseComplementKmerBinaryExtractionFromDataset64 DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset64();
-        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, KmerBinaryCountEncoder);
-
-        KmerBinaryCountLongDS = KmerBinaryDS.groupBy("kmerBlocks")
-                .count()
-                .toDF("kmerBlocks", "count");
-
-        KmerBinaryCountLongDS = KmerBinaryCountLongDS.filter(col("count")
-                .geq(param.minKmerCoverage)
-                .and(col("count")
-                        .leq(param.maxKmerCoverage)
-                )
-        );
-
-        /**
-         * Extract reverse complementary kmer
-         */
-        DSKmerReverseComplement DSRCKmer = new DSKmerReverseComplement();
-        KmerBinaryCountDS = KmerBinaryCountLongDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-        /**
-         * Extract forward sub kmer
-         */
-
-        DSForwardSubKmerExtraction DSextractForwardSubKmer = new DSForwardSubKmerExtraction();
-        ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerEncoder);
-
-        if (param.bubble == true) {
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-            DSReflectedSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedSubKmerExtractionFromForward();
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerEncoder);
-
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector = new DSFilterForkReflectedSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-        }
-
-        /**
-         *
-         */
-        DSkmerRandomReflection DSrandomizeSubKmer = new DSkmerRandomReflection();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSrandomizeSubKmer, ReflexivSubKmerEncoder);
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-
-        DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-
-        DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
-
-
-        int iterations = 0;
-        for (int i = 1; i < 4; i++) {
-            iterations++;
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
-        }
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-        //       ReflexivSubKmerDS.cache();
-
-        iterations++;
-
-        /**
-         * Extract Long sub kmer
-         */
-
-
-        DSExtendReflexivKmerToArrayFirstTime DSKmerExtentionToArrayFirst = new DSExtendReflexivKmerToArrayFirstTime();
-        ReflexivLongSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtentionToArrayFirst, ReflexivLongKmerEncoder);
-        ReflexivLongSubKmerDS.cache();
-
-        DSExtendReflexivKmerToArrayLoop DSKmerExtenstionArrayToArray = new DSExtendReflexivKmerToArrayLoop();
-
-        DSBinaryReflexivKmerArrayToString DSArrayStringOutput = new DSBinaryReflexivKmerArrayToString();
-
-        //      ReflexivSubKmerDS.unpersist();
-        int partitionNumber = ReflexivLongSubKmerDS.toJavaRDD().getNumPartitions();
-        long contigNumber = 0;
-        while (iterations <= param.maximumIteration) {
-            iterations++;
-            if (iterations >= param.minimumIteration) {
-                if (iterations % 3 == 0) {
-
-                    /**
-                     *  problem ------------------------------------------v
-                     */
-                    ReflexivLongSubKmerDS.cache();
-                    long currentContigNumber = ReflexivLongSubKmerDS.count();
-                    if (contigNumber == currentContigNumber) {
-                        break;
-                    } else {
-                        contigNumber = currentContigNumber;
-                    }
-
-                    if (partitionNumber >= 16) {
-                        if (currentContigNumber / partitionNumber <= 20) {
-                            partitionNumber = partitionNumber / 4 + 1;
-                            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
-                        }
-                    }
-                }
-            }
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-        }
-
-        /**
-         *
-         */
-        ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-
-        /**
-         *
-         */
-
-        DSKmerToContig contigformaterDS = new DSKmerToContig();
-        ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-
-
-        /**
-         *
-         */
-        ContigRowsRDD = ContigRows.toJavaRDD();
-
-        ContigRowsRDD.cache();
-
-        ContigsRDDIndex = ContigRowsRDD.zipWithIndex();
-
-        TagRowContigID DSIdLabeling = new TagRowContigID();
-        ContigRDD = ContigsRDDIndex.flatMap(DSIdLabeling);
-
-        ContigRDD.saveAsTextFile(param.outputPath);
-
-        spark.stop();
-    }
 
     /**
      *
@@ -390,6 +143,7 @@ public class ReflexivDSMain64 implements Serializable {
         String checkpointDir= sc.getCheckpointDir().get();
 
         Dataset<Row> KmerCountDS;
+        Dataset<Row> LongerKmerCountDS;
         Dataset<String> FastqDS;
 
         Dataset<Row> KmerBinaryCountDS;
@@ -460,12 +214,14 @@ public class ReflexivDSMain64 implements Serializable {
         /**
          * loading Kmer counts
          */
-        KmerCountDS = spark.read().csv(param.inputKmerPath);
+        KmerCountDS = spark.read().csv(param.inputKmerPath + "_" + param.kmerSize1);
+        LongerKmerCountDS = spark.read().csv(param.inputKmerPath + "_" + param.kmerSize2);
 
+        /*
         if (param.partitions > 0) {
             KmerCountDS = KmerCountDS.repartition(param.partitions);
         }
-
+*/
         /**
          * Transforming kmer string to binary kmer
          */
@@ -10890,6 +10646,88 @@ public class ReflexivDSMain64 implements Serializable {
                 //       Long nucleotideBinary = 0L;
 
                 for (int i = 0; i < param.kmerSize; i++) {
+                    nucleotide = kmer.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideBinarySlot[i / 31] <<= 2;
+                    nucleotideBinarySlot[i / 31] |= nucleotideInt;
+
+                    //   nucleotideBinary <<= 2;
+                    //   nucleotideBinary |= nucleotideInt;
+                }
+
+                kmerList.add(
+                        RowFactory.create(nucleotideBinarySlot, cover)
+                );
+
+                //      kmerList.add(
+                //            new Tuple2<Long, Integer>(
+                //                  nucleotideBinary, cover
+                //        )
+                //);
+            }
+
+            return kmerList.iterator();
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
+    }
+
+    class KmerLongerBinarizer implements MapPartitionsFunction<Row, Row>, Serializable {
+
+        List<Row> kmerList = new ArrayList<Row>();
+        Row units;
+        String kmer;
+        int cover;
+        char nucleotide;
+        long nucleotideInt;
+        //     Long suffixBinary;
+        //     Long[] suffixBinaryArray;
+
+        public Iterator<Row> call(Iterator<Row> s) {
+
+            while (s.hasNext()) {
+
+                units = s.next();
+
+                kmer = units.getString(0);
+
+                if (kmer.startsWith("(")) {
+                    kmer = kmer.substring(1);
+                }
+
+                if (units.getString(1).endsWith(")")) {
+                    if (units.getString(1).length() >= 11) {
+                        cover = 1000000000;
+                    } else {
+                        cover = Integer.parseInt(StringUtils.chop(units.getString(1)));
+                    }
+                } else {
+                    if (units.getString(1).length() >= 10) {
+                        cover = 1000000000;
+                    } else {
+                        cover = Integer.parseInt(units.getString(1));
+                    }
+                }
+
+                long[] nucleotideBinarySlot = new long[param.kmerBinarySlotsAssemble];
+                //       Long nucleotideBinary = 0L;
+
+                for (int i = 0; i < param.kmerSize1; i++) {
                     nucleotide = kmer.charAt(i);
                     if (nucleotide >= 256) nucleotide = 255;
                     nucleotideInt = nucleotideValue(nucleotide);

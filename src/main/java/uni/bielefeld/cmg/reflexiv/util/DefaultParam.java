@@ -2,6 +2,8 @@ package uni.bielefeld.cmg.reflexiv.util;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * Created by rhinempi on 22.07.2017.
@@ -58,6 +60,8 @@ public class DefaultParam implements Serializable{
 
     public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;
+    public int kmerSize1 = 21;
+    public int kmerSize2 = 31;
 
     // for kmer counting
     public int kmerSizeResidue = kmerSize % 32;
@@ -66,6 +70,10 @@ public class DefaultParam implements Serializable{
     // for loading kmer in assembly
     public int kmerSizeResidueAssemble = kmerSize % 31;
     public int kmerBinarySlotsAssemble = (kmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load entire k-mer */
+    public int maxKmerBinarySlotsAssemble= 99;  /* for dynamic kmer length, the maximum kmer length */
+    public String kmerList= "21,31,41,51,61,71,81,91,99" ; /* a list of kmers for dynamic kmer length assembly */
+    public HashMap<Integer, Integer> kmerListHash; /* a kmer list hashmap for checking valid k-mer length */
+    /* Key: kmer size, Value: kmer binary slot size*/
 
     // for sub kmer in assembly
     public int subKmerSizeResidue= (subKmerSize-1) % 31 +1;
@@ -117,6 +125,29 @@ public class DefaultParam implements Serializable{
         setSubKmerSizeResidue(subKmerSize);
         setKmerSizeResidueAssemble(k);
         setKmerBinarySlotsAssemble(k);
+    }
+
+    public void setKmerListHash (String KL){
+        String[] kmers = KL.split(",");
+        for (String kmer : kmers){
+            int length = Integer.parseInt(kmer);
+            int slots = (length-1) / 31 +1; /* for assembly, every 31 bases is a block */
+
+            this.kmerListHash.put(length,slots);
+
+        }
+    }
+
+    public void setMaxKmerSize (String KL){
+        String[] kmers = KL.split(",");
+        int maxLength = 0;
+        for (String kmer : kmers){
+            int length = Integer.parseInt(kmer);
+            if (length >=maxLength){
+                maxLength = length;
+            }
+        }
+        this.maxKmerSize = maxLength;
     }
 
     /**
