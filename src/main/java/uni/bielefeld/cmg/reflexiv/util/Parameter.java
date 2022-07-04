@@ -72,6 +72,7 @@ public class Parameter {
             INPUT_KMER= "kmerc",
             OUTPUT_FILE = "outfile",
             KMER_SIZE = "kmer",
+            KMER_LIST = "klist",
             OUTPUT_CODEC="gzip",
             OVERLAP = "overlap",
             MINITERATIONS = "miniter",
@@ -106,6 +107,7 @@ public class Parameter {
         parameterMap.put(INPUT_KMER, o++);
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(KMER_SIZE, o++);
+        parameterMap.put(KMER_LIST, o++);
         parameterMap.put(OVERLAP, o++);
         parameterMap.put(MINITERATIONS, o++);
         parameterMap.put(MAXITERATIONS, o++);
@@ -157,6 +159,10 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("kmer size")
                 .hasArg().withDescription("Kmer length for reads mapping")
                 .create(KMER_SIZE));
+
+        parameter.addOption(OptionBuilder.withArgName("kmer size list")
+                .hasArg().withDescription("A list of Kmers for dynamic kmer assembly, split by comma")
+                .create(KMER_LIST));
 
         parameter.addOption(OptionBuilder.withArgName("kmer overlap")
                 .hasArg().withDescription("Overlap size between two adjacent kmers")
@@ -301,6 +307,32 @@ public class Parameter {
                     throw new RuntimeException("Parameter " + KMER_SIZE +
                             " should be set between 1-100");
                 }
+            }
+
+            if ((value = cl.getOptionValue(KMER_LIST)) != null) {
+                String[] kmerListString = value.split(",");
+                for (String currentKmer : kmerListString){
+                    int ksize;
+                    try {
+                        ksize = Integer.decode(currentKmer);
+                    }catch(NumberFormatException e){
+                        info.readMessage("One of the kmer in the parameter " + KMER_LIST + " has invalid kmer value");
+                        info.screenDump();
+                        ksize = 0;
+                    }
+
+                    if (ksize >=1 || ksize<=1000){
+
+                    }else{
+                        throw new RuntimeException("Parameter " + KMER_LIST + " has kmer size larger than 1000");
+                    }
+                }
+
+                param.setKmerListArray(value);
+                param.setKmerListHash(value);
+            }else{
+                param.setKmerListArray(param.kmerList);  // using default kmer list
+                param.setKmerListHash(param.kmerList);
             }
 
             if ((value = cl.getOptionValue(OVERLAP)) != null) {

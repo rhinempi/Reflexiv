@@ -197,6 +197,12 @@ public class Pipelines implements Pipeline, Serializable{
         rfPipe.assembly();
     }
 
+    public void reflexivDSDynamicKmerReductionPipe(){
+        ReflexivDSDynamicKmerRuduction rfPipe = new ReflexivDSDynamicKmerRuduction();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
     private boolean checkOutputFile(String file) throws IOException {
         if (file.startsWith("hdfs")){
             Configuration conf = new Configuration();
@@ -208,6 +214,80 @@ public class Pipelines implements Pipeline, Serializable{
         }else{
             return Files.exists(Paths.get(file));
         }
+    }
+
+    private void renameDiskStorage(String oldFile, String newFile) throws IOException {
+        if (oldFile.startsWith("hdfs")){
+            Runtime.getRuntime().exec("hadoop fs mv " + oldFile + " " + newFile);
+
+        }else{
+            Runtime.getRuntime().exec("mv " + oldFile + " " + newFile);
+        }
+    }
+
+    public void reflexivDSDynamicAssemblyPipe() throws IOException{
+        ReflexivDSDynamicKmer64 rfPipe = new ReflexivDSDynamicKmer64();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicReductionPipe() throws IOException {
+
+
+
+        // step 1 decompress
+        if (!checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
+            reflexivDSDecompresserPipe();
+        }
+        param.setGzip(true);
+
+        // step 2 smallest kmer count
+        param.setInputFqPath(param.outputPath + "/Read_Repartitioned/part*.txt.gz");
+        param.kmerSize1= param.kmerListInt[0];
+        if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
+            param.setKmerSize(param.kmerSize1); // set kmer Size for counter
+            param.setAllbyKmerSize(param.kmerSize1);
+            if (param.kmerSize <= 31) {
+                reflexivDSCounterPipe();
+            } else {
+                reflexivDS64CounterPipe();
+            }
+        }
+
+        for (int i=1;i<param.kmerListInt.length;i++){ // longer kmer
+
+            param.kmerSize1=param.kmerListInt[i-1];
+            param.kmerSize2=param.kmerListInt[i];
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2)) {  // the next kmer increment
+                param.setKmerSize(param.kmerSize2); // set kmer size for counter
+                param.setAllbyKmerSize(param.kmerSize2);
+                if (param.kmerSize <= 31) {
+                    reflexivDSCounterPipe();
+                } else {
+                    reflexivDS64CounterPipe();
+                }
+            }
+
+            if (i==1) {
+                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+            }else{ // after the first iteration
+                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
+            }
+            param.inputKmerPath2 = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+
+            reflexivDSDynamicKmerReductionPipe();
+
+            // cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+            // cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+            // cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+
+
+        }
+
+        // rename the longest kmer directory name with "reduced" ending
+        renameDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted", param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+
     }
 
     /**

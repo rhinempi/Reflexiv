@@ -45,7 +45,7 @@ import java.io.IOException;
  * @version %I%, %G%
  * @see
  */
-public class MainMeta {
+public class MainOfReduce {
 
     /**
      * Main Java method specified in the Manifest file for Reflexiv run.
@@ -71,7 +71,7 @@ public class MainMeta {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivDSDynamicAssemblyPipe();
+        pipes.reflexivDSDynamicReductionPipe();
 //        pipes.reflexivDSIterativeAssemblerPipe();
 
         /*

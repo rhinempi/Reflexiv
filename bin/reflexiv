@@ -247,10 +247,18 @@ parse_param
 # check command modules
 if [[ ${MODULE} == "run" ]]; then
     mainClass="uni.bielefeld.cmg.reflexiv.main.Main"
+elif [[ ${MODULE} == "meta" ]]; then
+    mainClass="uni.bielefeld.cmg.reflexiv.main.MainMeta"
+elif [[ ${MODULE} == "reduce" ]]; then
+    mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfReduce"
 elif [[ ${MODULE} == "counter" ]]; then
     mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfCounter"
 elif [[ ${MODULE} == "reassembler" ]]; then
     mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfReAssembler"
+elif [[ ${MODULE} == "merger" ]]; then
+    mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfMerger"
+elif [[ ${MODULE} == "mercy" ]]; then
+    mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfMercy"
 else
     dump_help
     exit 1;

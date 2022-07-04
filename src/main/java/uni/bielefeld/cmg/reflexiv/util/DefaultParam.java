@@ -54,6 +54,8 @@ public class DefaultParam implements Serializable{
     public String mightyName = "Reflexiv";
     public String inputFqPath;
     public String inputKmerPath;
+    public String inputKmerPath1; // for kmer reduction, shorter one
+    public String inputKmerPath2; // for kmer reduction, longer one
     public String inputFaPath;
     public String inputContigPath;
     public String outputPath;
@@ -72,7 +74,8 @@ public class DefaultParam implements Serializable{
     public int kmerBinarySlotsAssemble = (kmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load entire k-mer */
     public int maxKmerBinarySlotsAssemble= 99;  /* for dynamic kmer length, the maximum kmer length */
     public String kmerList= "21,31,41,51,61,71,81,91,99" ; /* a list of kmers for dynamic kmer length assembly */
-    public HashMap<Integer, Integer> kmerListHash; /* a kmer list hashmap for checking valid k-mer length */
+    public int[] kmerListInt;
+    public HashMap<Integer, Integer> kmerListHash =new HashMap<Integer, Integer>(); /* a kmer list hashmap for checking valid k-mer length */
     /* Key: kmer size, Value: kmer binary slot size*/
 
     // for sub kmer in assembly
@@ -125,6 +128,14 @@ public class DefaultParam implements Serializable{
         setSubKmerSizeResidue(subKmerSize);
         setKmerSizeResidueAssemble(k);
         setKmerBinarySlotsAssemble(k);
+    }
+
+    public void setKmerListArray (String KL){
+        String[] kmers = KL.split(",");
+        this.kmerListInt = new int[kmers.length];
+        for (int i=0;i<kmers.length;i++){
+            this.kmerListInt[i] = Integer.parseInt(kmers[i]);
+        }
     }
 
     public void setKmerListHash (String KL){
