@@ -115,7 +115,7 @@ public class DefaultParam implements Serializable{
 
     public boolean RCmerge = true;
 
-    public boolean mercy = true;
+    public boolean mercy = false;
 
 
     public void setAllbyKmerSize(int k){

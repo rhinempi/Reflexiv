@@ -407,10 +407,24 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             RowFactory.create(kmerString, s.getLong(1)
                             )
                     );
+
+                    System.out.println("final final leftMarker: " + getLeftMarker(s.getLong(1)));
                 } // else not return
 
             }
             return reflexivKmerStringList.iterator();
+        }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
         }
 
         private long[] seq2array(Seq a){
@@ -813,11 +827,12 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 int rightMarker = getRightMarker(subKmer.getLong(1));
 
                 long[] subKmerArray = seq2array(subKmer.getSeq(0));
+                long attribute=0;
 
                 int currentSubKmerSize= currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
                 if (HighCoverageSubKmer.size() == 0) {
-                    long attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker, -1-rightMarker);
+                    attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker, -1-rightMarker);
                     HighCoverageSubKmer.add(
                             RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                     );
@@ -826,19 +841,19 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
                         if (leftMarker > highestLeftMarker) {
                             if (highestLeftMarker <= param.minErrorCoverage && leftMarker >= 2 * highestLeftMarker) {
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1-leftMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1-leftMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             } else {
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             }
                         } else if (leftMarker == highestLeftMarker) {
                             if (subKmer.getLong(2) > HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(2)) {
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -848,7 +863,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
                               //  rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -860,7 +875,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
                                 rightMarker=getRightMarker(subKmer.getLong(1));
                                // currentSubKmerSize=currentKmerSizeFromBinaryBlockArray((long[])subKmer.get(0));
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,-1-rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,-1-rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -870,19 +885,21 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
                               //  rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             }
                         }
                     } else {
-                        long attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1-leftMarker);
+                        attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1-leftMarker);
                         HighCoverageSubKmer.add(
                                 RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                         );
                     }
                 }
+
+                System.out.println("first leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
             }
 
             return HighCoverageSubKmer.iterator();
@@ -1057,13 +1074,14 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 int rightMarker = getRightMarker(subKmer.getLong(1));
 
                 long[] subKmerArray = seq2array(subKmer.getSeq(0));
+                long attribute=0;
 
                 int currentSubKmerSize= currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
 
                 if (HighCoverageSubKmer.size() == 0) {
                     HighCoverLastCoverage = leftMarker;
-                    long attribute = buildingAlongFromThreeInt(reflexivMarker,-1-leftMarker, rightMarker);
+                    attribute = buildingAlongFromThreeInt(reflexivMarker,-1-leftMarker, rightMarker);
                     HighCoverageSubKmer.add(
                             RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                     );
@@ -1073,13 +1091,13 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                         if (leftMarker > HighCoverLastCoverage) {
                             if (HighCoverLastCoverage <= param.minErrorCoverage && leftMarker >= 2 * HighCoverLastCoverage) {
                                 HighCoverLastCoverage = leftMarker;
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, -1-leftMarker, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, -1-leftMarker, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             } else {
                                 HighCoverLastCoverage = leftMarker;
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -1091,7 +1109,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             Long HighCoverageSubKmerFirstSuffix = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(2) >>> 2 * (32-HighCoverageSubKmerFirstSuffixLength);
 
                             if (subKmerFirstSuffix.compareTo(HighCoverageSubKmerFirstSuffix) > 0) {
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1103,7 +1121,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
-                                long attribute= buildingAlongFromThreeInt(reflexivMarker,currentSubKmerSize+10, rightMarker);
+                                attribute= buildingAlongFromThreeInt(reflexivMarker,currentSubKmerSize+10, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1125,7 +1143,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
-                                long attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1134,7 +1152,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                         }
                     } else {
                         HighCoverLastCoverage = leftMarker;
-                        long attribute = buildingAlongFromThreeInt(reflexivMarker,-1-leftMarker, rightMarker);
+                        attribute = buildingAlongFromThreeInt(reflexivMarker,-1-leftMarker, rightMarker);
 
                         HighCoverageSubKmer.add(
                                 RowFactory.create(subKmer.getSeq(0),
@@ -1142,6 +1160,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                         );
                     }
                 }
+
+                System.out.println("second leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
             }
 
             return HighCoverageSubKmer.iterator();
@@ -1652,14 +1672,31 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             //    System.out.println("before combine: " + currentSubKmerArray[0] + " after combine: " + kmerBinaryBlocks[0]);
 
                 reflexivKmerConcatList.add(RowFactory.create(kmerBinaryBlocks,attribute));
+                System.out.println("final LeftMarker: " + getLeftMarker(attribute));
             } else { /* currentSubKmer._2._1() == 2 */
                 long[] newReflexivLongArray = new long[1];
                 newReflexivLongArray[0]= currentSubKmer.getLong(2);
                 kmerBinaryBlocks=combineTwoLongBlocks(newReflexivLongArray, currentSubKmerArray);
              //   System.out.println("before combine: " + currentSubKmerArray[0] + " after combine: " + kmerBinaryBlocks[0]);
+                long newSuffix = onlyChangeReflexivMarker(currentSubKmer.getLong(1), 1);
 
-                reflexivKmerConcatList.add(RowFactory.create(kmerBinaryBlocks,currentSubKmer.getLong(1)));
+                reflexivKmerConcatList.add(RowFactory.create(kmerBinaryBlocks,newSuffix));
+                System.out.println("final LeftMarker suffix: " + getLeftMarker(newSuffix));
             }
+
+
+        }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
         }
 
         private int getReflexivMarker(long attribute){
