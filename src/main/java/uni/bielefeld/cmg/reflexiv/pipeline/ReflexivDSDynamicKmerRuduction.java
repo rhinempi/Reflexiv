@@ -180,7 +180,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         Dataset<Row> DSFullKmerStringLong;
         StructType ReflexivFullKmerStringStruct = new StructType();
         ReflexivFullKmerStringStruct = ReflexivFullKmerStringStruct.add("k", DataTypes.StringType, false);
-        ReflexivFullKmerStringStruct = ReflexivFullKmerStringStruct.add("reflection", DataTypes.LongType, false);
+        ReflexivFullKmerStringStruct = ReflexivFullKmerStringStruct.add("reflection", DataTypes.StringType, false);
         ExpressionEncoder<Row> ReflexivFullKmerStringEncoder = RowEncoder.apply(ReflexivFullKmerStringStruct);
 
 
@@ -315,18 +315,33 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
          */
 
 
-
         LongerReflexivFullKmerDS= LongerReflexivSubKmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-
+/*
+        LongerKmerToEnglightenKmer LongerKmerEnlightmentPreparation = new LongerKmerToEnglightenKmer();
+        LongerReflexivFullKmerDS =LongerReflexivSubKmerDS.mapPartitions(LongerKmerEnlightmentPreparation, ReflexivFullKmerEncoder);
+*/
         MixedFullKmerDS = LongerReflexivFullKmerDS.union(ReflexivFullKmerDS);
 
         MixedFullKmerDS.cache();
 
         MixedFullKmerDS = MixedFullKmerDS.sort("k");
+/*
+        LongerKmerEnlightening LongerKmerEnlightment = new LongerKmerEnlightening();
+        MixedFullKmerDS = MixedFullKmerDS.mapPartitions(LongerKmerEnlightment,ReflexivFullKmerEncoder);
 
+        MixedFullKmerDS = MixedFullKmerDS.sort("k");
+*/
         ShorterKmerNeutralization SKNeutralizer = new ShorterKmerNeutralization();
         MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
 
+        MixedFullKmerDS.cache();
+
+        if(param.partitions>10) {
+            MixedFullKmerDS = MixedFullKmerDS.coalesce(param.partitions - 1);
+            MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
+        }
+
+        MixedFullKmerDS.cache();
         MixedFullKmerDS.show();
 
 
@@ -403,28 +418,48 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             seq2array(s.getSeq(0))
                     );
 
+                    String attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
                     reflexivKmerStringList.add(
-                            RowFactory.create(kmerString, s.getLong(1)
+                            RowFactory.create(kmerString, attributeString
                             )
                     );
 
-                    System.out.println("final final leftMarker: " + getLeftMarker(s.getLong(1)));
+                  //  System.out.println("final final leftMarker: " + getLeftMarker(s.getLong(1)));
                 } // else not return
 
             }
             return reflexivKmerStringList.iterator();
         }
 
+        private int getReflexivMarker(long attribute){
+            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
+            return reflexivMarker;
+        }
+
         private int getLeftMarker(long attribute){
             int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
             int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+
+
             leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+
 
             if (leftMarker>30000){
                 leftMarker=30000-leftMarker;
             }
 
             return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
         }
 
         private long[] seq2array(Seq a){
@@ -494,8 +529,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             seq2array(s.getSeq(0))
                     );
 
+                    String attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
                     reflexivKmerStringList.add(
-                            RowFactory.create(kmerString, s.getLong(1)
+                            RowFactory.create(kmerString, attributeString
                             )
                     );
                 } // else not return
@@ -581,16 +617,739 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
     }
 
+    class LongerKmerToEnglightenKmer implements MapPartitionsFunction<Row, Row>, Serializable{
+        List<Row> LongToShortReflexedSubKmer = new ArrayList<Row>();
+
+        // xxxxxxxxxxxxxxx x --> ----xxxxxxxxxxxx xxxx
+        // ----xxxxxxxxxxx x --> ----xxxxxxxxxxx  x
+
+        public Iterator<Row> call(Iterator<Row> s) throws Exception{
+            while (s.hasNext()) {
+                Row subKmer = s.next();
+
+                long[] SubKmerArray = seq2array(subKmer.getSeq(0));
+                long[] ReflexivKmerArray = new long[1];
+                ReflexivKmerArray[0]=subKmer.getLong(2);
+                long[] fullKmer;
+                long[] newFullKmer;
+                long[] newSubKmer;
+                long[] newReflexivKmer;
+                int leftShiftLength = param.kmerSize2-param.kmerSize1;
+                if (getReflexivMarker(subKmer.getLong(1))==1){
+                    fullKmer = combineTwoLongBlocks(SubKmerArray, ReflexivKmerArray);
+                }else{
+                    fullKmer = combineTwoLongBlocks(ReflexivKmerArray, SubKmerArray);
+                }
+
+                newSubKmer= leftShiftArray(fullKmer, leftShiftLength); // llllllrrrrrrrrrrrrr - > rrrrrrrrrrrrrr
+                newReflexivKmer = leftShiftOutFromArray(fullKmer, leftShiftLength); // lllllllrrrrrrrrrrr-> lllllll
+                newFullKmer = combineTwoLongBlocks(newSubKmer, newReflexivKmer); // -> rrrrrrrrrrrrr_lllllll
+
+                long attribute= onlyChangeReflexivMarker(subKmer.getLong(1), 1); // all enlighten k-mer are concatenated full reflexed k-mers, mark 1 just for now
+                LongToShortReflexedSubKmer.add(RowFactory.create(newFullKmer,attribute));
+
+                String beforeFullKmer = BinaryBlocksToString(fullKmer);
+                String newFullKmerString= BinaryBlocksToString(newFullKmer);
+                //System.out.println(param.kmerSize2 + " before: " + beforeFullKmer + " after: " + newFullKmerString);
+
+            }
+
+            return LongToShortReflexedSubKmer.iterator();
+        }
+
+        private long[] seq2array(Seq a){
+            long[] array =new long[a.length()];
+            for (int i = 0; i < a.length(); i++) {
+                array[i] = (Long) a.apply(i);
+            }
+            return array;
+        }
+
+        private int getReflexivMarker(long attribute){
+            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
+            return reflexivMarker;
+        }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+
+
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+
+        private long onlyChangeReflexivMarker(long oldMarker, int reflexivMarker){
+            long maxSubKmerBinary = ~((~0L) << 2 * 31);
+            long newMarker = oldMarker & maxSubKmerBinary;
+            newMarker |= ((long) reflexivMarker) << 2*(32-1);
+            return newMarker;
+        }
+
+        private long[] combineTwoLongBlocks(long[] leftBlocks, long[] rightBlocks) throws Exception {
+            int leftNucleotideLength = currentKmerSizeFromBinaryBlockArray(leftBlocks);
+            int leftRelativeNTLength = (leftNucleotideLength-1) % 31+1;
+            int leftVacancy = 31-leftRelativeNTLength;
+            int rightNucleotideLength = currentKmerSizeFromBinaryBlockArray(rightBlocks);
+            int combinedBlockSize = (leftNucleotideLength+rightNucleotideLength-1)/31+1;
+            long[] newBlocks= new long[combinedBlockSize];
+
+            if (leftVacancy ==0){ // left last block is a perfect block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove the last block's C marker
+
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){
+                    newBlocks[j]=rightBlocks[j-leftBlocks.length];
+                }
+            }else{
+                String rightBlocksString = BinaryBlocksToString(rightBlocks);
+                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+
+                long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2*(leftVacancy+1)); // leftVacancy = 32-leftRelativeNTLength-1. This is to remove the C marker
+                newBlocks[leftBlocks.length-1] |= (shiftOutBlocks[0]>>> 2*(leftRelativeNTLength));
+                if (leftBlocks.length<combinedBlockSize) { // this is not the end block, the last 2 bits (C marker) of shift out needs to be removed  ----------C
+                    newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove shift out blocks C marker. apparently, if there is a C marker, this is the last block anyway
+                }
+
+                long[] rightBlocksLeftShifted = leftShiftArray(rightBlocks, leftVacancy);
+
+                int k=0; // rightBlocksLeftShifted index
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){ // including the last blocks.
+                    newBlocks[j]=rightBlocksLeftShifted[k];
+                    k++;
+                    long[] rightBlocksLeftShiftedArray= new long[1];
+                    rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
+                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                    //  System.out.println("rightShift: " + rightShift);
+                }
+
+                String mergedKmer= BinaryBlocksToString(newBlocks);
+
+                //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
+            }
+
+            return newBlocks;
+        }
+
+        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
+            int kmerSize;
+            int blockSize = binaryBlocks.length;
+            kmerSize= (blockSize-1) *31;
+            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
+            int lastMers = Long.SIZE/2-suffix0s/2-1;
+
+            kmerSize+=lastMers;
+            return kmerSize;
+
+        }
+
+        private String BinaryBlocksToString (long[] binaryBlocks){
+            String KmerString="";
+            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+
+            for (int i=0; i< KmerLength; i++){
+                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
+                currentNucleotideBinary &= 3L;
+                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                KmerString += currentNucleotide;
+            }
+
+            return KmerString;
+        }
+
+        private long[] leftShiftArray(long[] blocks, int shiftingLength) throws Exception {
+            int startingBlockIndex = (shiftingLength)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            int residueLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(blocks[blocks.length-1])/2+1); // last block length
+
+            int remainLength=nucleotideLength-shiftingLength-1;
+            if (remainLength <0){
+                remainLength=0;
+            }
+            long[] newBlock = new long[remainLength/31+1];
+            int relativeShiftSize = shiftingLength % 31;
+
+            if (shiftingLength >= nucleotideLength){
+                // apparantly, it is possible. meaning the block has nothing left
+                // throw new Exception("shifting length longer than the kmer length");
+                return newBlock;
+            }
+
+            // if (relativeShiftSize ==0) then only shifting blocks
+
+            int j=0; // new index for shifted blocks
+            //           long oldShiftOut=0L; // if only one block, then 0 bits
+//            if (blocks.length-(startingBlockIndex+1) >=1) { // more than one block, newBlock.length = blocks.length-startingBlockIndex
+//                oldShiftOut = blocks[startingBlockIndex + 1] >>> 2 * (32 - relativeShiftSize);
+            //           }
+            for (int i=startingBlockIndex; i<blocks.length-1; i++){ // without the last block
+                long shiftOut = blocks[i+1] >>> 2*(31-relativeShiftSize); // ooooxxxxxxx -> -------oooo  o=shift out x=needs to be left shifted
+                newBlock[j]= blocks[i] << 2*relativeShiftSize; // 00000xxxxx -> xxxxx-----
+                newBlock[j] |= shiftOut;
+                newBlock[j] &= (~0L<<2); // remove the last two bits, in case of overlength  xxxxxxxxxxx - > xxxxxxxxxxx-  C marker will be added later if necessary
+
+                j++;
+            }
+
+            if (residueLength > relativeShiftSize){ // still some nucleotide left in the last block
+                newBlock[j]= blocks[blocks.length-1] << 2*relativeShiftSize;
+            }else if (residueLength == relativeShiftSize){ // nothing left in the last block, but the new last block needs a C marker in the end
+                newBlock[j-1] |= 1L; // j-1 == newBlock.length-1
+            } // else the last block has been completely shift into the new last block, including the C marker
+
+            return newBlock;
+
+        }
+
+        private long[] leftShiftOutFromArray(long[] blocks, int shiftingLength) throws Exception{
+            int relativeShiftSize = shiftingLength % 31;
+            int endingBlockIndex = (shiftingLength-1)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            long[] shiftOutBlocks = new long[endingBlockIndex+1];
+
+            if (shiftingLength > nucleotideLength){
+                // throw new Exception("shifting length longer than the kmer length");
+                return blocks;
+            }
+
+            for (int i=0; i<endingBlockIndex; i++){
+                shiftOutBlocks[i]=blocks[i];
+            }
+
+            if (relativeShiftSize > 0) {
+                shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex] & (~0L << 2 * (32 - relativeShiftSize));  //   1111111100000000000
+                shiftOutBlocks[endingBlockIndex] |= (1L << (2 * (32 - relativeShiftSize - 1)));
+            }else{ // relativeShiftSize == 0;
+                if (endingBlockIndex+1 == blocks.length) { // a block with C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                }else{ // endingBlockIndex < blocks.length -1     means a block without C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                    shiftOutBlocks[endingBlockIndex]|=1L;  // adding C marker in the end xxxxxxxxxC
+                }
+
+            }
+
+            return shiftOutBlocks;
+        }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+    }
+
+    class LongerKmerEnlightening implements MapPartitionsFunction<Row, Row>, Serializable{
+        List<Row> newFullKmerList = new ArrayList<Row>();
+        Row shorterFullKmer;
+        List<Row> tempLongerFullKmer = new ArrayList<Row>();
+
+        public Iterator<Row> call(Iterator<Row> s) throws Exception{
+            while(s.hasNext()) {
+                Row FullKmer = s.next();
+             //   System.out.println(param.kmerSize2+"mark");
+                long[] FullKmerArray = seq2array(FullKmer.getSeq(0));
+                int FullKmerLength = currentKmerSizeFromBinaryBlockArray(FullKmerArray);
+
+                if (FullKmerLength == param.kmerSize1) { // shorter FullKmer size  =  param.kmerSize1 -1
+                    if (shorterFullKmer != null) { // already one exists
+                        if (tempLongerFullKmer.size() > 0) {
+                            if (getRightMarker(shorterFullKmer.getLong(1)) > 0) {
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), true));
+                                    } else {
+                                        newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                                    }
+                                }
+                            } else { // adding temp to output without changing
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                                }
+                            }
+                            tempLongerFullKmer = new ArrayList<Row>();
+                        }
+                    }
+
+                    shorterFullKmer = FullKmer;
+                    newFullKmerList.add(FullKmer);
+                } else { // it is a longer K-mer
+                    if (shorterFullKmer == null) {
+                        tempLongerFullKmer.add(FullKmer);
+                    } else {
+                        if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), FullKmer.getSeq(0)) == true) {
+                            if (getRightMarker(shorterFullKmer.getLong(1)) > 0) {
+                                newFullKmerList.add(enlightening(FullKmer, true));
+                            } else {
+                                newFullKmerList.add(enlightening(FullKmer, false));
+                            }
+                        } else { // longer Kmer not overlap to shorter k-mer anymore, a new round starts
+                            if (getRightMarker(shorterFullKmer.getLong(1)) > 0) {
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), true));
+                                    } else {
+                                        newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                                    }
+                                }
+                            } else { // adding temp to output without changing
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                                }
+                            }
+
+                            tempLongerFullKmer=new ArrayList<Row>();
+                            shorterFullKmer = null;
+                            tempLongerFullKmer.add(FullKmer);
+                        }
+                    }
+                }
+            }
+
+            //release the last temp units
+            if (shorterFullKmer==null){
+                for (int i=0;i<tempLongerFullKmer.size();i++) {
+                    newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                }
+            }else{
+                if (getRightMarker(shorterFullKmer.getLong(1)) >0){
+                    for (int i=0;i<tempLongerFullKmer.size();i++){
+                        if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0))== true){
+                            newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), true));
+                        }else{
+                            newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                        }
+                    }
+                }else{ // adding temp to output without changing
+                    for (int i=0;i<tempLongerFullKmer.size();i++) {
+                        newFullKmerList.add(enlightening(tempLongerFullKmer.get(i), false));
+                    }
+                }
+            }
+
+        //    System.out.println("after enlightning count: " + newFullKmerList.size());
+
+            return newFullKmerList.iterator();
+        }
+
+        private Row enlightening (Row s, boolean enlighten) throws Exception { // all to forward k-mer for the next step neutralization
+            Row fullKmer;
+            long[] fullKmerArray= seq2array(s.getSeq(0));   // rrrrrrrrrrrr_llllll
+            long[] reflexivKmerArray = leftShiftArray(fullKmerArray,param.kmerSize1); // llllll   l for left
+            long[] newSubKmer = leftShiftOutFromArray(fullKmerArray,param.kmerSize1); // rrrrrrrrrrrr     r for right
+            long[] newFullKmer = combineTwoLongBlocks(reflexivKmerArray, newSubKmer); // llllllrrrrrrrrrrrr
+            if (getReflexivMarker(s.getLong(1))==1){ // they are all suppose to be 1
+                if (enlighten==true){
+                    long attribute = buildingAlongFromThreeInt(1, getLeftMarker(s.getLong(1)), param.kmerSize2+10);
+                    fullKmer=RowFactory.create(newFullKmer,attribute);
+                }else{
+                    fullKmer=RowFactory.create(newFullKmer,s.getLong(1));
+                }
+             //   System.out.println("Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(newFullKmer));
+            }else{
+                System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(newFullKmer));
+                fullKmer=null;
+                // something is wrong
+            }
+            return fullKmer;
+        }
+
+        private long buildingAlongFromThreeInt(int ReflexivMarker, int leftCover, int rightCover){
+            long info = (long) ReflexivMarker <<2*(32-1);  //move to the left most
+
+            /**
+             * shorten the int and change negative to positive to avoid two's complementary
+             */
+            if (leftCover>=30000){
+                leftCover=30000;
+            }else if (leftCover<=-30000){
+                leftCover=30000-(-30000);
+            }else if (leftCover<0){
+                leftCover=30000-leftCover;
+            }
+
+            if (rightCover>=30000){
+                rightCover=30000;
+            }else if (rightCover<=-30000){
+                rightCover=30000-(-30000);
+            }else if (rightCover<0){
+                rightCover=30000-rightCover;
+            }
+
+            info |= ((long) leftCover << 32) ; // move one integer (32 bits) to the left
+            info |= ((long) rightCover); //  01--LeftCover---RightCover
+
+            return info;
+        }
+
+        private long[] leftShiftArray(long[] blocks, int shiftingLength) throws Exception {
+            int startingBlockIndex = (shiftingLength)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            int residueLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(blocks[blocks.length-1])/2+1); // last block length
+
+            int remainLength=nucleotideLength-shiftingLength-1;
+            if (remainLength <0){
+                remainLength=0;
+            }
+            long[] newBlock = new long[remainLength/31+1];
+            int relativeShiftSize = shiftingLength % 31;
+
+            if (shiftingLength >= nucleotideLength){
+                // apparantly, it is possible. meaning the block has nothing left
+                // throw new Exception("shifting length longer than the kmer length");
+                return newBlock;
+            }
+
+            // if (relativeShiftSize ==0) then only shifting blocks
+
+            int j=0; // new index for shifted blocks
+            //           long oldShiftOut=0L; // if only one block, then 0 bits
+//            if (blocks.length-(startingBlockIndex+1) >=1) { // more than one block, newBlock.length = blocks.length-startingBlockIndex
+//                oldShiftOut = blocks[startingBlockIndex + 1] >>> 2 * (32 - relativeShiftSize);
+            //           }
+            for (int i=startingBlockIndex; i<blocks.length-1; i++){ // without the last block
+                long shiftOut = blocks[i+1] >>> 2*(31-relativeShiftSize); // ooooxxxxxxx -> -------oooo  o=shift out x=needs to be left shifted
+                newBlock[j]= blocks[i] << 2*relativeShiftSize; // 00000xxxxx -> xxxxx-----
+                newBlock[j] |= shiftOut;
+                newBlock[j] &= (~0L<<2); // remove the last two bits, in case of overlength  xxxxxxxxxxx - > xxxxxxxxxxx-  C marker will be added later if necessary
+
+                j++;
+            }
+
+            if (residueLength > relativeShiftSize){ // still some nucleotide left in the last block
+                newBlock[j]= blocks[blocks.length-1] << 2*relativeShiftSize;
+            }else if (residueLength == relativeShiftSize){ // nothing left in the last block, but the new last block needs a C marker in the end
+                newBlock[j-1] |= 1L; // j-1 == newBlock.length-1
+            } // else the last block has been completely shift into the new last block, including the C marker
+
+            return newBlock;
+
+        }
+
+        private long[] leftShiftOutFromArray(long[] blocks, int shiftingLength) throws Exception{
+            int relativeShiftSize = shiftingLength % 31;
+            int endingBlockIndex = (shiftingLength-1)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            long[] shiftOutBlocks = new long[endingBlockIndex+1];
+
+            if (shiftingLength > nucleotideLength){
+                // throw new Exception("shifting length longer than the kmer length");
+                return blocks;
+            }
+
+            for (int i=0; i<endingBlockIndex; i++){
+                shiftOutBlocks[i]=blocks[i];
+            }
+
+            if (relativeShiftSize > 0) {
+                shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex] & (~0L << 2 * (32 - relativeShiftSize));  //   1111111100000000000
+                shiftOutBlocks[endingBlockIndex] |= (1L << (2 * (32 - relativeShiftSize - 1)));
+            }else{ // relativeShiftSize == 0;
+                if (endingBlockIndex+1 == blocks.length) { // a block with C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                }else{ // endingBlockIndex < blocks.length -1     means a block without C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                    shiftOutBlocks[endingBlockIndex]|=1L;  // adding C marker in the end xxxxxxxxxC
+                }
+
+            }
+
+            return shiftOutBlocks;
+        }
+
+        private long[] combineTwoLongBlocks(long[] leftBlocks, long[] rightBlocks) throws Exception {
+            int leftNucleotideLength = currentKmerSizeFromBinaryBlockArray(leftBlocks);
+            int leftRelativeNTLength = (leftNucleotideLength-1) % 31+1;
+            int leftVacancy = 31-leftRelativeNTLength;
+            int rightNucleotideLength = currentKmerSizeFromBinaryBlockArray(rightBlocks);
+            int combinedBlockSize = (leftNucleotideLength+rightNucleotideLength-1)/31+1;
+            long[] newBlocks= new long[combinedBlockSize];
+
+            if (leftVacancy ==0){ // left last block is a perfect block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove the last block's C marker
+
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){
+                    newBlocks[j]=rightBlocks[j-leftBlocks.length];
+                }
+            }else{
+                String rightBlocksString = BinaryBlocksToString(rightBlocks);
+                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+
+                long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2*(leftVacancy+1)); // leftVacancy = 32-leftRelativeNTLength-1. This is to remove the C marker
+                newBlocks[leftBlocks.length-1] |= (shiftOutBlocks[0]>>> 2*(leftRelativeNTLength));
+                if (leftBlocks.length<combinedBlockSize) { // this is not the end block, the last 2 bits (C marker) of shift out needs to be removed  ----------C
+                    newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove shift out blocks C marker. apparently, if there is a C marker, this is the last block anyway
+                }
+
+                long[] rightBlocksLeftShifted = leftShiftArray(rightBlocks, leftVacancy);
+
+                int k=0; // rightBlocksLeftShifted index
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){ // including the last blocks.
+                    newBlocks[j]=rightBlocksLeftShifted[k];
+                    k++;
+                    long[] rightBlocksLeftShiftedArray= new long[1];
+                    rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
+                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                    //  System.out.println("rightShift: " + rightShift);
+                }
+
+                String mergedKmer= BinaryBlocksToString(newBlocks);
+
+                //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
+            }
+
+            return newBlocks;
+        }
+
+        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
+            int kmerSize;
+            int blockSize = binaryBlocks.length;
+            kmerSize= (blockSize-1) *31;
+            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
+            int lastMers = Long.SIZE/2-suffix0s/2-1;
+
+            kmerSize+=lastMers;
+            return kmerSize;
+
+        }
+
+        private boolean dynamicSubKmerComparator(Seq a, Seq b) throws Exception {
+            long[] arrayA = seq2array(a);
+            long[] arrayB = seq2array(b);
+
+            int aLength= currentKmerSizeFromBinaryBlockArray(arrayA);
+            int bLength= currentKmerSizeFromBinaryBlockArray(arrayB);
+
+            if (aLength>bLength){ // equal should not happen
+                long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
+                String longer = BinaryBlocksToString(shorterVersion);
+                String shorter = BinaryBlocksToString(arrayB);
+                // System.out.println("longer: " + longer + " shorter: " + shorter);
+                // if (shorterVersion.length>=2 && arrayB.length >=2) {
+                //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
+                //}
+                if (Arrays.equals(shorterVersion, arrayB)){
+                    //  if (shorterVersion.length>=2){
+                    //        System.out.println("marker!!!");
+                    // }
+                    return true;
+                }else{
+                    return false;
+                }
+            }else{
+                long[] shorterVersion = leftShiftOutFromArray(arrayB, aLength);
+                if (Arrays.equals(shorterVersion, arrayA)){
+                    return true;
+                }else{
+                    return false;
+                }
+            }
+        }
+
+        private long[] seq2array(Seq a){
+            long[] array =new long[a.length()];
+            for (int i = 0; i < a.length(); i++) {
+                array[i] = (Long) a.apply(i);
+            }
+            return array;
+        }
+
+        private String BinaryBlocksToString (long[] binaryBlocks){
+            String KmerString="";
+            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+
+            for (int i=0; i< KmerLength; i++){
+                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
+                currentNucleotideBinary &= 3L;
+                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                KmerString += currentNucleotide;
+            }
+
+            return KmerString;
+        }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0) {
+                nucleotide = 'A';
+            } else if (twoBits == 1) {
+                nucleotide = 'C';
+            } else if (twoBits == 2) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+
+        }
+
+        private int getReflexivMarker(long attribute){
+            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
+            return reflexivMarker;
+        }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+    }
+
     /**
      *
      */
     class ShorterKmerNeutralization implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> LongerFullKmer = new ArrayList<Row>();
+        List<Row> newFullKmerList = new ArrayList<Row>();
+        Row shorterFullKmer;
+        List<Row> tempLongerFullKmer = new ArrayList<Row>();
+        boolean neutralizeMarker = false;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
             while (s.hasNext()) {
                 Row fullKmer = s.next();
 
+  //              String fullKmerString = BinaryBlocksToString(seq2array(FullKmer.getSeq(0)));
+               // System.out.println("neutralization kmer: " +  fullKmerString);
+/*
+                long[] FullKmerArray = seq2array(FullKmer.getSeq(0));
+                int FullKmerLength = currentKmerSizeFromBinaryBlockArray(FullKmerArray);
+                if (FullKmerLength == param.kmerSize1) { // shorter FullKmer size  =  param.kmerSize1 -1
+                    if (shorterFullKmer != null) { // already one exists
+                        if (tempLongerFullKmer.size() > 0) {
+                            if (getLeftMarker(shorterFullKmer.getLong(1)) > 0) {
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        neutralizeMarker=true;
+                                        newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), true));
+                                    } else {
+                                        newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                                    }
+                                }
+                            } else { // adding temp to output without changing
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        neutralizeMarker=true;
+                                    }
+                                    newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                                }
+                            }
+                            tempLongerFullKmer=new ArrayList<Row>();
+                        }
+                    }
+
+                    if(neutralizeMarker==true){
+                        neutralizeMarker=false; // reset marker
+                    }else{
+                        if (shorterFullKmer!=null) {
+                            newFullKmerList.add(shorterFullKmer);
+                        }
+                    }
+                    shorterFullKmer = FullKmer;
+                  // newFullKmerList.add(FullKmer);
+                } else { // it is a longer K-mer
+                    if (shorterFullKmer == null) {
+                        tempLongerFullKmer.add(FullKmer);
+                    } else {
+                        if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), FullKmer.getSeq(0)) == true) {
+                            neutralizeMarker=true;
+                            if (getLeftMarker(shorterFullKmer.getLong(1)) > 0) {
+                                newFullKmerList.add(enlighteningLeft(FullKmer, true));
+                            } else {
+                                newFullKmerList.add(enlighteningLeft(FullKmer, false));
+                            }
+                        } else { // longer Kmer not overlap to shorter k-mer anymore, a new round starts
+                            if (getLeftMarker(shorterFullKmer.getLong(1)) > 0) {
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        neutralizeMarker=true;
+                                        newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), true));
+                                    } else {
+                                        newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                                    }
+                                }
+                            } else { // adding temp to output without changing
+
+                                for (int i = 0; i < tempLongerFullKmer.size(); i++) {
+                                    if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0)) == true) {
+                                        neutralizeMarker=true;
+                                    }
+                                    newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                                }
+                            }
+
+                            if (neutralizeMarker==true){
+                                neutralizeMarker=false;
+                            }else{
+                                newFullKmerList.add(shorterFullKmer);
+                            }
+
+                            tempLongerFullKmer= new ArrayList<Row>();
+                            shorterFullKmer = null;
+                            tempLongerFullKmer.add(FullKmer);
+                        }
+                    }
+                }
+
+*/
                 if (LongerFullKmer.size() == 0) {
                     LongerFullKmer.add(
                             RowFactory.create(fullKmer.getSeq(0), fullKmer.getLong(1))
@@ -623,9 +1382,92 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                         );
                     }
                 }
+
+            }
+/*
+            if (shorterFullKmer==null){
+                for (int i=0;i<tempLongerFullKmer.size();i++) {
+                    newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                }
+            }else{
+                if (getLeftMarker(shorterFullKmer.getLong(1)) >0){
+                    for (int i=0;i<tempLongerFullKmer.size();i++){
+                        if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0))== true){
+                            neutralizeMarker=true;
+                            newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), true));
+                        }else{
+                            newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                        }
+                    }
+                }else{ // adding temp to output without changing
+
+                    for (int i=0;i<tempLongerFullKmer.size();i++) {
+                        if (dynamicSubKmerComparator(shorterFullKmer.getSeq(0), tempLongerFullKmer.get(i).getSeq(0))== true){
+                            neutralizeMarker=true;
+                        }
+                        newFullKmerList.add(enlighteningLeft(tempLongerFullKmer.get(i), false));
+                    }
+                }
+
+                if (neutralizeMarker==true) {
+                    neutralizeMarker=false;
+                }else{
+                    newFullKmerList.add(shorterFullKmer);
+                }
             }
 
+
+            return newFullKmerList.iterator();
+            */
             return LongerFullKmer.iterator();
+        }
+
+        private Row enlighteningLeft (Row s, boolean enlighten) throws Exception { // all to forward k-mer for the next step neutralization
+            Row fullKmer;
+            long[] fullKmerArray= seq2array(s.getSeq(0));
+
+            if (getReflexivMarker(s.getLong(1))==1){ // they are all suppose to be 1
+                if (enlighten==true){
+                    long attribute = buildingAlongFromThreeInt(1, param.kmerListInt[param.kmerListInt.length-1]+3, getRightMarker(s.getLong(1)));
+                    fullKmer=RowFactory.create(fullKmerArray,attribute);
+                }else{
+                    fullKmer=RowFactory.create(fullKmerArray,s.getLong(1));
+                }
+               // System.out.println("Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(fullKmerArray));
+            }else{
+                System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(fullKmerArray));
+                fullKmer=null;
+                // something is wrong
+            }
+            return fullKmer;
+        }
+
+        private long buildingAlongFromThreeInt(int ReflexivMarker, int leftCover, int rightCover){
+            long info = (long) ReflexivMarker <<2*(32-1);  //move to the left most
+
+            /**
+             * shorten the int and change negative to positive to avoid two's complementary
+             */
+            if (leftCover>=30000){
+                leftCover=30000;
+            }else if (leftCover<=-30000){
+                leftCover=30000-(-30000);
+            }else if (leftCover<0){
+                leftCover=30000-leftCover;
+            }
+
+            if (rightCover>=30000){
+                rightCover=30000;
+            }else if (rightCover<=-30000){
+                rightCover=30000-(-30000);
+            }else if (rightCover<0){
+                rightCover=30000-rightCover;
+            }
+
+            info |= ((long) leftCover << 32) ; // move one integer (32 bits) to the left
+            info |= ((long) rightCover); //  01--LeftCover---RightCover
+
+            return info;
         }
 
         private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
@@ -741,6 +1583,33 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
         }
 
+        private int getReflexivMarker(long attribute){
+            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
+            return reflexivMarker;
+        }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+
     }
 
     /**
@@ -830,6 +1699,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 long attribute=0;
 
                 int currentSubKmerSize= currentKmerSizeFromBinaryBlockArray(subKmerArray);
+                int maxKmerSize = param.kmerListInt[param.kmerListInt.length-1];
 
                 if (HighCoverageSubKmer.size() == 0) {
                     attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker, -1-rightMarker);
@@ -846,14 +1716,14 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             } else {
-                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, maxKmerSize+1);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
                             }
                         } else if (leftMarker == highestLeftMarker) {
                             if (subKmer.getLong(2) > HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(2)) {
-                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, maxKmerSize+3);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -863,7 +1733,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
                               //  rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
-                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,maxKmerSize+3);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -885,7 +1755,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
                               //  rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
-                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,currentSubKmerSize+10);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker,leftMarker,maxKmerSize+3);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -899,7 +1769,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     }
                 }
 
-                System.out.println("first leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
+               // System.out.println("first leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
             }
 
             return HighCoverageSubKmer.iterator();
@@ -1077,6 +1947,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 long attribute=0;
 
                 int currentSubKmerSize= currentKmerSizeFromBinaryBlockArray(subKmerArray);
+                int maxKmerSize = param.kmerListInt[param.kmerListInt.length-1];
 
 
                 if (HighCoverageSubKmer.size() == 0) {
@@ -1097,7 +1968,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 );
                             } else {
                                 HighCoverLastCoverage = leftMarker;
-                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, maxKmerSize+3, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
                                 );
@@ -1109,7 +1980,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             Long HighCoverageSubKmerFirstSuffix = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(2) >>> 2 * (32-HighCoverageSubKmerFirstSuffixLength);
 
                             if (subKmerFirstSuffix.compareTo(HighCoverageSubKmerFirstSuffix) > 0) {
-                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, maxKmerSize+3, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1121,7 +1992,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
-                                attribute= buildingAlongFromThreeInt(reflexivMarker,currentSubKmerSize+10, rightMarker);
+                                attribute= buildingAlongFromThreeInt(reflexivMarker,maxKmerSize+3, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1143,7 +2014,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                                 rightMarker=getRightMarker(subKmer.getLong(1));
                                 currentSubKmerSize=currentKmerSizeFromBinaryBlockArray(subKmerArray);
 
-                                attribute = buildingAlongFromThreeInt(reflexivMarker, currentSubKmerSize+10, rightMarker);
+                                attribute = buildingAlongFromThreeInt(reflexivMarker, maxKmerSize+3, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0),
                                                 attribute, subKmer.getLong(2))
@@ -1161,7 +2032,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     }
                 }
 
-                System.out.println("second leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
+              //  System.out.println("second leftMarker: " + leftMarker + " new leftMarker: " + getLeftMarker(attribute));
             }
 
             return HighCoverageSubKmer.iterator();
@@ -1672,7 +2543,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             //    System.out.println("before combine: " + currentSubKmerArray[0] + " after combine: " + kmerBinaryBlocks[0]);
 
                 reflexivKmerConcatList.add(RowFactory.create(kmerBinaryBlocks,attribute));
-                System.out.println("final LeftMarker: " + getLeftMarker(attribute));
+    //            System.out.println("final LeftMarker: " + getLeftMarker(attribute));
             } else { /* currentSubKmer._2._1() == 2 */
                 long[] newReflexivLongArray = new long[1];
                 newReflexivLongArray[0]= currentSubKmer.getLong(2);
@@ -1681,7 +2552,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 long newSuffix = onlyChangeReflexivMarker(currentSubKmer.getLong(1), 1);
 
                 reflexivKmerConcatList.add(RowFactory.create(kmerBinaryBlocks,newSuffix));
-                System.out.println("final LeftMarker suffix: " + getLeftMarker(newSuffix));
+         //       System.out.println("final LeftMarker suffix: " + getLeftMarker(newSuffix));
             }
 
 
@@ -2022,9 +2893,17 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
                 if (units.getString(1).endsWith(")")) {
-                    attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
+                    String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                    //attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
                 } else {
-                    attribute = Long.parseLong(units.getString(1));
+                    String[] attributeStringArray = units.getString(1).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                    //attribute = Long.parseLong(units.getString(1));
                 }
 
                 long[] nucleotideBinarySlot = new long[currentKmerBlockSize];
@@ -2055,6 +2934,34 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             }
 
             return kmerList.iterator();
+        }
+
+        private long buildingAlongFromThreeInt(int ReflexivMarker, int leftCover, int rightCover){
+            long info = (long) ReflexivMarker <<2*(32-1);  //move to the left most
+
+            /**
+             * shorten the int and change negative to positive to avoid two's complementary
+             */
+            if (leftCover>=30000){
+                leftCover=30000;
+            }else if (leftCover<=-30000){
+                leftCover=30000-(-30000);
+            }else if (leftCover<0){
+                leftCover=30000-leftCover;
+            }
+
+            if (rightCover>=30000){
+                rightCover=30000;
+            }else if (rightCover<=-30000){
+                rightCover=30000-(-30000);
+            }else if (rightCover<0){
+                rightCover=30000-rightCover;
+            }
+
+            info |= ((long) leftCover << 32) ; // move one integer (32 bits) to the left
+            info |= ((long) rightCover); //  01--LeftCover---RightCover
+
+            return info;
         }
 
         private boolean kmerSizeCheck(String kmer, HashMap<Integer, Integer> kmerList){

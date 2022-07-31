@@ -910,16 +910,16 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     String contig = s.getString(0) + s.getString(2);
                     int length = contig.length();
                     if (length >= param.minContig) {
-                        String ID = ">Contig-" + length;
-                        String formatedContig = changeLine(contig, length, 100);
+                        String ID = ">Contig-" + length + "-" + getLeftMarker(s.getLong(1)) + "-" + getRightMarker(s.getLong(1));
+                        String formatedContig = changeLine(contig, length, 10000000);
                         contigList.add(RowFactory.create(ID, formatedContig));
                     }
                 } else { // (randomReflexivMarker == 2) {
                     String contig = s.getString(2) + s.getString(0);
                     int length = contig.length();
                     if (length >= param.minContig) {
-                        String ID = ">Contig-" + length;
-                        String formatedContig = changeLine(contig, length, 100);
+                        String ID = ">Contig-" + length +  "-" + getLeftMarker(s.getLong(1)) + "-" + getRightMarker(s.getLong(1));
+                        String formatedContig = changeLine(contig, length, 10000000);
                         contigList.add(RowFactory.create(ID, formatedContig));
                     }
                 }
@@ -955,6 +955,29 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
             return reflexivMarker;
         }
+
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+
     }
 
 
@@ -7605,14 +7628,14 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     } else { /* tmpReflexivKmerExtendList.size() != 0 */
                         for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) { // the tmpReflexivKmerExtendList is changing dynamically
                             if (subKmerSlotComparator(s.getSeq(0), tmpReflexivKmerExtendList.get(i).getSeq(0)) || dynamicSubKmerComparator(s.getSeq(0), tmpReflexivKmerExtendList.get(i).getSeq(0))) {
-                                System.out.println("loop array extend. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)));
+                             //   System.out.println("loop array extend. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)));
                                 if (getReflexivMarker(s.getLong(1))== 1) {
                                     if (getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) == 2) {
                                         // residue length
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) tmpReflexivKmerExtendList.get(i).getSeq(2).apply(0)) / 2 + 1);
+                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros((Long) tmpReflexivKmerExtendList.get(i).getSeq(2).apply(tmpReflexivKmerExtendList.get(i).getSeq(2).size()-1)) / 2 + 1);
                                         // extended overall length
                                         int tmpBlockSize = (tmpReflexivKmerExtendList.get(i).getSeq(2).length() - 1) * 31 + tmpReflexivKmerSuffixLength;
-                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) s.getSeq(2).apply(0)) / 2 + 1);
+                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros((Long) s.getSeq(2).apply(s.getSeq(2).size()-1)) / 2 + 1);
                                         int currentBlockSize = (s.getSeq(2).length() - 1) * 31 + currentReflexivKmerSuffixLength;
 
 
@@ -7653,10 +7676,10 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                                         break;
                                     } else if (getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1))== 1) {
                                         // residue length
-                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) tmpReflexivKmerExtendList.get(i).getSeq(2).apply(0)) / 2 + 1);
+                                        int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros((Long) tmpReflexivKmerExtendList.get(i).getSeq(2).apply(tmpReflexivKmerExtendList.get(i).getSeq(2).size()-1)) / 2 + 1);
                                         // extended overall length
                                         int tmpBlockSize = (tmpReflexivKmerExtendList.get(i).getSeq(2).length() - 1) * 31 + tmpReflexivKmerSuffixLength;
-                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfLeadingZeros((Long) s.getSeq(2).apply(0)) / 2 + 1);
+                                        int currentReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros((Long) s.getSeq(2).apply(s.getSeq(2).size()-1)) / 2 + 1);
                                         int currentBlockSize = (s.getSeq(2).length() - 1) * 31 + currentReflexivKmerSuffixLength;
 
                                         int lengthS = currentKmerSizeFromBinaryBlockArray(seq2array(s.getSeq(0)));
@@ -7806,7 +7829,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
 
-            System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
+       //     System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
 
             if (aLength>=bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
@@ -7901,7 +7924,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newReflexivSubKmerString = BinaryBlocksToString(newReflexivSubKmer);
                 String newReflexivLongArrayString = BinaryBlocksToString(newReflexivLongArray);
 
-                System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+         //       System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
 
                 randomReflexivMarker = 1; /* an action of randomization */
@@ -7942,7 +7965,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newForwardSubKmerString = BinaryBlocksToString(newForwardSubKmer);
                 String newForwardLongArrayString = BinaryBlocksToString(newForwardLongArray);
 
-                System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+             //   System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
                 randomReflexivMarker = 2;
             }
@@ -8220,7 +8243,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
             if (aLength==bLength){
-                System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
+         //       System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
 
             }
 
@@ -8300,7 +8323,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     } else { /* tmpReflexivKmerExtendList.size() != 0 */
                         for (int i = 0; i < tmpReflexivKmerExtendList.size(); i++) { // the tmpReflexivKmerExtendList is changing dynamically
                             if (subKmerSlotComparator(s.getSeq(0), tmpReflexivKmerExtendList.get(i).getSeq(0))|| dynamicSubKmerComparator(s.getSeq(0), tmpReflexivKmerExtendList.get(i).getSeq(0))) {
-                                System.out.println("first array extend. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)));
+                             //   System.out.println("first array extend. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)));
                                 if (getReflexivMarker(s.getLong(1)) == 1) {
                                     if (getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) == 2) {
                                         int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(tmpReflexivKmerExtendList.get(i).getLong(2)) / 2 + 1);
@@ -8426,7 +8449,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
 
-            System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
+         //   System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
 
             if (aLength>=bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
@@ -8477,7 +8500,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
             if (aLength==bLength){
-                System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
+       //         System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
 
             }
 
@@ -8659,7 +8682,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newReflexivSubKmerString = BinaryBlocksToString(newReflexivSubKmer);
                 String newReflexivLongArrayString = BinaryBlocksToString(newReflexivLongArray);
 
-                System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+       //         System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
                 randomReflexivMarker = 1; /* an action of randomization */
             } else { /* randomReflexivMarker == 1 */
@@ -8699,7 +8722,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newForwardSubKmerString = BinaryBlocksToString(newForwardSubKmer);
                 String newForwardLongArrayString = BinaryBlocksToString(newForwardLongArray);
 
-                System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+         //       System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
                 randomReflexivMarker = 2;
             }
@@ -9015,7 +9038,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                                 overhang1[0]=s.getLong(2);
                                 long[] overhang2= new long[1];
                                 overhang2[0]=tmpReflexivKmerExtendList.get(i).getLong(2);
-                                System.out.println("to see if it happens. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " reflexivMarker: " + getReflexivMarker(s.getLong(1)) + " overhang: " + BinaryBlocksToString(overhang1) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " reflexivMarker: " + getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1))+ " overhang2: "+ BinaryBlocksToString(overhang2));
+                            //    System.out.println("to see if it happens. first leftMarker: " + getLeftMarker(s.getLong(1)) + " rightMarker: " + getRightMarker(s.getLong(1)) + " reflexivMarker: " + getReflexivMarker(s.getLong(1)) + " overhang: " + BinaryBlocksToString(overhang1) + " second leftMarker: " + getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " rightMarker: " + getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) + " reflexivMarker: " + getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1))+ " overhang2: "+ BinaryBlocksToString(overhang2));
                                 if (getReflexivMarker(s.getLong(1)) == 1) {
                                     if (getReflexivMarker(tmpReflexivKmerExtendList.get(i).getLong(1)) == 2) {
                                         int tmpReflexivKmerSuffixLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(tmpReflexivKmerExtendList.get(i).getLong(2)) / 2 + 1);
@@ -9146,7 +9169,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
 
-            System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
+         //   System.out.println("different comparator: " + arrayAString + " B: " + arrayBString);
 
 
             if (aLength>bLength){ // equal should not happen
@@ -9208,7 +9231,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             String arrayAString = BinaryBlocksToString(arrayA);
             String arrayBString = BinaryBlocksToString(arrayB);
             if (aLength==bLength){
-                System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
+        //        System.out.println("equal comparator: " + arrayAString + " B: " + arrayBString);
 
             }
 
@@ -9355,7 +9378,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 newReflexivLongArray = combineTwoLongBlocks(reflexedPrefixArray, newReflexivLongArray); // xx--- + xxx--
 
                 if (bubbleDistance < 0) {
-                    System.out.println("before: " + randomReflexivMarker + " left: " + getLeftMarker(reflexedSubKmer.getLong(1)) + " right: " + getRightMarker(forwardSubKmer.getLong(1)));
+         //           System.out.println("before: " + randomReflexivMarker + " left: " + getLeftMarker(reflexedSubKmer.getLong(1)) + " right: " + getRightMarker(forwardSubKmer.getLong(1)));
                     attribute = buildingAlongFromThreeInt(randomReflexivMarker, getLeftMarker(reflexedSubKmer.getLong(1)), getRightMarker(forwardSubKmer.getLong(1)));
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer, attribute, newReflexivLongArray[0])
@@ -9377,7 +9400,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newReflexivSubKmerString = BinaryBlocksToString(newReflexivSubKmer);
                 String newReflexivLongArrayString = BinaryBlocksToString(newReflexivLongArray);
 
-                System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+         //       System.out.println("Prefix " + newReflexivLongArrayString + " combined: " + newReflexivSubKmerString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
                 randomReflexivMarker = 1; /* an action of randomization */
             } else { /* randomReflexivMarker == 1 */
@@ -9390,7 +9413,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
 
 
                 if (bubbleDistance < 0) {
-                    System.out.println("before: " + randomReflexivMarker + " left: " + getLeftMarker(reflexedSubKmer.getLong(1)) + " right: " + getRightMarker(forwardSubKmer.getLong(1)));
+            //        System.out.println("before: " + randomReflexivMarker + " left: " + getLeftMarker(reflexedSubKmer.getLong(1)) + " right: " + getRightMarker(forwardSubKmer.getLong(1)));
                     attribute = buildingAlongFromThreeInt(randomReflexivMarker, getLeftMarker(reflexedSubKmer.getLong(1)), getRightMarker(forwardSubKmer.getLong(1)));
                     reflexivKmerConcatList.add(
                             RowFactory.create(newForwardSubKmer, attribute, newForwardLongArray[0])
@@ -9416,7 +9439,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 String newForwardSubKmerString = BinaryBlocksToString(newForwardSubKmer);
                 String newForwardLongArrayString = BinaryBlocksToString(newForwardLongArray);
 
-                System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
+            //    System.out.println("After combine: " + newForwardSubKmerString + " suffix: " + newForwardLongArrayString + " reflexivMarker: " + getReflexivMarker(attribute) + " leftMarker: " + getLeftMarker(attribute) + " rightMarker: " + getRightMarker(attribute));
 
                 randomReflexivMarker = 2;
             }
@@ -10412,13 +10435,13 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 int leftMarker = getLeftMarker(currentSubKmer.getLong(1));
                 int rightMarker = getRightMarker(currentSubKmer.getLong(1));
                 int reflexivMarker = getReflexivMarker(currentSubKmer.getLong(1));
-                System.out.println("Seq: " + seq + " reflexivMarker: " + reflexivMarker + " leftMarker: " + leftMarker + " rightMarker: " + rightMarker + " extension: " + reflexivKmerString);
+              //  System.out.println("Seq: " + seq + " reflexivMarker: " + reflexivMarker + " leftMarker: " + leftMarker + " rightMarker: " + rightMarker + " extension: " + reflexivKmerString);
 
                 if (randomReflexivMarker == 2) {
 
                     newReflexivSubKmer = leftShiftArray((long[])currentSubKmer.get(0), currentSuffixLength);
                     String new1 = BinaryBlocksToString(newReflexivSubKmer);
-                    System.out.println("leftShiftArray: " + new1);
+               //     System.out.println("leftShiftArray: " + new1);
                     long[] newReflexivLongArray = leftShiftOutFromArray((long[])currentSubKmer.get(0), currentSuffixLength);
                     newReflexivLong = newReflexivLongArray[0];
 
@@ -10426,7 +10449,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     suffixArray[0]= currentSubKmer.getLong(2);
                     newReflexivSubKmer = combineTwoLongBlocks(newReflexivSubKmer, suffixArray);
                     String new2 = BinaryBlocksToString(newReflexivSubKmer);
-                    System.out.println("combineTwoLongBlocks: " + new2);
+                 //   System.out.println("combineTwoLongBlocks: " + new2);
 
                     long attribute = onlyChangeReflexivMarker(currentSubKmer.getLong(1), randomReflexivMarker);
 
@@ -10435,7 +10458,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     newReflexivKmerArray[0]=newReflexivLong;
                     String newReflexivKmerString = BinaryBlocksToString(newReflexivKmerArray);
 
-                    System.out.println("new Seq: " + newSeq + " extension: " + newReflexivKmerString);
+                //    System.out.println("new Seq: " + newSeq + " extension: " + newReflexivKmerString);
 
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer, attribute, newReflexivLong)
@@ -10451,7 +10474,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 int currentSubKmerSize= currentKmerSizeFromBinaryBlockArray((long[])currentSubKmer.get(0));
 
                 String seq= BinaryBlocksToString((long[])currentSubKmer.get(0));
-                System.out.println("Seq: " + seq + " attribute: " + currentSubKmer.getLong(1)  + " extension: " + currentSubKmer.getLong(2));
+              //  System.out.println("Seq: " + seq + " attribute: " + currentSubKmer.getLong(1)  + " extension: " + currentSubKmer.getLong(2));
 
                 if (randomReflexivMarker == 2) {
                     reflexivKmerConcatList.add(currentSubKmer);
@@ -10463,7 +10486,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     prefixArray[0]=currentSubKmer.getLong(2);
                     String prefixArrayString = BinaryBlocksToString(prefixArray);
                     String rightShiftRemainBlocksString = BinaryBlocksToString(rightShiftRemainBlocks);
-                    System.out.println("prefix: " + prefixArrayString + " rightsHIFTremainBlocks: " + rightShiftRemainBlocksString + " rightShiftRemain: " + rightShiftRemain + " currentSubKmerSize: "+ currentSubKmerSize + " currentPrefixLength: " + currentPrefixLength);
+                //    System.out.println("prefix: " + prefixArrayString + " rightsHIFTremainBlocks: " + rightShiftRemainBlocksString + " rightShiftRemain: " + rightShiftRemain + " currentSubKmerSize: "+ currentSubKmerSize + " currentPrefixLength: " + currentPrefixLength);
 
                     newReflexivSubKmer = combineTwoLongBlocks(prefixArray, rightShiftRemainBlocks);
 
@@ -10472,7 +10495,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                     long attribute = onlyChangeReflexivMarker(currentSubKmer.getLong(1), randomReflexivMarker);
 
                     String newseq= BinaryBlocksToString(newReflexivSubKmer);
-                    System.out.println("new Seq: "  + newseq + " attribute: " + attribute + " extention:" + newReflexivLong);
+                 //   System.out.println("new Seq: "  + newseq + " attribute: " + attribute + " extention:" + newReflexivLong);
                     reflexivKmerConcatList.add(
                             RowFactory.create(newReflexivSubKmer, attribute, newReflexivLong)
                     );
@@ -10863,9 +10886,17 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
                 if (units.getString(1).endsWith(")")) {
-                    attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
+                    String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                   // attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
                 } else {
-                    attribute = Long.parseLong(units.getString(1));
+                    String[] attributeStringArray = units.getString(1).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                    // attribute = Long.parseLong(units.getString(1));
                 }
 
                 long[] nucleotideBinarySlot = new long[currentSubKmerBlockSize];
@@ -10900,7 +10931,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 lastNtLongArray[0]= lastNtLong;
                 String suffix = BinaryBlocksToString(lastNtLongArray);
                 long a = (attribute>>>2*63);
-                System.out.println("Fresh binarized: " + seq + " marker: " + a + " extra: " + suffix);
+             //   System.out.println("Fresh binarized: " + seq + " marker: " + a + " extra: " + suffix);
                 // return
 
                 attribute= onlyChangeReflexivMarker(attribute,1);
@@ -10910,6 +10941,34 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             }
 
             return kmerList.iterator();
+        }
+
+        private long buildingAlongFromThreeInt(int ReflexivMarker, int leftCover, int rightCover){
+            long info = (long) ReflexivMarker <<2*(32-1);  //move to the left most
+
+            /**
+             * shorten the int and change negative to positive to avoid two's complementary
+             */
+            if (leftCover>=30000){
+                leftCover=30000;
+            }else if (leftCover<=-30000){
+                leftCover=30000-(-30000);
+            }else if (leftCover<0){
+                leftCover=30000-leftCover;
+            }
+
+            if (rightCover>=30000){
+                rightCover=30000;
+            }else if (rightCover<=-30000){
+                rightCover=30000-(-30000);
+            }else if (rightCover<0){
+                rightCover=30000-rightCover;
+            }
+
+            info |= ((long) leftCover << 32) ; // move one integer (32 bits) to the left
+            info |= ((long) rightCover); //  01--LeftCover---RightCover
+
+            return info;
         }
 
         private long onlyChangeReflexivMarker(long oldMarker, int reflexivMarker){
