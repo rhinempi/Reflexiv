@@ -221,7 +221,7 @@ public class Pipelines implements Pipeline, Serializable{
             Runtime.getRuntime().exec("hadoop fs mv " + oldFile + " " + newFile);
 
         }else{
-            Runtime.getRuntime().exec("mv " + oldFile + " " + newFile);
+            Runtime.getRuntime().exec("mv -v " + oldFile + " " + newFile);
         }
     }
 
