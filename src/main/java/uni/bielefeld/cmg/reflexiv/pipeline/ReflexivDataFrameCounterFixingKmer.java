@@ -55,7 +55,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameCounter implements Serializable{
+public class ReflexivDataFrameCounterFixingKmer implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -106,11 +106,15 @@ public class ReflexivDataFrameCounter implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
+        Dataset<Row> KmerCountDS;
         Dataset<Long> KmerBinaryDS;
         Dataset<Row> DFKmerBinaryCount;
         Dataset<Row> DFKmerCount;
 
+
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
+
+        KmerCountDS = spark.read().csv(param.inputKmerPath);
 
         DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
         FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
@@ -176,8 +180,8 @@ public class ReflexivDataFrameCounter implements Serializable{
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator){
-        //    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        //    System.out.println(timestamp+"RepeatCheck DSBinaryKmerToString: " + param.kmerSize1);
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+"RepeatCheck DSBinaryKmerToString: " + param.kmerSize1);
 
             while (sIterator.hasNext()){
                 String subKmer = "";
@@ -265,8 +269,8 @@ public class ReflexivDataFrameCounter implements Serializable{
         long nucleotideIntComplement;
 
         public Iterator<Long> call(Iterator<String> s){
-          //  Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-           // System.out.println(timestamp+"RepeatCheck ReverseComplementKmerBinaryExtractionFromDataset: " + param.kmerSize1);
+        //    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+        //    System.out.println(timestamp+"RepeatCheck ReverseComplementKmerBinaryExtractionFromDataset: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 units = s.next().split("\\n");

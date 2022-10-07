@@ -24,6 +24,7 @@ import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.Serializable;
+import java.sql.Timestamp;
 import java.util.*;
 
 import static org.apache.spark.sql.functions.col;
@@ -196,6 +197,14 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         KmerCountDS = spark.read().csv(param.inputKmerPath1);
         LongerKmerCountDS = spark.read().csv(param.inputKmerPath2);
 
+        if (param.partitions > 0) {
+            KmerCountDS = KmerCountDS.repartition(param.partitions);
+        }
+
+        if (param.partitions > 0) {
+            LongerKmerCountDS = LongerKmerCountDS.repartition(param.partitions);
+        }
+
         DynamicKmerBinarizer DSBinarizer = new DynamicKmerBinarizer();
         DSKmerReverseComplement DSRCKmer = new DSKmerReverseComplement();
         DSForwardSubKmerExtraction DSextractForwardSubKmer = new DSForwardSubKmerExtraction();
@@ -325,7 +334,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 */
         MixedFullKmerDS = LongerReflexivFullKmerDS.union(ReflexivFullKmerDS);
 
-        MixedFullKmerDS.cache();
+ //       MixedFullKmerDS.cache();
 
         LeftLongerToShorterComparisonPreparation leftComparison = new LeftLongerToShorterComparisonPreparation();
         MixedReflexivSubkmerDS = MixedFullKmerDS.mapPartitions(leftComparison,ReflexivSubKmerCompressedEncoder);
@@ -429,6 +438,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringShort: " + param.kmerSize1);
+
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
 
@@ -539,6 +551,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringLong: " + param.kmerSize1);
+
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
 
@@ -753,8 +768,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+               // String rightBlocksString = BinaryBlocksToString(rightBlocks);
+               // String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -775,11 +790,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                //    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+               // String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -1150,8 +1165,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+           //     String rightBlocksString = BinaryBlocksToString(rightBlocks);
+           //     String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -1172,11 +1187,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                 //   String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+            //    String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -1205,8 +1220,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+               // String longer = BinaryBlocksToString(shorterVersion);
+               // String shorter = BinaryBlocksToString(arrayB);
                 // System.out.println("longer: " + longer + " shorter: " + shorter);
                 // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -1304,6 +1319,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             long[] extension=new long[1];
             long attribute;
             long[] combinedBlock;
+
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+ "RepeatCheck RightLongerToShorterComparisonAndNeutralizationPreparation: " + param.kmerSize1);
 
             while (s.hasNext()){
                 Row fullKmer=s.next();
@@ -1494,8 +1512,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+             //   String rightBlocksString = BinaryBlocksToString(rightBlocks);
+             //   String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -1516,11 +1534,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                //    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+              //  String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -1549,8 +1567,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+            //    String longer = BinaryBlocksToString(shorterVersion);
+            //    String shorter = BinaryBlocksToString(arrayB);
                 // System.out.println("longer: " + longer + " shorter: " + shorter);
                 // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -1654,6 +1672,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             long[] subKmer;
             long[] extension;
             long attribute;
+
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+ "RepeatCheck LeftLongerToShorterComparisonPreparation: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 Row fullKmer = s.next();
@@ -1834,8 +1855,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+         //       String rightBlocksString = BinaryBlocksToString(rightBlocks);
+          //      String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -1856,11 +1877,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+             //       String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+          //      String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -1889,8 +1910,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+            //    String longer = BinaryBlocksToString(shorterVersion);
+            //    String shorter = BinaryBlocksToString(arrayB);
                 // System.out.println("longer: " + longer + " shorter: " + shorter);
                 // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -1991,6 +2012,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         Row lastKmer;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp + "RepeatCheck RightLongerKmerVariantAdjustmentAndNeutralization: " + param.kmerSize1);
+
             while (s.hasNext()) {
                 Row fullKmer = s.next();
 
@@ -2517,8 +2541,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+            //    String rightBlocksString = BinaryBlocksToString(rightBlocks);
+            //    String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -2539,11 +2563,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+             //       String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+             //   String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -2572,8 +2596,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+        //        String longer = BinaryBlocksToString(shorterVersion);
+        //        String shorter = BinaryBlocksToString(arrayB);
                 // System.out.println("longer: " + longer + " shorter: " + shorter);
                 // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -2674,6 +2698,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         Row lastKmer;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+ "RepeatCheck LeftLongerKmerVariantAdjustment: " + param.kmerSize1);
+
             while (s.hasNext()) {
                 Row fullKmer = s.next();
 
@@ -3185,8 +3212,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+             //   String rightBlocksString = BinaryBlocksToString(rightBlocks);
+             //   String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -3207,11 +3234,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+              //      String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                     //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+              //  String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -3240,8 +3267,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+            //    String longer = BinaryBlocksToString(shorterVersion);
+            //    String shorter = BinaryBlocksToString(arrayB);
                 // System.out.println("longer: " + longer + " shorter: " + shorter);
                 // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -3347,6 +3374,10 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         boolean neutralizeMarker = false;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp + "RepeatCheck ShorterKmerNeutralization: " + param.kmerSize1);
+
+
             while (s.hasNext()) {
                 Row fullKmer = s.next();
 
@@ -3574,8 +3605,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
             if (aLength>bLength){ // equal should not happen
                 long[] shorterVersion = leftShiftOutFromArray(arrayA, bLength);
-                String longer = BinaryBlocksToString(shorterVersion);
-                String shorter = BinaryBlocksToString(arrayB);
+            //    String longer = BinaryBlocksToString(shorterVersion);
+            //    String shorter = BinaryBlocksToString(arrayB);
                // System.out.println("longer: " + longer + " shorter: " + shorter);
                // if (shorterVersion.length>=2 && arrayB.length >=2) {
                 //    System.out.println("longer array: " + shorterVersion[0] + " "  + shorterVersion[1] + " shorter array: " + arrayB[0] + " " + arrayB[1]);
@@ -3772,6 +3803,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //                       new Tuple4<Integer, String, Integer, Integer>(0, "", 0, 0));
 
         public Iterator<Row> call(Iterator<Row> s) {
+
             while (s.hasNext()) {
                 Row subKmer = s.next();
                 int reflexivMarker = getReflexivMarker(subKmer.getLong(1));
@@ -4020,6 +4052,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //                       new Tuple4<Integer, Long, Integer, Integer>(0, "", 0, 0));
 
         public Iterator<Row> call(Iterator<Row> s) {
+
             while (s.hasNext()) {
                 Row subKmer = s.next();
                 int reflexivMarker = getReflexivMarker(subKmer.getLong(1));
@@ -4269,11 +4302,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                // System.out.println("leftMarker: " + leftMarker + " rightMarker: " + rightMarker + " reflexivMarker: " + reflexivMarker);
 
 
-                String before = BinaryBlocksToString((long[])kmerTuple.get(0));
-                String prefix = BinaryBlocksToString(prefixBinarySlot);
+             //   String before = BinaryBlocksToString((long[])kmerTuple.get(0));
+             //   String prefix = BinaryBlocksToString(prefixBinarySlot);
                 long[] suffixBinaryArray = new long[1];
                 suffixBinaryArray[0]= suffixBinary;
-                String suffix = BinaryBlocksToString(suffixBinaryArray);
+              //  String suffix = BinaryBlocksToString(suffixBinaryArray);
 
                 // System.out.println("before forward extract: " + before + " prefix: " + prefix + " suffix: " + suffix);
 
@@ -4418,10 +4451,10 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
                 long[] kmerTupleArray = seq2array(kmerTuple.getSeq(0));
 
-                String before = BinaryBlocksToString(kmerTupleArray);
+            //    String before = BinaryBlocksToString(kmerTupleArray);
                 long[] beforeSuffixLong = new long[1];
                 beforeSuffixLong[0]=kmerTuple.getLong(2);
-                String beforeSuffix = BinaryBlocksToString(beforeSuffixLong);
+             //   String beforeSuffix = BinaryBlocksToString(beforeSuffixLong);
 
                 currentSubKmerSize= currentKmerSizeFromBinaryBlockArray(kmerTupleArray);
                 currentSubKmerResidue = (currentSubKmerSize-1)%31 +1;
@@ -4468,10 +4501,10 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
               //  System.out.println("leftMarker: " + leftMarker + " rightMarker: " + rightMarker);
 
 
-                String after = BinaryBlocksToString(prefixBinarySlot);
+             //   String after = BinaryBlocksToString(prefixBinarySlot);
                 long[] afterSuffixLong = new long[1];
                 afterSuffixLong[0]=suffixBinary;
-                String afterSuffix = BinaryBlocksToString(afterSuffixLong);
+             //   String afterSuffix = BinaryBlocksToString(afterSuffixLong);
 
                // System.out.println("before: " + before + " " + beforeSuffix + " after: " + afterSuffix + " " + after);
 
@@ -4608,6 +4641,9 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         long maxSubKmerBinary = ~((~0L) << 2 * 31);
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+ "RepeatCheck DSSubKmerToFullKmer: " + param.kmerSize1);
+
             while (s.hasNext()) {
                 kmerTuple = s.next();
 
@@ -4768,8 +4804,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     newBlocks[j]=rightBlocks[j-leftBlocks.length];
                 }
             }else{
-                String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                String leftBlocksString = BinaryBlocksToString(leftBlocks);
+           //     String rightBlocksString = BinaryBlocksToString(rightBlocks);
+           //     String leftBlocksString = BinaryBlocksToString(leftBlocks);
 
                 long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
                 for (int i =0; i<leftBlocks.length; i++){
@@ -4790,11 +4826,11 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     k++;
                     long[] rightBlocksLeftShiftedArray= new long[1];
                     rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+         //           String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
                   //  System.out.println("rightShift: " + rightShift);
                 }
 
-                String mergedKmer= BinaryBlocksToString(newBlocks);
+          //      String mergedKmer= BinaryBlocksToString(newBlocks);
 
                 //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
             }
@@ -4878,6 +4914,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
 
         public Iterator<Row> call(Iterator<Row> s) {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+ "RepeatCheck DSKmerReverseComplement: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 kmerTuple = s.next();
@@ -4971,6 +5009,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //     Long[] suffixBinaryArray;
 
         public Iterator<Row> call(Iterator<Row> s) {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizerFromSorted: " + param.kmerSize1);
 
             while (s.hasNext()) {
 
@@ -5096,6 +5136,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //     Long[] suffixBinaryArray;
 
         public Iterator<Row> call(Iterator<Row> s) {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizer: " + param.kmerSize1);
 
             while (s.hasNext()) {
 
