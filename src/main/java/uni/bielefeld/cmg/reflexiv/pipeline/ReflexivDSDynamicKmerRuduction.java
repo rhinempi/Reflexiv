@@ -1,7 +1,6 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
-import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
@@ -13,12 +12,9 @@ import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
-import org.apache.spark.sql.catalyst.parser.SqlBaseParser;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import scala.Tuple2;
-import scala.collection.JavaConversions;
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
@@ -28,7 +24,6 @@ import java.sql.Timestamp;
 import java.util.*;
 
 import static org.apache.spark.sql.functions.col;
-import static org.apache.spark.sql.functions.second;
 
 
 /**
@@ -106,7 +101,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
                 .getOrCreate();
 
         return spark;
@@ -373,8 +368,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
       //      MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
       //  }
 
-        MixedFullKmerDS.cache();
-        MixedFullKmerDS.show();
+     //   MixedFullKmerDS.cache();
+     //   MixedFullKmerDS.show();
 
 
         /**
@@ -401,16 +396,31 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         }
 
         if (param.gzip) {
-            DSFullKmerStringLong.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+            if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){ // the last kmer does not need to be reduced, so directly rename to reduced
+                DSFullKmerStringLong.write().
+                        mode(SaveMode.Overwrite).
+                        format("csv").
+                        option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+            }else {
+                DSFullKmerStringLong.write().
+                        mode(SaveMode.Overwrite).
+                        format("csv").
+                        option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+            }
         }else{
-            DSFullKmerStringLong.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+            if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){
+                DSFullKmerStringLong.write().
+                        mode(SaveMode.Overwrite).
+                        format("csv").
+                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+            }else {
+                DSFullKmerStringLong.write().
+                        mode(SaveMode.Overwrite).
+                        format("csv").
+                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+            }
         }
 
         spark.stop();

@@ -1,7 +1,17 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import com.fing.mapreduce.FourMcTextInputFormat;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FilterFunction;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
@@ -9,9 +19,11 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
+import scala.Tuple2;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -19,6 +31,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.shuffle;
 
 
 /**
@@ -83,41 +96,73 @@ public class ReflexivDataFrameCounter implements Serializable{
      * @return
      */
     private SparkSession setSparkSessionConfiguration(int shufflePartitions){
+        System.out.println("shufflePartitions: " + shufflePartitions);
         SparkSession spark = SparkSession
                 .builder()
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
                 .getOrCreate();
 
         return spark;
     }
 
+    private SparkConf setSparkConfiguration(){
+        SparkConf conf = new SparkConf().setAppName("SparkHit");
+        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        conf.set("spark.kryo.referenceTracking", "false");
+        conf.set("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator");
+        conf.set("spark.sql.shuffle.partitions","4000");
+
+        return conf;
+    }
+
     /**
      *
      */
-    public void assembly(){
-        SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
-
+    public void assembly() throws IOException {
+        SparkConf conf = setSparkConfiguration();
         info.readMessage("Initiating Spark context ...");
         info.screenDump();
         info.readMessage("Start Spark framework");
         info.screenDump();
+        JavaSparkContext sc = new JavaSparkContext(conf);
+
+
+        SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
+
+        info.readMessage("Initiating Spark SQL context ...");
+        info.screenDump();
+        info.readMessage("Start Spark SQL framework");
+        info.screenDump();
+
 
         Dataset<String> FastqDS;
         Dataset<Long> KmerBinaryDS;
         Dataset<Row> DFKmerBinaryCount;
         Dataset<Row> DFKmerCount;
 
-        FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
+        if (param.inputFormat.equals("4mc")){
+            Configuration baseConfiguration = new Configuration();
+            Job jobConf = Job.getInstance(baseConfiguration);
+            JavaPairRDD<LongWritable, Text> FastqPairRDD = sc.newAPIHadoopFile(param.inputFqPath, FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
 
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-        FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
+            DSInputTupleToString tupleToString = new DSInputTupleToString();
 
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+            JavaRDD<String> FastqRDD = FastqPairRDD.mapPartitions(tupleToString);
 
-        FastqDS = FastqDS.filter(FilterDSUnit);
+            FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+        }else {
+            FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
+
+            DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
+            FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
+
+            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+
+            FastqDS = FastqDS.filter(FilterDSUnit);
+        }
 
         if (param.partitions > 0) {
             FastqDS = FastqDS.repartition(param.partitions);
@@ -167,6 +212,24 @@ public class ReflexivDataFrameCounter implements Serializable{
         }
 
         spark.stop();
+    }
+
+    class DSInputTupleToString implements FlatMapFunction<Iterator<Tuple2<LongWritable, Text>>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+        String seq;
+
+        public Iterator<String> call(Iterator<Tuple2<LongWritable, Text>> sIterator) throws Exception {
+            while (sIterator.hasNext()) {
+
+                Tuple2<LongWritable, Text> s = sIterator.next();
+                seq = s._2().toString();
+
+                reflexivKmerStringList.add(
+                        seq
+                );
+            }
+            return reflexivKmerStringList.iterator();
+        }
     }
 
     /**
@@ -230,18 +293,15 @@ public class ReflexivDataFrameCounter implements Serializable{
         public String call(String s) {
             if (lineMark == 2) {
                 lineMark++;
-                line = line + "\n" + s;
                 return null;
             } else if (lineMark == 3) {
                 lineMark++;
-                line = line + "\n" + s;
                 return line;
             } else if (s.startsWith("@")) {
-                line = s;
                 lineMark = 1;
                 return null;
             } else if (lineMark == 1) {
-                line = line + "\n" + s;
+                line = s;
                 lineMark++;
                 return null;
             }else{
@@ -269,11 +329,11 @@ public class ReflexivDataFrameCounter implements Serializable{
            // System.out.println(timestamp+"RepeatCheck ReverseComplementKmerBinaryExtractionFromDataset: " + param.kmerSize1);
 
             while (s.hasNext()) {
-                units = s.next().split("\\n");
-                if (units.length <=1){
-                    continue;
-                }
-                read = units[1];
+              //  units = s.next().split("\\n");
+              //  if (units.length <=1){
+              //      continue;
+              //  }
+                read = s.next();
                 readLength = read.length();
 
                 if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {

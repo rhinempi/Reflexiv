@@ -110,7 +110,7 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
                 .getOrCreate();
 
         return spark;
@@ -791,9 +791,13 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
         FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerExtensionLoop, ReflexivFixingKmerEndocer);
         while (iterations <= param.maximumIteration) {
             iterations++;
-            if (iterations >= param.minimumIteration + 3 + 32 +50) {
+            if (iterations >= param.minimumIteration + 3 + 52 + 30) {
+                param.scramble=3;
+            }
+
+            if (iterations >= param.minimumIteration + 3 + 52 +30+18) {
                 break;
-            }else{
+            } else{
                 FixingKmerDSCount  = FixingKmerDSCount.sort("k-1");
                 FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerExtensionLoop, ReflexivFixingKmerEndocer);
             }

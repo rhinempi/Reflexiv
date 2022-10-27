@@ -26,6 +26,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel target="1.7">
+      <module name="hadoop-4mc" target="1.5" />
       <module name="Reflexiv" target="1.6" />
     </bytecodeTargetLevel>
   </component>

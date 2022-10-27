@@ -6,19 +6,46 @@
 
     <groupId>cmg</groupId>
     <artifactId>Reflexiv</artifactId>
-    <version>0.6</version>
+    <version>0.7</version>
+
+    <repositories>
+        <repository>
+            <id>my-internal-site</id>
+            <!--  <url>https://repo.maven.apache.org/maven2</url> -->
+            <url>https://dl.bintray.com/palantir/releases/</url>
+        </repository>
+        <repository>
+            <id>Central-Repository</id>
+            <!--  <url>https://repo.maven.apache.org/maven2</url> -->
+            <url>https://repo1.maven.org/maven2/</url>
+        </repository>
+
+    </repositories>
 
     <dependencies>
         <dependency> <!-- Spark dependency -->
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_2.12</artifactId>
-            <version>2.4.0</version>
+            <version>3.2.1</version>
         </dependency>
 
         <dependency> <!-- Spark sql dependency -->
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-sql_2.12</artifactId>
-            <version>2.4.0</version>
+            <version>3.2.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fing.fourmc</groupId>
+            <artifactId>hadoop-4mc</artifactId>
+            <version>3.0.0</version>
+
+        </dependency>
+        <dependency>
+            <groupId>com.fing.fourmc.example</groupId>
+            <artifactId>hadoop-4mc-example</artifactId>
+            <version>3.0.0</version>
+
         </dependency>
 
         <dependency>

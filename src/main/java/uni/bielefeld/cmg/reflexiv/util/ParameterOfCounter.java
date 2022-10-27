@@ -63,6 +63,7 @@ public class ParameterOfCounter {
     private static final String
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
+            INPUT_CODEC = "infmt",
             OUTPUT_FILE = "outfile",
             OUTPUT_CODEC="gzip",
             KMER_SIZE = "kmer",
@@ -89,6 +90,7 @@ public class ParameterOfCounter {
 
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
+        parameterMap.put(INPUT_CODEC, o++);
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(KMER_SIZE, o++);
@@ -120,6 +122,10 @@ public class ParameterOfCounter {
         parameter.addOption(OptionBuilder.withArgName("input fasta file")
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
                 .create(INPUT_FASTA));
+
+        parameter.addOption(OptionBuilder.withArgName("input compression format")
+                .hasArg().withDescription("Compression format of the input files. Default mc4. !!! set this to anything other than mc4, e.g. gzip, if you did not pre-process the input data")
+                .create(INPUT_CODEC));
 
         parameter.addOption(OptionBuilder.withArgName("output file")
                 .hasArg().withDescription("Output assembly result")
@@ -317,6 +323,11 @@ public class ParameterOfCounter {
                             " should be larger than 0");
                 }
             }
+
+            if ((value = cl.getOptionValue(INPUT_CODEC)) != null){
+                    param.inputFormat = value;
+            }
+
 
             if ((value = cl.getOptionValue(INPUT_FASTQ)) != null) {
                 param.inputFqPath = value;

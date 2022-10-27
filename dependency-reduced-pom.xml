@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>cmg</groupId>
   <artifactId>Reflexiv</artifactId>
-  <version>0.6</version>
+  <version>0.7</version>
   <build>
     <plugins>
       <plugin>
@@ -44,6 +44,16 @@
       </plugin>
     </plugins>
   </build>
+  <repositories>
+    <repository>
+      <id>my-internal-site</id>
+      <url>https://dl.bintray.com/palantir/releases/</url>
+    </repository>
+    <repository>
+      <id>Central-Repository</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+  </repositories>
   <dependencies>
     <dependency>
       <groupId>org.testng</groupId>
