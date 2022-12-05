@@ -154,14 +154,20 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
+
+
 //        FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
+        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual(); // for sparkhit
+        DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
         FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
 
         DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
         FastqDS = FastqDS.filter(FilterDSUnit);
+
+        FirstNFastq extractFirstN = new FirstNFastq();
+        FastqDS=FastqDS.mapPartitions(extractFirstN, Encoders.STRING());
 
 //        ReadBinarizer binarizerRead = new ReadBinarizer();
 
@@ -193,10 +199,37 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
     }
 
+    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable {
+        String line = "";
+        int lineMark = 0;
+
+        public String call(String s) {
+            if (lineMark == 2) {
+                lineMark++;
+                line = line + "\n" + s;
+                return null;
+            } else if (lineMark == 3) {
+                lineMark++;
+                line = line + "\n" + s;
+                return line;
+            } else if (s.startsWith("@")) {
+                line = s;
+                lineMark = 1;
+                return null;
+            } else if (lineMark == 1) {
+                line = line + "\n" + s;
+                lineMark++;
+                return null;
+            } else {
+                return null;
+            }
+        }
+    }
+
     /**
      *
      */
-    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable{
+    class DSFastqFilterOnlySeq implements MapFunction<String, String>, Serializable{
         String line = "";
         int lineMark = 0;
         public String call(String s) {
@@ -218,6 +251,24 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             }
         }
     }
+
+    class FirstNFastq implements MapPartitionsFunction<String,String>, Serializable{
+        List<String> fastLines = new ArrayList<String>();
+        String line;
+        int readcount=0;
+        int lineMark=0;
+
+        public Iterator<String> call(Iterator<String> s) {
+            while (s.hasNext() && readcount <= param.readLimit) {
+                line = s.next();
+                fastLines.add(line);
+                readcount++;
+            }
+            //System.out.println("how many times did you went through me");
+            return fastLines.iterator();
+        }
+    }
+
 
     /**
      *

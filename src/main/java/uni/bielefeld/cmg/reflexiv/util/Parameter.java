@@ -69,6 +69,7 @@ public class Parameter {
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
             INPUT_CODEC= "infmt",
+            READNUMBER= "reads",
             INPUT_CONTIG= "contig",
             INPUT_KMER= "kmerc",
             OUTPUT_FILE = "outfile",
@@ -105,6 +106,7 @@ public class Parameter {
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
         parameterMap.put(INPUT_CODEC, o++);
+        parameterMap.put(READNUMBER, o++);
         parameterMap.put(INPUT_CONTIG, o++);
         parameterMap.put(INPUT_KMER, o++);
         parameterMap.put(OUTPUT_FILE, o++);
@@ -149,6 +151,10 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("input compression format")
                 .hasArg().withDescription("Compression format of the input files. Default mc4. !!! set this to anything other than mc4, e.g. gzip, if you did not pre-process the input data")
                 .create(INPUT_CODEC));
+
+        parameter.addOption(OptionBuilder.withArgName("input read number")
+                .hasArg().withDescription("limit input read number for processing")
+                .create(READNUMBER));
 
         parameter.addOption(OptionBuilder.withArgName("input contig file")
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
@@ -362,7 +368,6 @@ public class Parameter {
             if ((value = cl.getOptionValue(SHUFFLEPARTITIONS)) != null){
                 if (Integer.decode(value) >= 0 ) {
                     param.shufflePartition = Integer.decode(value);
-                    System.out.println("optino shufflePartition: " + param.shufflePartition );
                 }else{
                     throw new RuntimeException("Parameter " + SHUFFLEPARTITIONS+
                             " should be larger than 0");
@@ -386,6 +391,15 @@ public class Parameter {
                     param.minimumIteration = Integer.decode(value);
                 }else{
                     throw new RuntimeException("Parameter " + MINITERATIONS +
+                            " should be larger than 0");
+                }
+            }
+
+            if ((value = cl.getOptionValue(READNUMBER)) != null){
+                if (Long.decode(value) >= 0 ){
+                    param.readLimit = Long.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + READNUMBER +
                             " should be larger than 0");
                 }
             }

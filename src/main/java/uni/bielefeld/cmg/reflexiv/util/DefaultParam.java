@@ -60,6 +60,7 @@ public class DefaultParam implements Serializable{
     public String inputContigPath;
     public String outputPath;
     public String inputFormat = "4mc"; // 4mc zipped file
+    public long readLimit =Long.MAX_VALUE;
 
     public int kmerSize = 31;
     public int subKmerSize = kmerSize - 1;

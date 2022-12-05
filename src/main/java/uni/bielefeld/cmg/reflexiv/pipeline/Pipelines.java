@@ -204,20 +204,20 @@ public class Pipelines implements Pipeline, Serializable{
     }
 
     private boolean checkOutputFile(String file) throws IOException {
-        System.out.println("input path: " + file);
+      //  System.out.println("input path: " + file);
 
         if (file.startsWith("hdfs")){
             Configuration conf = new Configuration();
             String header = file.substring(0,file.indexOf(":9000")+5);
 
-            System.out.println("input path header: " + header);
+       //     System.out.println("input path header: " + header);
 
             conf.set("fs.default.name", header);
             FileSystem hdfs = FileSystem.get(conf);
 
-            System.out.println("input path suffix: " + file.substring(file.indexOf(":9000")+5)+"/_SUCCESS");
+      //      System.out.println("input path suffix: " + file.substring(file.indexOf(":9000")+5)+"/_SUCCESS");
 
-            System.out.println("input path exists or not: " + hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS")));
+      //      System.out.println("input path exists or not: " + hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS")));
 
             return hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS"));
         }else{
@@ -256,7 +256,23 @@ public class Pipelines implements Pipeline, Serializable{
             conf.set("fs.default.name", header);
             FileSystem hdfs = FileSystem.get(conf);
 
-            hdfs.exists(new Path(oldFile.substring(oldFile.indexOf(":9000") + 5) + "/_SUCCESS"));
+            Path oldFileHDFSPath= new Path(oldFile.substring(oldFile.indexOf(":9000")+5)+"/_SUCCESS");
+            Path oldFolderHDFSPath= new Path(oldFile.substring(oldFile.indexOf(":9000")+5));
+
+            Path newFileHDFSPath= new Path(newFile.substring(newFile.indexOf(":9000")+5)+"/_SUCCESS");
+            Path newFolderHDFSPath= new Path(newFile.substring(newFile.indexOf(":9000")+5));
+
+            if (hdfs.exists(oldFileHDFSPath)){
+                if (hdfs.exists(newFileHDFSPath)){
+                    info.readMessage("Destination folder: " + newFolderHDFSPath + " already exist");
+                    info.screenDump();
+                }else {
+                    hdfs.rename(oldFolderHDFSPath, newFolderHDFSPath);
+                }
+            }else{
+                info.readMessage("Targeted rename folder: " + oldFolderHDFSPath + " does not exist");
+                info.screenDump();
+            }
 
         }else{
             Runtime.getRuntime().exec("mv -v " + oldFile + " " + newFile);
@@ -272,10 +288,309 @@ public class Pipelines implements Pipeline, Serializable{
     public void reflexivDSInputDataPreprocessing() throws IOException {
         if (!checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
             reflexivDSDecompresserPipe();
+        }else{
+            info.readMessage("Output file: " + param.outputPath + "/Read_Repartitioned already exist!");
+            info.screenDump();
         }
     }
 
+    public void reflexivLeftAndRightSortingPipe() throws IOException {
+        ReflexivDSKmerLeftAndRightSorting rfPipe = new ReflexivDSKmerLeftAndRightSorting();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
     public void reflexivDSDynamicReductionPipe() throws IOException {
+
+
+
+        // step 1 decompress
+        //      if (!checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
+        //          reflexivDSDecompresserPipe();
+        //      }
+        param.setGzip(true);
+
+        // step 2 smallest kmer count
+
+        //      if (param.inputFormat.equals("mc4")) {
+        //          param.setInputFqPath(param.outputPath + "/Read_Repartitioned/part*.mc4");
+        //      }else{
+        //          param.setInputFqPath(param.inputFqPath);
+        //      }
+
+        param.setInputFqPath(param.inputFqPath);
+        //       param.kmerSize1= param.kmerListInt[0];
+
+        if (param.kmerListInt.length<2){ // only one kmer in the kmerlist
+            info.readMessage("Only 1 kmer size has been provided: " + param.kmerSize1 + ". Require at least two");
+            info.screenDump();
+        }else {
+            param.kmerSize2 = param.kmerListInt[1];
+        }
+
+        for (int i=1;i<param.kmerListInt.length;i++) {
+            param.kmerSize1 = param.kmerListInt[i - 1];
+            param.kmerSize2 = param.kmerListInt[i];
+
+            /**
+             * kmer1_count      ---
+             * kmer0_reduced
+             * kmer1_sorted     --
+             * kmer2_count      ---
+             * kmer1_reduced
+             * kmer2_sorted     --
+             * kmer3_count      ---
+             * kmer2_reduced
+             * kmer3_sorted     --
+             */
+
+            info.readMessage("-------- Starting from k-mer pairs: " + param.kmerSize1 + " and " + param.kmerSize2 + " --------");
+            info.screenDump();
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced")) {
+                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_reduced does not exist");
+                info.screenDump();
+
+                if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) {
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist");
+                    info.screenDump();
+
+                    if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " does not exist");
+                        info.screenDump();
+
+                        param.setKmerSize(param.kmerSize1); // set kmer size for counter
+                        param.setAllbyKmerSize(param.kmerSize1);
+
+                        info.readMessage("Start counting " + param.kmerSize1);
+                        info.screenDump();
+                        if (param.kmerSize <= 31) {
+                            reflexivDSCounterPipe();
+                        } else {
+                            reflexivDS64CounterPipe();
+                        }
+                    } else {
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
+                        info.screenDump();
+                        info.readMessage("Skip counting " + param.kmerSize1);
+                        info.screenDump();
+                    }
+
+                    param.setKmerSize(param.kmerSize1); // set kmer size for counter
+                    param.setAllbyKmerSize(param.kmerSize1);
+
+                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+
+                    info.readMessage("Start sorting " + param.kmerSize1);
+                    info.screenDump();
+                    reflexivLeftAndRightSortingPipe();
+
+                    if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) {
+                        info.readMessage("Finished k-mer sorting : " + param.kmerSize1 + " succeeded");
+                        info.screenDump();
+
+                        info.readMessage("Removing : Count_" + param.kmerSize1);
+                        info.screenDump();
+
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                    } else {
+                        info.readMessage("Failed k-mer sorting : " + param.kmerSize1 + " failed:");
+                        info.screenDump();
+                        info.readMessage("The process is finished. However, one or more results are not complete");
+                    }
+
+                } else { // kmer1 sorted exist
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted succeeded");
+                    info.screenDump();
+
+                    info.readMessage("Removing : Count_" + param.kmerSize1);
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                }
+
+                if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")) {
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + "_sorted does not exist");
+                    info.screenDump();
+
+                    if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2)) {
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " does not exist");
+                        info.screenDump();
+
+                        param.setKmerSize(param.kmerSize2); // set kmer size for counter
+                        param.setAllbyKmerSize(param.kmerSize2);
+
+                        info.readMessage("Start counting " + param.kmerSize2);
+                        info.screenDump();
+                        if (param.kmerSize <= 31) {
+                            reflexivDSCounterPipe();
+                        } else {
+                            reflexivDS64CounterPipe();
+                        }
+                    } else {
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
+                        info.screenDump();
+                        info.readMessage("Skip counting " + param.kmerSize2);
+                        info.screenDump();
+                    }
+
+                    param.setKmerSize(param.kmerSize2); // set kmer size for counter
+                    param.setAllbyKmerSize(param.kmerSize2);
+
+                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+
+                    info.readMessage("Start sorting " + param.kmerSize2);
+                    info.screenDump();
+                    reflexivLeftAndRightSortingPipe();
+
+                    if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")) {
+                        info.readMessage("Finished k-mer sorting : " + param.kmerSize2 + " succeeded");
+                        info.screenDump();
+
+                        info.readMessage("Removing : Count_" + param.kmerSize2);
+                        info.screenDump();
+
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                    } else {
+                        info.readMessage("Failed k-mer sorting : " + param.kmerSize2 + " failed:");
+                        info.screenDump();
+                        info.readMessage("The process is finished. However, one or more results are not complete");
+                    }
+
+                } else { // kmer1 sorted exist
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + "_sorted succeeded");
+                    info.screenDump();
+
+                    info.readMessage("Removing : Count_" + param.kmerSize2);
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                }
+
+                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
+                param.inputKmerPath2 = param.outputPath + "/Count_" + param.kmerSize2 + "_sorted/part*.csv.gz";
+
+                info.readMessage("Start k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1);
+                info.screenDump();
+                reflexivDSDynamicKmerReductionPipe();
+
+                if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced")) {
+                    info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                    info.screenDump();
+
+                    info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted");
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                } else {
+                    info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
+                    info.screenDump();
+                    info.readMessage("The process is finished. However, one or more results are not complete");
+                    info.screenDump();
+                }
+
+                if (i== param.kmerListInt.length-1){
+                    info.readMessage("This is the last k-mer reduction round");
+                    info.screenDump();
+                    info.readMessage("Rename last k-mer sorted to k-mer reduced");
+                    info.screenDump();
+                    renameDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted", param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+                }
+            }else{
+                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_reduced succeeded");
+                info.screenDump();
+
+                info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted, Count_" + param.kmerSize1 + ", and Count_" + param.kmerSize2);
+                info.screenDump();
+
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+            }
+        }
+
+        info.readMessage("-------- Starting last k-mer checking: " + param.kmerListInt[param.kmerListInt.length-1] + " --------");
+        info.screenDump();
+
+        if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_reduced")) {
+            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_reduced does not exist");
+            info.screenDump();
+            info.readMessage("By the way, this is the last k-mer size");
+            info.screenDump();
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_sorted")) {
+                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_sorted does not exist");
+                info.screenDump();
+
+                if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] )) {
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + " does not exist");
+                    info.screenDump();
+
+                    param.setKmerSize(param.kmerListInt[param.kmerListInt.length-1] ); // set kmer size for counter
+                    param.setAllbyKmerSize(param.kmerListInt[param.kmerListInt.length-1]) ;
+
+                    info.readMessage("Start counting " + param.kmerListInt[param.kmerListInt.length-1] );
+                    info.screenDump();
+                    if (param.kmerSize <= 31) {
+                        reflexivDSCounterPipe();
+                    } else {
+                        reflexivDS64CounterPipe();
+                    }
+                } else {
+                    info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + " succeeded");
+                    info.screenDump();
+                    info.readMessage("Skip counting " + param.kmerListInt[param.kmerListInt.length-1] );
+                    info.screenDump();
+                }
+
+                param.setKmerSize(param.kmerListInt[param.kmerListInt.length - 1]); // set kmer size for counter
+                param.setAllbyKmerSize(param.kmerListInt[param.kmerListInt.length - 1]);
+
+                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
+
+                info.readMessage("Start sorting " + param.kmerListInt[param.kmerListInt.length - 1]);
+                info.screenDump();
+                reflexivLeftAndRightSortingPipe();
+
+                if (checkOutputFile(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "_sorted")) {
+                    info.readMessage("Finished k-mer sorting : " + param.kmerListInt[param.kmerListInt.length - 1] + " succeeded");
+                    info.screenDump();
+
+                    info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
+                } else {
+                    info.readMessage("Failed k-mer sorting : " + param.kmerListInt[param.kmerListInt.length - 1] + " failed:");
+                    info.screenDump();
+                    info.readMessage("The process is finished. However, one or more results are not complete");
+                }
+            }else{
+                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_sorted succeeded");
+                info.screenDump();
+
+                info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length-1] );
+                info.screenDump();
+
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] );
+
+                info.readMessage("This is the last k-mer reduction round");
+                info.screenDump();
+                info.readMessage("Rename last k-mer sorted to k-mer reduced");
+                info.screenDump();
+                renameDiskStorage(param.outputPath + "/Count_" +param.kmerListInt[param.kmerListInt.length-1] + "_sorted", param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_reduced");
+
+            }
+        }else{
+            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_reduced succeeded");
+            info.screenDump();
+        }
+
+        info.readMessage("-------- All k-mer counting finished --------");
+        info.screenDump();
+    }
+
+    public void reflexivDSDynamicReductionPipe2() throws IOException {
 
 
 
@@ -319,6 +634,9 @@ public class Pipelines implements Pipeline, Serializable{
              * kmer3_sorted     --
              */
 
+            info.readMessage("-------- Starting from k-mer pairs: " + param.kmerSize1 + " and " + param.kmerSize2 + " --------");
+            info.screenDump();
+
             if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")){
                 info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + "_sorted does not exist");
                 info.screenDump();
@@ -350,7 +668,7 @@ public class Pipelines implements Pipeline, Serializable{
                         }
                     }else{
                         if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) { // should not happen
-                            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist. This should normally not be happening");
+                            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist.");
                             info.screenDump();
 
                             if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
@@ -395,6 +713,11 @@ public class Pipelines implements Pipeline, Serializable{
                         } else {
                             reflexivDS64CounterPipe();
                         }
+                    }else{
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
+                        info.screenDump();
+                        info.readMessage("Will use Count_" + param.kmerSize2);
+                        info.screenDump();
                     }
 
                     if (i==1) {
@@ -423,6 +746,16 @@ public class Pipelines implements Pipeline, Serializable{
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                    }else if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced") && checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced") && param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]) {
+                        info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                        info.screenDump();
+
+                        info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
+                        info.screenDump();
+
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
                     }else{
                         info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
                         info.screenDump();
@@ -435,33 +768,15 @@ public class Pipelines implements Pipeline, Serializable{
                     info.screenDump();
 
                     if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced")){ // next reduce does not exist
+
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + "_reduced does not exist");
                         info.screenDump();
 
-                        if (i==1) {
-                            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
-                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " does not exist");
-                                info.screenDump();
+                        if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]) { // last kmer
+                            info.readMessage("Checking existing k-mer counts: Last k-mer size does not exist");
 
-                                param.setKmerSize(param.kmerSize1); // set kmer size for counter
-                                param.setAllbyKmerSize(param.kmerSize1);
-
-                                info.readMessage("Start counting " + param.kmerSize1);
-                                info.screenDump();
-                                if (param.kmerSize <= 31) {
-                                    reflexivDSCounterPipe();
-                                } else {
-                                    reflexivDS64CounterPipe();
-                                }
-                            }else{
-                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
-                                info.screenDump();
-                                info.readMessage("Skip counting " + param.kmerSize1);
-                                info.screenDump();
-                            }
-                        }else{
                             if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) { // should not happen
-                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist. This should normally not be happening");
+                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist.");
                                 info.screenDump();
 
                                 if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
@@ -477,77 +792,103 @@ public class Pipelines implements Pipeline, Serializable{
                                     } else {
                                         reflexivDS64CounterPipe();
                                     }
-                                }else{
+                                } else {
                                     info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
                                     info.screenDump();
                                     info.readMessage("Will use Count_" + param.kmerSize1);
                                     info.screenDump();
                                 }
-                            }else{
+                            } else {
                                 info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted succeeded");
                                 info.screenDump();
                                 info.readMessage("Will use Count_" + param.kmerSize1 + "_sorted");
                                 info.screenDump();
                             }
-                        }
 
-                        if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2)){
-                            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " does not exist");
-                            info.screenDump();
 
-                            param.setKmerSize(param.kmerSize2); // set kmer size for counter
-                            param.setAllbyKmerSize(param.kmerSize2);
+                            if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2)) {
+                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " does not exist");
+                                info.screenDump();
 
-                            info.readMessage("Start counting " + param.kmerSize2);
-                            info.screenDump();
-                            if (param.kmerSize <= 31) {
-                                reflexivDSCounterPipe();
-                            } else {
-                                reflexivDS64CounterPipe();
+                                param.setKmerSize(param.kmerSize2); // set kmer size for counter
+                                param.setAllbyKmerSize(param.kmerSize2);
+
+                                info.readMessage("Start counting " + param.kmerSize2);
+                                info.screenDump();
+                                if (param.kmerSize <= 31) {
+                                    reflexivDSCounterPipe();
+                                } else {
+                                    reflexivDS64CounterPipe();
+                                }
+                            }else{
+                                info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
+                                info.screenDump();
+                                info.readMessage("Will use Count_" + param.kmerSize2);
+                                info.screenDump();
                             }
-                        }
 
-                        if (i==1) {
-                            param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
-                        }else if(!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted") ){
-                            param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
-                        } else{ // after the first iteration
-                            param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
-                        }
-                        param.inputKmerPath2 = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+                            if (i == 1) {
+                                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                            } else if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) {
+                                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                            } else { // after the first iteration
+                                param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
+                            }
+                            param.inputKmerPath2 = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
 
-                        info.readMessage("Start k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1);
-                        info.screenDump();
-                        reflexivDSDynamicKmerReductionPipe();
+                            info.readMessage("Start k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1);
+                            info.screenDump();
+                            reflexivDSDynamicKmerReductionPipe();
 
-                        if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced") && checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted") ) {
-                            info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                            if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced") && checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")) {
+                                info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                                info.screenDump();
+
+                                info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
+                                info.screenDump();
+
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                            }else if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced") && checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced") && param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){
+                                info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                                info.screenDump();
+
+                                info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
+                                info.screenDump();
+
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                            } else {
+                                info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
+                                info.screenDump();
+                                info.readMessage("The process is finished. However, one or more results are not complete");
+                                info.screenDump();
+                            }
+                        }else{
+                            info.readMessage("Removing: Count_" + param.kmerSize1 + " and Count_" + param.kmerSize1 + "_sorted");
                             info.screenDump();
 
-                            info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
-                            info.screenDump();
-
+                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                          //  cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                        }
                             /**
                              *
                              */
-                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
-                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
-                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
-                        }else{
-                            info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
-                            info.screenDump();
-                            info.readMessage("The process is finished. However, one or more results are not complete");
-                            info.screenDump();
-                        }
-
                     }else{ // next reduced exist, remove this sorted and continue
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + "_reduced succeeded");
                         info.screenDump();
-                        info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
+                        info.readMessage("Removing: Count_" + param.kmerSize1 + " and Count_" + param.kmerSize1 + "_sorted");
                         info.screenDump();
 
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
-                       // cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                        if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]) {
+                            info.readMessage("Removing: Count_" + param.kmerSize2 + " as this is the last k-mer size");
+                            info.screenDump();
+                            cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                        }
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
                         // continue
                     }
@@ -584,7 +925,7 @@ public class Pipelines implements Pipeline, Serializable{
                         }
                     } else {
                         if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted")) { // should not happen
-                            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist. This should normally not be happening");
+                            info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_sorted does not exist.");
                             info.screenDump();
 
                             if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1)) {
@@ -631,6 +972,11 @@ public class Pipelines implements Pipeline, Serializable{
                         } else {
                             reflexivDS64CounterPipe();
                         }
+                    }else{
+                        info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
+                        info.screenDump();
+                        info.readMessage("Will use Count_" + param.kmerSize2);
+                        info.screenDump();
                     }
 
                     if (i == 1) {
@@ -662,7 +1008,17 @@ public class Pipelines implements Pipeline, Serializable{
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                         cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
-                    }else{
+                    }else if (checkOutputFile(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced") && checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced") && param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){
+                        info.readMessage("Finished k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " succeeded");
+                        info.screenDump();
+
+                        info.readMessage("Removing: Count_" + param.kmerSize1 + ", Count_" + param.kmerSize2 + ", and Count_" + param.kmerSize1 + "_sorted");
+                        info.screenDump();
+
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                    } else{
                         info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
                         info.screenDump();
                         info.readMessage("The process is finished. However, one or more results are not complete");
@@ -686,6 +1042,9 @@ public class Pipelines implements Pipeline, Serializable{
                 }
             }
         }
+
+        info.readMessage("-------- All k-mer counting finished --------");
+        info.screenDump();
 
 /*
         for (int i=1;i<param.kmerListInt.length;i++){ // longer kmer

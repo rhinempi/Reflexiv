@@ -96,7 +96,6 @@ public class ReflexivDataFrameCounter implements Serializable{
      * @return
      */
     private SparkSession setSparkSessionConfiguration(int shufflePartitions){
-        System.out.println("shufflePartitions: " + shufflePartitions);
         SparkSession spark = SparkSession
                 .builder()
                 .appName("Reflexiv")
@@ -237,20 +236,24 @@ public class ReflexivDataFrameCounter implements Serializable{
      */
     class DSBinaryKmerToString implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
+        StringBuilder sb;
 
         public Iterator<Row> call(Iterator<Row> sIterator){
         //    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
         //    System.out.println(timestamp+"RepeatCheck DSBinaryKmerToString: " + param.kmerSize1);
 
             while (sIterator.hasNext()){
-                String subKmer = "";
+                String subKmer;
+                sb= new StringBuilder();
                 Row s = sIterator.next();
                 for (int i=1; i<=param.kmerSize;i++){
                     Long currentNucleotideBinary = s.getLong(0) >>> 2*(param.kmerSize - i);
                     currentNucleotideBinary &= 3L;
                     char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
+                    sb.append(currentNucleotide);
                 }
+
+                subKmer =sb.toString();
 
                 reflexivKmerStringList.add (
                         RowFactory.create(subKmer, s.getLong(1))

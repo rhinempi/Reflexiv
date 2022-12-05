@@ -64,6 +64,7 @@ public class ParameterOfCounter {
             INPUT_FASTQ = "fastq",
             INPUT_FASTA = "fasta",
             INPUT_CODEC = "infmt",
+            READNUMBER= "reads",
             OUTPUT_FILE = "outfile",
             OUTPUT_CODEC="gzip",
             KMER_SIZE = "kmer",
@@ -91,6 +92,7 @@ public class ParameterOfCounter {
         parameterMap.put(INPUT_FASTQ, o++);
         parameterMap.put(INPUT_FASTA, o++);
         parameterMap.put(INPUT_CODEC, o++);
+        parameterMap.put(READNUMBER, o++);
         parameterMap.put(OUTPUT_FILE, o++);
         parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(KMER_SIZE, o++);
@@ -126,6 +128,10 @@ public class ParameterOfCounter {
         parameter.addOption(OptionBuilder.withArgName("input compression format")
                 .hasArg().withDescription("Compression format of the input files. Default mc4. !!! set this to anything other than mc4, e.g. gzip, if you did not pre-process the input data")
                 .create(INPUT_CODEC));
+
+        parameter.addOption(OptionBuilder.withArgName("input read number")
+                .hasArg().withDescription("limit input read number for processing")
+                .create(READNUMBER));
 
         parameter.addOption(OptionBuilder.withArgName("output file")
                 .hasArg().withDescription("Output assembly result")
@@ -266,6 +272,15 @@ public class ParameterOfCounter {
                     param.partitions = Integer.decode(value);
                 }else{
                     throw new RuntimeException("Parameter " + PARTITIONS+
+                            " should be larger than 0");
+                }
+            }
+
+            if ((value = cl.getOptionValue(READNUMBER)) != null){
+                if (Long.decode(value) >= 0 ){
+                    param.readLimit = Long.decode(value);
+                }else{
+                    throw new RuntimeException("Parameter " + READNUMBER +
                             " should be larger than 0");
                 }
             }

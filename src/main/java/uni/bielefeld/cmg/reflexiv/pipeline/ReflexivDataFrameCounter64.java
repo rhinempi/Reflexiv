@@ -253,10 +253,13 @@ public class ReflexivDataFrameCounter64 implements Serializable{
      */
     class DSBinaryKmerToString implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
+        StringBuilder sb= new StringBuilder();
+
 
         public Iterator<Row> call(Iterator<Row> sIterator){
             while (sIterator.hasNext()){
-                String subKmer = "";
+                String subKmer;
+                sb= new StringBuilder();
                 Row s = sIterator.next();
 
                 for (int i=0; i<(param.kmerSize / 32) *32;i++){
@@ -264,7 +267,7 @@ public class ReflexivDataFrameCounter64 implements Serializable{
 
                     currentNucleotideBinary &= 3L;
                     char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
+                    sb.append(currentNucleotide);
                 }
 
                 for (int i=(param.kmerSize /32)*32; i<param.kmerSize; i++){
@@ -272,9 +275,10 @@ public class ReflexivDataFrameCounter64 implements Serializable{
 
                     currentNucleotideBinary &= 3L;
                     char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
+                    sb.append(currentNucleotide);
                 }
 
+                subKmer=sb.toString();
                 reflexivKmerStringList.add (
                         RowFactory.create(subKmer, s.getLong(1))
                         // new Row(); Tuple2<String, Integer>(subKmer, s._2)

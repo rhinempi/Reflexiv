@@ -14,6 +14,7 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
 import scala.collection.Seq;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
@@ -192,6 +193,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         KmerCountDS = spark.read().csv(param.inputKmerPath1);
         LongerKmerCountDS = spark.read().csv(param.inputKmerPath2);
 
+
         if (param.partitions > 0) {
             KmerCountDS = KmerCountDS.repartition(param.partitions);
         }
@@ -200,133 +202,12 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             LongerKmerCountDS = LongerKmerCountDS.repartition(param.partitions);
         }
 
-        DynamicKmerBinarizer DSBinarizer = new DynamicKmerBinarizer();
-        DSKmerReverseComplement DSRCKmer = new DSKmerReverseComplement();
-        DSForwardSubKmerExtraction DSextractForwardSubKmer = new DSForwardSubKmerExtraction();
         DSSubKmerToFullKmer DSSubKmerToFullLengthKmer = new DSSubKmerToFullKmer();
 
-        if (param.inputKmerPath1.contains("_sorted/")){
-            DynamicKmerBinarizerFromSorted DSBinarizerSort= new DynamicKmerBinarizerFromSorted();
-            ReflexivFullKmerDS = KmerCountDS.mapPartitions(DSBinarizerSort, ReflexivFullKmerEncoder);
-        }else {
-            /**
-             * Transforming kmer string to binary kmer
-             */
+        DynamicKmerBinarizerFromSorted DSBinarizerSort= new DynamicKmerBinarizerFromSorted();
+        ReflexivFullKmerDS = KmerCountDS.mapPartitions(DSBinarizerSort, ReflexivFullKmerEncoder);
+        LongerReflexivFullKmerDS = LongerKmerCountDS.mapPartitions(DSBinarizerSort, ReflexivFullKmerEncoder);
 
-
-            KmerBinaryCountDS = KmerCountDS.mapPartitions(DSBinarizer, KmerBinaryCountEncoder);
-
-            /**
-             * Filter kmer with lower coverage
-             */
-
-            KmerBinaryCountDS = KmerBinaryCountDS.filter(col("count")
-                    .geq(param.minKmerCoverage)
-                    .and(col("count")
-                            .leq(param.maxKmerCoverage)
-                    )
-            );
-
-            if (param.cache) {
-                KmerBinaryCountDS.cache();
-            }
-
-            /**
-             * Extract reverse complementary kmer
-             */
-            KmerBinaryCountDS = KmerBinaryCountDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-            /**
-             * Extract forward sub kmer
-             */
-            ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerCompressedEncoder);
-        /*
-        if (param.partitions > 0) {
-            KmerCountDS = KmerCountDS.repartition(param.partitions);
-        }
-        */
-
-            if (param.bubble == true) {
-                ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-                if (param.minErrorCoverage == 0) {
-                    DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-                    ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
-                } else {
-                    DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-                    ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerCompressedEncoder);
-                }
-
-                DSReflectedSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedSubKmerExtractionFromForward();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerCompressedEncoder);
-
-                ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-                if (param.minErrorCoverage == 0) {
-                    DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-                    ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-                } else {
-                    DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector = new DSFilterForkReflectedSubKmerWithErrorCorrection();
-                    ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerCompressedEncoder);
-                }
-            }
-
-            ReflexivFullKmerDS = ReflexivSubKmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-
-        }
-
-        LongerKmerBinaryCountDS = LongerKmerCountDS.mapPartitions(DSBinarizer, KmerBinaryCountEncoder);
-
-        LongerKmerBinaryCountDS = LongerKmerBinaryCountDS.filter(col("count")
-                .geq(param.minKmerCoverage)
-                .and(col("count")
-                        .leq(param.maxKmerCoverage)
-                )
-        );
-
-        if (param.cache) {
-            LongerKmerBinaryCountDS.cache();
-        }
-
-        LongerKmerBinaryCountDS = LongerKmerBinaryCountDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-//        KmerBinaryCountDS.show();
-
-        LongerReflexivSubKmerDS = LongerKmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerCompressedEncoder);
-
-//        ReflexivSubKmerDS.show();
-
-        if (param.bubble == true) {
-            LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-                LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-                LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerCompressedEncoder);
-            }
-
-            DSReflectedSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedSubKmerExtractionFromForward();
-            LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerCompressedEncoder);
-
-            LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-                LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector = new DSFilterForkReflectedSubKmerWithErrorCorrection();
-                LongerReflexivSubKmerDS = LongerReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerCompressedEncoder);
-            }
-        }
-
-        /**
-         *
-         */
-
-
-        LongerReflexivFullKmerDS= LongerReflexivSubKmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-/*
-        LongerKmerToEnglightenKmer LongerKmerEnlightmentPreparation = new LongerKmerToEnglightenKmer();
-        LongerReflexivFullKmerDS =LongerReflexivSubKmerDS.mapPartitions(LongerKmerEnlightmentPreparation, ReflexivFullKmerEncoder);
-*/
         MixedFullKmerDS = LongerReflexivFullKmerDS.union(ReflexivFullKmerDS);
 
  //       MixedFullKmerDS.cache();
@@ -368,19 +249,16 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
       //      MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
       //  }
 
-     //   MixedFullKmerDS.cache();
+    //    MixedFullKmerDS.persist(StorageLevel.DISK_ONLY());
      //   MixedFullKmerDS.show();
-
 
         /**
          *
          */
 
         DSBinaryFullKmerArrayToStringShort FullKmerToStringShort = new DSBinaryFullKmerArrayToStringShort();
-        DSBinaryFullKmerArrayToStringLong FullKmerToStringLong = new DSBinaryFullKmerArrayToStringLong();
 
         DSFullKmerStringShort = MixedFullKmerDS.mapPartitions(FullKmerToStringShort, ReflexivFullKmerStringEncoder);
-        DSFullKmerStringLong = MixedFullKmerDS.mapPartitions(FullKmerToStringLong, ReflexivFullKmerStringEncoder);
 
         if (param.gzip) {
             DSFullKmerStringShort.write().
@@ -393,34 +271,6 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     mode(SaveMode.Overwrite).
                     format("csv").
                     save(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced");
-        }
-
-        if (param.gzip) {
-            if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){ // the last kmer does not need to be reduced, so directly rename to reduced
-                DSFullKmerStringLong.write().
-                        mode(SaveMode.Overwrite).
-                        format("csv").
-                        option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
-            }else {
-                DSFullKmerStringLong.write().
-                        mode(SaveMode.Overwrite).
-                        format("csv").
-                        option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
-            }
-        }else{
-            if (param.kmerSize2==param.kmerListInt[param.kmerListInt.length-1]){
-                DSFullKmerStringLong.write().
-                        mode(SaveMode.Overwrite).
-                        format("csv").
-                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
-            }else {
-                DSFullKmerStringLong.write().
-                        mode(SaveMode.Overwrite).
-                        format("csv").
-                        save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
-            }
         }
 
         spark.stop();
@@ -448,8 +298,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringShort: " + param.kmerSize1);
+   //         Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+  //          System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringShort: " + param.kmerSize1);
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
@@ -561,8 +411,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringLong: " + param.kmerSize1);
+     //       Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+     //       System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringLong: " + param.kmerSize1);
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
@@ -1330,8 +1180,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             long attribute;
             long[] combinedBlock;
 
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+ "RepeatCheck RightLongerToShorterComparisonAndNeutralizationPreparation: " + param.kmerSize1);
+    //        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+     //       System.out.println(timestamp+ "RepeatCheck RightLongerToShorterComparisonAndNeutralizationPreparation: " + param.kmerSize1);
 
             while (s.hasNext()){
                 Row fullKmer=s.next();
@@ -1683,8 +1533,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
             long[] extension;
             long attribute;
 
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+ "RepeatCheck LeftLongerToShorterComparisonPreparation: " + param.kmerSize1);
+         //   Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+         //   System.out.println(timestamp+ "RepeatCheck LeftLongerToShorterComparisonPreparation: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 Row fullKmer = s.next();
@@ -2022,8 +1872,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         Row lastKmer;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp + "RepeatCheck RightLongerKmerVariantAdjustmentAndNeutralization: " + param.kmerSize1);
+       //     Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+       //     System.out.println(timestamp + "RepeatCheck RightLongerKmerVariantAdjustmentAndNeutralization: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 Row fullKmer = s.next();
@@ -2708,8 +2558,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         Row lastKmer;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+ "RepeatCheck LeftLongerKmerVariantAdjustment: " + param.kmerSize1);
+        //    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+        //    System.out.println(timestamp+ "RepeatCheck LeftLongerKmerVariantAdjustment: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 Row fullKmer = s.next();
@@ -3384,8 +3234,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         boolean neutralizeMarker = false;
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp + "RepeatCheck ShorterKmerNeutralization: " + param.kmerSize1);
+     //       Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+      //      System.out.println(timestamp + "RepeatCheck ShorterKmerNeutralization: " + param.kmerSize1);
 
 
             while (s.hasNext()) {
@@ -4651,8 +4501,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         long maxSubKmerBinary = ~((~0L) << 2 * 31);
 
         public Iterator<Row> call(Iterator<Row> s) throws Exception {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+ "RepeatCheck DSSubKmerToFullKmer: " + param.kmerSize1);
+      //      Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+      //      System.out.println(timestamp+ "RepeatCheck DSSubKmerToFullKmer: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 kmerTuple = s.next();
@@ -4924,8 +4774,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
 
 
         public Iterator<Row> call(Iterator<Row> s) {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+ "RepeatCheck DSKmerReverseComplement: " + param.kmerSize1);
+    //        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+    //        System.out.println(timestamp+ "RepeatCheck DSKmerReverseComplement: " + param.kmerSize1);
 
             while (s.hasNext()) {
                 kmerTuple = s.next();
@@ -5019,8 +4869,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //     Long[] suffixBinaryArray;
 
         public Iterator<Row> call(Iterator<Row> s) {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizerFromSorted: " + param.kmerSize1);
+     //       Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+    //        System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizerFromSorted: " + param.kmerSize1);
 
             while (s.hasNext()) {
 
@@ -5146,8 +4996,8 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         //     Long[] suffixBinaryArray;
 
         public Iterator<Row> call(Iterator<Row> s) {
-            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-            System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizer: " + param.kmerSize1);
+    //        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+    //        System.out.println(timestamp+"RepeatCheck DynamicKmerBinarizer: " + param.kmerSize1);
 
             while (s.hasNext()) {
 
