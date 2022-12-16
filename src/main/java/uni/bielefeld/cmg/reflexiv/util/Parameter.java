@@ -85,7 +85,7 @@ public class Parameter {
             MAXCOVER= "maxcov",
             MINERROR= "error",
             BUBBLE = "bubble",
-            MERCY = "mercy",
+            STITCH = "stitch",
             MINLENGTH = "minlength",
             MINCONTIG = "mincontig",
             PARTITIONS = "partition",
@@ -126,7 +126,7 @@ public class Parameter {
         parameterMap.put(SHUFFLEPARTITIONS, o++);
         parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(BUBBLE, o++);
-        parameterMap.put(MERCY, o++);
+        parameterMap.put(STITCH, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
         parameterMap.put(HELP2, o++);
@@ -184,9 +184,9 @@ public class Parameter {
                 .hasArg(false).withDescription("Set to NOT remove bubbles.")
                 .create(BUBBLE));
 
-        parameter.addOption(OptionBuilder.withArgName("without mercy k-mer")
-                .hasArg(false).withDescription("Set to DISable mercy k-mer.")
-                .create(MERCY));
+        parameter.addOption(OptionBuilder.withArgName("without stitch k-mer")
+                .hasArg(false).withDescription("Set to DISable stitch k-mer.")
+                .create(STITCH));
 
         parameter.addOption(OptionBuilder.withArgName("output compression")
                 .hasArg(false).withDescription("Set to compress output files")
@@ -378,8 +378,8 @@ public class Parameter {
                 param.bubble =false;
             }
 
-            if (cl.hasOption(MERCY)){
-                param.mercy = false;
+            if (cl.hasOption(STITCH)){
+                param.stitch = true;
             }
 
             if (cl.hasOption(CACHE)){
@@ -434,7 +434,7 @@ public class Parameter {
             if ((value = cl.getOptionValue(MINCOVER)) != null){
                 if (Integer.decode(value) >= 0 ) {
                     param.minKmerCoverage = Integer.decode(value);
-                    param.setMinErrorCoverage(param.minKmerCoverage); // default minErrorCoverage is equal to minKmerCoverage
+        //            param.setMinErrorCoverage(param.minKmerCoverage); // default minErrorCoverage is equal to minKmerCoverage
                 }else{
                     throw new RuntimeException("Parameter " + MINCOVER+
                             " should be larger than 0");
@@ -494,7 +494,7 @@ public class Parameter {
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");
             }
 
-            // both kmer count and input fastq exist, input fastq will be used for mercy k-mer
+            // both kmer count and input fastq exist, input fastq will be used for stitch k-mer
             if (cl.getOptionValue(INPUT_KMER) != null &&  cl.getOptionValue(INPUT_FASTQ) != null) {
                 param.inputKmerPath = cl.getOptionValue(INPUT_KMER);
                 param.inputFqPath = cl.getOptionValue(INPUT_FASTQ);

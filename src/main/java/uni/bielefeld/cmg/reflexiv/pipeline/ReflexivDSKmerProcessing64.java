@@ -489,7 +489,7 @@ public class ReflexivDSKmerProcessing64 implements Serializable {
         }
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-        if (param.mercy) {
+        if (param.stitch) {
 
             DSLowCoverageSubKmerExtraction lowCoverageSubKmerExtractor = new DSLowCoverageSubKmerExtraction();
 

@@ -191,6 +191,16 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSStitchingPipe(){
+        ReflexivDSStitching rfPipe = new ReflexivDSStitching();
+        rfPipe.setParam(param);
+
+        param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + 31 + "_sorted/part*.csv.gz";
+        param.inputKmerPath2 = param.outputPath + "/Assembly/part*";
+
+        rfPipe.assemblyFromKmer();
+    }
+
     public void reflexivDSDecompresserPipe() throws IOException {
         ReflexivDataFrameDecompresser rfPipe = new ReflexivDataFrameDecompresser();
         rfPipe.setParam(param);
@@ -381,6 +391,16 @@ public class Pipelines implements Pipeline, Serializable{
 
                     param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
 
+                    if (param.kmerSize1>=61){
+                        param.minErrorCoverage=6;
+                    }else if (param.kmerSize1>=81 && param.kmerSize2<100) {
+                        param.minErrorCoverage=6;
+                    }else if (param.kmerSize1>=100){
+                        param.minErrorCoverage=2;
+                    }
+
+                    System.out.println("minErrorCoverage: " + param.minErrorCoverage);
+
                     info.readMessage("Start sorting " + param.kmerSize1);
                     info.screenDump();
                     reflexivLeftAndRightSortingPipe();
@@ -439,6 +459,16 @@ public class Pipelines implements Pipeline, Serializable{
 
                     param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
 
+                    if (param.kmerSize2>=61){
+                        param.minErrorCoverage=6;
+                    }else if (param.kmerSize2>=81 && param.kmerSize2<100) {
+                        param.minErrorCoverage=6;
+                    }else if (param.kmerSize2>=100){
+                        param.minErrorCoverage=2;
+                    }
+
+                    System.out.println("minErrorCoverage: " + param.minErrorCoverage);
+
                     info.readMessage("Start sorting " + param.kmerSize2);
                     info.screenDump();
                     reflexivLeftAndRightSortingPipe();
@@ -492,9 +522,16 @@ public class Pipelines implements Pipeline, Serializable{
                 if (i== param.kmerListInt.length-1){
                     info.readMessage("This is the last k-mer reduction round");
                     info.screenDump();
-                    info.readMessage("Rename last k-mer sorted to k-mer reduced");
-                    info.screenDump();
-                    renameDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted", param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+
+                    if (param.kmerSize2 <100) {
+                        info.readMessage("Removing: Count_" + param.kmerSize2 + "_sorted");
+                        info.screenDump();
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+                    }else {
+                        info.readMessage("Rename last k-mer sorted to k-mer reduced");
+                        info.screenDump();
+                        renameDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted", param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+                    }
                 }
             }else{
                 info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + "_reduced succeeded");
@@ -548,6 +585,10 @@ public class Pipelines implements Pipeline, Serializable{
 
                 param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
 
+     //           if (param.kmerListInt[param.kmerListInt.length - 1]>=100){
+                   // param.minErrorCoverage=4;
+      //          }
+
                 info.readMessage("Start sorting " + param.kmerListInt[param.kmerListInt.length - 1]);
                 info.screenDump();
                 reflexivLeftAndRightSortingPipe();
@@ -584,6 +625,76 @@ public class Pipelines implements Pipeline, Serializable{
         }else{
             info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + "_reduced succeeded");
             info.screenDump();
+        }
+
+        if (param.stitch){
+            int stitchSize=99;
+            info.readMessage("-------- Starting stitch k-mer checking: stitch k-mer size " + stitchSize + " --------");
+            info.screenDump();
+
+            param.outputPath=param.outputPath + "/Stitch_kmer";
+            param.maxKmerCoverage=1; // stitch k-mer has only 1 coverage
+            param.minKmerCoverage=1;
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + stitchSize + "_sorted")) {
+                info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + "_sorted does not exist");
+                info.screenDump();
+
+                if (!checkOutputFile(param.outputPath + "/Count_" + stitchSize)) {
+                    info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize+ " does not exist");
+                    info.screenDump();
+
+                    param.setKmerSize(stitchSize); // set kmer size for counter
+                    param.setAllbyKmerSize(stitchSize);
+
+                    info.readMessage("Start counting stitch k-mer" + param.kmerSize1);
+                    info.screenDump();
+
+                    if (param.kmerSize <= 31) {
+                        reflexivDSCounterPipe();
+                    } else {
+                        reflexivDS64CounterPipe();
+                    }
+
+
+                }else{
+                    info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + " succeeded");
+                    info.screenDump();
+                    info.readMessage("Skip counting stitch k-mer" + stitchSize);
+                    info.screenDump();
+                }
+
+                param.inputKmerPath = param.outputPath + "/Count_" + stitchSize + "/part*.csv.gz";
+
+                param.setKmerSize(stitchSize); // set kmer size for counter
+                param.setAllbyKmerSize(stitchSize);
+
+                info.readMessage("Start sorting stitch k-mer" + stitchSize);
+                info.screenDump();
+
+                param.maxKmerCoverage=1000000;
+                reflexivLeftAndRightSortingPipe();
+
+
+                if (checkOutputFile(param.outputPath + "/Count_" + stitchSize+ "_sorted")) {
+                    info.readMessage("Finished stitch k-mer sorting : " + stitchSize+ " succeeded");
+                    info.screenDump();
+
+                    info.readMessage("Removing : stitch k-mer Count_" + stitchSize);
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Count_" + stitchSize);
+                } else {
+                    info.readMessage("Failed stitch k-mer sorting : " + stitchSize + " failed:");
+                    info.screenDump();
+                    info.readMessage("The process is finished. However, one or more results are not complete");
+                }
+
+            }else{
+                info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + "_sorted succeeded");
+                info.screenDump();
+            }
+
         }
 
         info.readMessage("-------- All k-mer counting finished --------");

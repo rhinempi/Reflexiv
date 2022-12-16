@@ -229,6 +229,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         MixedReflexivSubkmerDS = MixedReflexivSubkmerDS.mapPartitions(rightAdjustmentAndNeutralization, ReflexivSubKmerCompressedEncoder);
 
         MixedFullKmerDS = MixedReflexivSubkmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
+        MixedReflexivSubkmerDS.unpersist();
 
 
 
@@ -242,7 +243,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         ShorterKmerNeutralization SKNeutralizer = new ShorterKmerNeutralization();
         MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
 
-       // MixedFullKmerDS.cache();
+        MixedFullKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
 
       //  if(param.partitions>10) {
       //      MixedFullKmerDS = MixedFullKmerDS.coalesce(param.partitions - 1);
@@ -257,8 +258,10 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
          */
 
         DSBinaryFullKmerArrayToStringShort FullKmerToStringShort = new DSBinaryFullKmerArrayToStringShort();
+        DSBinaryFullKmerArrayToStringLong FullKmerToStringLong = new DSBinaryFullKmerArrayToStringLong();
 
         DSFullKmerStringShort = MixedFullKmerDS.mapPartitions(FullKmerToStringShort, ReflexivFullKmerStringEncoder);
+        DSFullKmerStringLong = MixedFullKmerDS.mapPartitions(FullKmerToStringLong, ReflexivFullKmerStringEncoder);
 
         if (param.gzip) {
             DSFullKmerStringShort.write().
@@ -271,6 +274,36 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     mode(SaveMode.Overwrite).
                     format("csv").
                     save(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced");
+        }
+
+        if (param.kmerSize2<100) {
+            if (param.kmerSize2 == param.kmerListInt[param.kmerListInt.length - 1]) {
+                if (param.gzip) {
+                    DSFullKmerStringLong.write().
+                            mode(SaveMode.Overwrite).
+                            format("csv").
+                            option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                            save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+                } else {
+                    DSFullKmerStringLong.write().
+                            mode(SaveMode.Overwrite).
+                            format("csv").
+                            save(param.outputPath + "/Count_" + param.kmerSize2 + "_reduced");
+                }
+            } else {
+                if (param.gzip) {
+                    DSFullKmerStringLong.write().
+                            mode(SaveMode.Overwrite).
+                            format("csv").
+                            option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                            save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+                } else {
+                    DSFullKmerStringLong.write().
+                            mode(SaveMode.Overwrite).
+                            format("csv").
+                            save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+                }
+            }
         }
 
         spark.stop();

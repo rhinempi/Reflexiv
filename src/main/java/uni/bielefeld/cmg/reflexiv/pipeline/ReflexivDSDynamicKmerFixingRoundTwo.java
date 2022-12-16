@@ -26,7 +26,6 @@ import java.io.Serializable;
 import java.util.*;
 
 import static org.apache.spark.sql.functions.col;
-import static org.apache.spark.sql.functions.max;
 
 
 /**
@@ -63,7 +62,7 @@ import static org.apache.spark.sql.functions.max;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSDynamicKmer64 implements Serializable {
+public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
     private long time;
     private DefaultParam param;
 
@@ -124,249 +123,6 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
         }
 
         return ProbHash;
-    }
-
-    /**
-     *
-     */
-    public void assembly() {
-        SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
-
-        info.readMessage("Initiating Spark context ...");
-        info.screenDump();
-        info.readMessage("Start Spark framework");
-        info.screenDump();
-
-        Dataset<String> FastqDS;
-        Dataset<Row> KmerBinaryDS;
-
-        Dataset<Row> KmerBinaryCountLongDS;
-        Dataset<Row> KmerBinaryCountDS;
-
-        StructType kmerCountTupleStruct = new StructType();
-        kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
-        Dataset<Row> ReflexivSubKmerDS;
-        StructType ReflexivKmerStruct = new StructType();
-        ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("extension", DataTypes.LongType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStruct = ReflexivKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivSubKmerEncoder = RowEncoder.apply(ReflexivKmerStruct);
-
-        Dataset<Row> ReflexivSubKmerStringDS;
-        StructType ReflexivKmerStringStruct = new StructType();
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct = ReflexivKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivKmerStringEncoder = RowEncoder.apply(ReflexivKmerStringStruct);
-
-        Dataset<Row> ReflexivLongSubKmerDS;
-        StructType ReflexivLongKmerStruct = new StructType();
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct = ReflexivLongKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerEncoder = RowEncoder.apply(ReflexivLongKmerStruct);
-
-        Dataset<Row> ReflexivLongSubKmerStringDS;
-        StructType ReflexivLongKmerStringStruct = new StructType();
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
-
-        Dataset<Row> ContigRows;
-        StructType ContigLongKmerStringStruct = new StructType();
-        ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("ID", DataTypes.StringType, false);
-        ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("contig", DataTypes.StringType, false);
-        ExpressionEncoder<Row> ContigStringEncoder = RowEncoder.apply(ContigLongKmerStringStruct);
-
-        JavaRDD<Row> ContigRowsRDD;
-        JavaPairRDD<Row, Long> ContigsRDDIndex;
-        JavaRDD<String> ContigRDD;
-
-        FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
-
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-        FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-        FastqDS = FastqDS.filter(FilterDSUnit);
-
-        if (param.partitions > 0) {
-            FastqDS = FastqDS.repartition(param.partitions);
-        }
-        if (param.cache) {
-            FastqDS.cache();
-        }
-
-        ReverseComplementKmerBinaryExtractionFromDataset64 DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset64();
-        KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, KmerBinaryCountEncoder);
-
-        KmerBinaryCountLongDS = KmerBinaryDS.groupBy("kmerBlocks")
-                .count()
-                .toDF("kmerBlocks", "count");
-
-        KmerBinaryCountLongDS = KmerBinaryCountLongDS.filter(col("count")
-                .geq(param.minKmerCoverage)
-                .and(col("count")
-                        .leq(param.maxKmerCoverage)
-                )
-        );
-
-        /**
-         * Extract reverse complementary kmer
-         */
-        DSKmerReverseComplement DSRCKmer = new DSKmerReverseComplement();
-        KmerBinaryCountDS = KmerBinaryCountLongDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-        /**
-         * Extract forward sub kmer
-         */
-
-        DSForwardFixingSubKmerExtraction DSextractForwardSubKmer = new DSForwardFixingSubKmerExtraction();
-        ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerEncoder);
-
-        if (param.bubble == true) {
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-            DSReflectedFixingSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedFixingSubKmerExtractionFromForward();
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerEncoder);
-
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            if (param.minErrorCoverage == 0) {
-                DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-            } else {
-                DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector = new DSFilterForkReflectedSubKmerWithErrorCorrection();
-                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerEncoder);
-            }
-
-        }
-
-        /**
-         *
-         */
-        DSkmerRandomReflection DSrandomizeSubKmer = new DSkmerRandomReflection();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSrandomizeSubKmer, ReflexivSubKmerEncoder);
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-
-        DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-
-        DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
-
-
-        int iterations = 0;
-        for (int i = 1; i < 4; i++) {
-            iterations++;
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
-        }
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-        //       ReflexivSubKmerDS.cache();
-
-        iterations++;
-
-        /**
-         * Extract Long sub kmer
-         */
-
-
-        DSExtendReflexivKmerToArrayFirstTime DSKmerExtentionToArrayFirst = new DSExtendReflexivKmerToArrayFirstTime();
-        ReflexivLongSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtentionToArrayFirst, ReflexivLongKmerEncoder);
-        ReflexivLongSubKmerDS.cache();
-
-        DSExtendReflexivKmerToArrayLoop DSKmerExtenstionArrayToArray = new DSExtendReflexivKmerToArrayLoop();
-
-        DSBinaryReflexivKmerArrayToString DSArrayStringOutput = new DSBinaryReflexivKmerArrayToString();
-
-        //      ReflexivSubKmerDS.unpersist();
-        int partitionNumber = ReflexivLongSubKmerDS.toJavaRDD().getNumPartitions();
-        long contigNumber = 0;
-        while (iterations <= param.maximumIteration) {
-            iterations++;
-            if (iterations >= param.minimumIteration) {
-                if (iterations % 3 == 0) {
-
-                    /**
-                     *  problem ------------------------------------------v
-                     */
-                    ReflexivLongSubKmerDS.cache();
-                    long currentContigNumber = ReflexivLongSubKmerDS.count();
-                    if (contigNumber == currentContigNumber) {
-                        break;
-                    } else {
-                        contigNumber = currentContigNumber;
-                    }
-
-                    if (partitionNumber >= 16) {
-                        if (currentContigNumber / partitionNumber <= 20) {
-                            partitionNumber = partitionNumber / 4 + 1;
-                            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
-                        }
-                    }
-                }
-            }
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-        }
-
-        /**
-         *
-         */
-        ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-
-        /**
-         *
-         */
-
-        DSKmerToContig contigformaterDS = new DSKmerToContig();
-        ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-
-
-        /**
-         *
-         */
-        ContigRowsRDD = ContigRows.toJavaRDD();
-
-        ContigRowsRDD.cache();
-
-        ContigsRDDIndex = ContigRowsRDD.zipWithIndex();
-
-        TagRowContigID DSIdLabeling = new TagRowContigID();
-        ContigRDD = ContigsRDDIndex.flatMap(DSIdLabeling);
-
-        ContigRDD.saveAsTextFile(param.outputPath);
-
-        spark.stop();
     }
 
     /**
@@ -543,227 +299,8 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
             KmerCountDS = KmerCountDS.repartition(param.partitions);
         }
 
-        /**
-         * Transforming kmer string to binary kmer
-         */
-//        DynamicKmerBinarizer DSBinarizer = new DynamicKmerBinarizer();
-//        KmerBinaryCountDS = KmerCountDS.mapPartitions(DSBinarizer, KmerBinaryCountEncoder);
-
-        /**
-         * Filter kmer with lower coverage
-         */
-//        KmerBinaryCountDS = KmerBinaryCountDS.filter(col("count")
-//                .geq(param.minKmerCoverage)
-//                .and(col("count"
-//                        .leq(param.maxKmerCoverage)
-//                )
-//        );
-
-
-//        if (param.cache) {
-//            KmerBinaryCountDS.cache();
-//       }
-
-        /**
-         * Extract reverse complementary kmer
-         */
-//        DSKmerReverseComplement DSRCKmer = new DSKmerReverseComplement();
-//        KmerBinaryCountDS = KmerBinaryCountDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
-
-//        KmerBinaryCountDS.show();
-
-        /**
-         * Extract forward sub kmer
-         */
-
-
-//        DSForwardSubKmerExtraction DSextractForwardSubKmer = new DSForwardSubKmerExtraction();
-//        ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerEncoderCompressed);
-
-//        ReflexivSubKmerDS.show();
-
-//        if (param.bubble == true) {
-//            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-//            if (param.minErrorCoverage == 0) {
-//                DSFilterForkSubKmer DShighCoverageSelector = new DSFilterForkSubKmer();
-//                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageSelector, ReflexivSubKmerEncoder);
- //           } else {
-//                DSFilterForkSubKmerWithErrorCorrection DShighCoverageErrorRemovalSelector = new DSFilterForkSubKmerWithErrorCorrection();
-//                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageErrorRemovalSelector, ReflexivSubKmerEncoderCompressed);
-//            }
-
-//            DSReflectedSubKmerExtractionFromForward DSreflectionExtractor = new DSReflectedSubKmerExtractionFromForward();
-//            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSreflectionExtractor, ReflexivSubKmerEncoder);
-
-//            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-//            if (param.minErrorCoverage == 0) {
-//                DSFilterForkReflectedSubKmer DShighCoverageReflectedSelector = new DSFilterForkReflectedSubKmer();
-//                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedSelector, ReflexivSubKmerEncoder);
-//            } else {
-//                DSFilterForkReflectedSubKmerWithErrorCorrection DShighCoverageReflectedErrorRemovalSelector = new DSFilterForkReflectedSubKmerWithErrorCorrection();
-//                ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DShighCoverageReflectedErrorRemovalSelector, ReflexivSubKmerEncoderCompressed);
-//            }
-//        }
-
-        /**
-         * Binarize Reduced Kmer Strings to sub kmers
-         */
-
         DynamicKmerBinarizerFromReducedToSubKmer ReducedKmerToSubKmer= new DynamicKmerBinarizerFromReducedToSubKmer();
-        ReflexivSubKmerDS = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, ReflexivSubKmerEncoderCompressed);
-        // KmerCountDS.unpersist();
-
-        DSkmerRandomReflection DSrandomizeSubKmer = new DSkmerRandomReflection();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSrandomizeSubKmer, ReflexivSubKmerEncoderCompressed);
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-
-        // DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-        //   Dataset<Row>  ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-        //ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + 1);
-
-        DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoderCompressed);
-
-
-        int iterations = 0;
-        for (int i = 1; i < 4; i++) { // first four (here three, plus one before) iterations only use long as extend parts as the first three extension can reach maximum 16nt, that can be stored in a long, to reduce memory consumption
-            iterations++;
-            ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-            ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoderCompressed);
-        }
-/*
-        ReflexivSubKmerDS.checkpoint();
-
-        iterations++;
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-        ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoderCompressed);
-*/
-
-        ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
-        //      ReflexivSubKmerDS.cache();
-
-        iterations++;
-
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-        // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
-
-        /**
-         * Extract Long sub kmer
-         */
-
-        DSExtendReflexivKmerToArrayFirstTime DSKmerExtentionToArrayFirst = new DSExtendReflexivKmerToArrayFirstTime();
-        ReflexivLongSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtentionToArrayFirst, ReflexivLongSubKmerEncoderCompressed);
-
-  //      ReflexivLongSubKmerDS.checkpoint();
-
-   //     ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-
-        DSExtendReflexivKmerToArrayLoop DSKmerExtenstionArrayToArray = new DSExtendReflexivKmerToArrayLoop();
-
-//        DSBinaryReflexivKmerArrayToString DSArrayStringOutput = new DSBinaryReflexivKmerArrayToString();
-
-        // ReflexivSubKmerDS.unpersist();
-   //     ReflexivLongSubKmerDS.cache();
-
- //       DSReflexivAndForwardKmer DSReflexivDouble = new DSReflexivAndForwardKmer();
-
-   //     DSFilterExtendableKmerPairs DSReflexivExtendablePairs = new DSFilterExtendableKmerPairs();
-   //     DSFilterStillExtendableKmerFromPairs DSReflexivExtendable = new DSFilterStillExtendableKmerFromPairs();
-   //     DSFilterUnExtendableKmer DSReflexivUnExtendable = new DSFilterUnExtendableKmer();
-
-
-        //int partitionNumber = ReflexivLongSubKmerDS.toJavaRDD().getNumPartitions();
-        long contigNumber = 0;
-        while (iterations <= param.maximumIteration) {
-            iterations++;
-/*
-            if (iterations == param.minimumIteration + 3) {
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.localCheckpoint();
-
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSReflexivDouble, ReflexivLongKmerEncoder);
-
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                ReflexivLongSubKmerDS.cache();
-
-                ExtendableReflexivKmerPairs = ReflexivLongSubKmerDS.mapPartitions(DSReflexivExtendablePairs, ReflexivLongKmerEncoder);
-                UnExtendableReflexivKmerPairs = ReflexivLongSubKmerDS.mapPartitions(DSReflexivUnExtendable, ReflexivLongKmerEncoder);
-
-                ExtendableReflexivKmerPairs.cache();
-                UnExtendableReflexivKmerPairs.cache();
-                long extendablePairs = ExtendableReflexivKmerPairs.count();
-                System.out.println("mark before extention, extandable pairs: " + extendablePairs);
-
-                ExtendableReflexivKmerPairs = ExtendableReflexivKmerPairs.sort("k-1");
-                UnExtendableReflexivKmerPairs = UnExtendableReflexivKmerPairs.sort("k-1");
-
-                ExtendableReflexivKmer = ExtendableReflexivKmerPairs.mapPartitions(DSReflexivExtendable, ReflexivLongKmerEncoder);
-                UnExtendableReflexivKmer = UnExtendableReflexivKmerPairs.mapPartitions(DSReflexivExtendable, ReflexivLongKmerEncoder);
-
-                ExtendableReflexivKmer.cache();
-                UnExtendableReflexivKmer.cache();
-
-                long beforeExtensionExtendable = ExtendableReflexivKmer.count();
-                long beforeExtensionUnExtendable = UnExtendableReflexivKmer.count();
-                long allbeforeExtention = ReflexivLongSubKmerDS.count();
-
-                System.out.println("mark before extention, extandable: " + beforeExtensionExtendable);
-                System.out.println("mark before extention, unextandable: " + beforeExtensionUnExtendable);
-                System.out.println("mark before extention, total: " + allbeforeExtention);
-
-                ReflexivLongSubKmerDS.unpersist();
-            }
-*/
-            if (iterations >= param.minimumIteration + 3 + 52) { // 15 + 3 is 18. for reduced iterations
-                break;
-                /*
-                if (iterations % 3 == 0) {
-                    ReflexivLongSubKmerDS.cache();
-                    int partitionNumber = ReflexivLongSubKmerDS.toJavaRDD().getNumPartitions();
-
-                    long currentContigNumber = 0;
-                    currentContigNumber = ReflexivLongSubKmerDS.count();
-                    System.out.println("mark iteration: " + iterations + " has kmers: " + currentContigNumber);
-
-                    if (contigNumber == currentContigNumber) {
-                        if (param.scramble == 2){
-                            param.scramble =3;
-                            contigNumber = currentContigNumber;
-                        }else {
-                            break;
-                        }
-                    } else {
-                        contigNumber = currentContigNumber;
-                    }
-
-                    if (partitionNumber >= 16) {
-                        if (currentContigNumber / partitionNumber <= 200) {
-                            partitionNumber = partitionNumber / 4 + 1;
-                            if (ReflexivLongSubKmerDS != null) {
-                                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.repartition(partitionNumber);
-                            }
-                        }
-                    }
-
-                    ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                   // ReflexivLongSubKmerDS.unpersist();
-                    ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongSubKmerEncoderCompressed);
-                }else {
-
-                    ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                    ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongSubKmerEncoderCompressed);
-                }
-                */
-            }else {
-               // ReflexivLongSubKmerDS.cache();
-                //long IterationCount = ReflexivLongSubKmerDS.count();
-               // System.out.println("mark iteration: " + iterations + " has kmers: " + IterationCount);
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongSubKmerEncoderCompressed);
-            }
-        }
+        ReflexivLongSubKmerDS = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, ReflexivLongSubKmerEncoderCompressed);
 
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
        // ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
@@ -775,38 +312,20 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
 
         DSgetFixingLongKmer FixingLongerKmerExtraction = new DSgetFixingLongKmer();
         FixingLongKmerDS = ReflexivLongFullKmerDS.mapPartitions(FixingLongerKmerExtraction, ReflexivFixingKmerEndocer);
-/*
-        if (param.gzip) {
-            FixingLongKmerDS.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/FixingLongKmer");
-        }else{
-            FixingLongKmerDS.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/FixingLongKmer");
-        }
-*/
 
 
         DSgetFixingKmer FixingKmerExtraction = new DSgetFixingKmer();
         FixingKmerDS = ReflexivLongFullKmerDS.mapPartitions(FixingKmerExtraction, kmerFixingEncoder);
 
-//        DSBinaryFixingKmerToString BinaryKmerToString = new DSBinaryFixingKmerToString();
-//        DSBinaryMixedFixingKmerToString BinaryMixedFixingKmerToString= new DSBinaryMixedFixingKmerToString();
         Dataset<Row> FixingKmerDSCount;
         StructType kmerCountTupleLongStruct = new StructType();
         kmerCountTupleLongStruct= kmerCountTupleLongStruct.add("kmer", DataTypes.StringType, false);
         kmerCountTupleLongStruct= kmerCountTupleLongStruct.add("count", DataTypes.LongType, false);
         ExpressionEncoder<Row> kmerCountEncoder = RowEncoder.apply(kmerCountTupleLongStruct);
 
-
         FixingKmerDSCount = FixingKmerDS.groupBy("kmer")
                 .count()
                 .toDF("kmer","count");
-        // FixingKmerDSCount.cache();
 
         DSFixingKmerLeftAndRightMarkerAssignment FixingKmerLeftAndRight = new DSFixingKmerLeftAndRightMarkerAssignment();
         FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerLeftAndRight, ReflexivFixingKmerEndocer);
@@ -830,19 +349,35 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
         DSExtendFixingKmerLoop FixingKmerExtensionLoop = new DSExtendFixingKmerLoop();
 
         FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerExtensionLoop, ReflexivFixingKmerEndocer);
+
+        int iterations=0;
         while (iterations <= param.maximumIteration) {
             iterations++;
-            if (iterations >= param.minimumIteration + 3 + 52 + 30) {
-                param.scramble=3;
-            }
 
-            if (iterations >= param.minimumIteration + 3 + 52 +30+18) {
+            if (iterations >= 30) {
                 break;
             } else{
                 FixingKmerDSCount  = FixingKmerDSCount.sort("k-1");
                 FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerExtensionLoop, ReflexivFixingKmerEndocer);
             }
         }
+
+        DSBinaryFixingKmerWithLongExtensionToString SubKmerToString = new DSBinaryFixingKmerWithLongExtensionToString();
+        ReflexivLongSubKmerStringDS = FixingKmerDSCount.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
+
+        if (param.gzip) {
+            ReflexivLongSubKmerStringDS.write().
+                    mode(SaveMode.Overwrite).
+                    format("csv").
+                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
+                    save(param.outputPath + "/Assembly_intermediate/firstFour");
+        }else{
+            ReflexivLongSubKmerStringDS.write().
+                    mode(SaveMode.Overwrite).
+                    format("csv").
+                    save(param.outputPath + "/Assembly_intermediate/firstFour");
+        }
+
 
         FixingKmerDSCount  = FixingKmerDSCount.sort("k-1");
 
@@ -971,275 +506,448 @@ public class ReflexivDSDynamicKmer64 implements Serializable {
         }else{
             ContigRDD.saveAsTextFile(param.outputPath + "/Assembly");
         }
- /*
-        .write().
-                mode(SaveMode.Overwrite).
-                format("csv").
-                option("codec", "org.apache.hadoop.io.compress.GzipCodec").save(param.outputPath + "/Assembly");
 
         spark.stop();
-        sc.stop();
+    }
 
-        FixingKmerDSString = FixingKmerDSCount.mapPartitions(BinaryMixedFixingKmerToString, ReflexivLongKmerStringEncoder);
+    class DSBinaryFixingKmerWithLongExtensionToString implements MapPartitionsFunction<Row, Row>, Serializable{
+        List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
-        if (param.gzip) {
-            FixingKmerDSString.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/FixingKmer");
-        }else{
-            FixingKmerDSString.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/FixingKmer");
-        }
+        long[] subKmerArray;
+        String attributeString;
 
 
+        public Iterator<Row> call(Iterator<Row> sIterator) throws Exception {
+            while (sIterator.hasNext()) {
+                String subKmer = "";
+                String extension ="";
+                Row s = sIterator.next();
 
-        DSKmerToContig contigformaterDS = new DSKmerToContig();
-        ContigRows = FixingKmerDSString.mapPartitions(contigformaterDS, ContigStringEncoder);
-
-     //   ContigRows.cache();
-
-        ContigRowsRDD = ContigRows.toJavaRDD();
-
-        ContigsRDDIndex = ContigRowsRDD.zipWithIndex();
-
-        TagRowContigID DSIdLabeling = new TagRowContigID();
-        ContigRDD = ContigsRDDIndex.flatMap(DSIdLabeling);
-
-        ContigRDD.cache();
-        long filteredCountig = ContigRDD.count();
-        System.out.println("mark contig number: " + filteredCountig);
-
-        if (param.gzip) {
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly", GzipCodec.class);
-        }else{
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly");
-        }
+                subKmerArray=seq2array(s.getSeq(0));
+                /*
+                if (getReflexivMarker(s.getLong(1)) ==1){
+                    combinedArray = combineTwoLongBlocks( subKmerArray, seq2array(s.getSeq(2)));
+                }else{
+                    combinedArray = combineTwoLongBlocks( seq2array(s.getSeq(2)), subKmerArray );
+                }
 */
-/*
-        DSShortBranchRemovalPreparationLeft leftPreparationsForBranchRemoval = new DSShortBranchRemovalPreparationLeft();
-        DSShortBranchRemovalLeftWhilePreparingForRight leftRemovalRightPrepartionForBranch = new DSShortBranchRemovalLeftWhilePreparingForRight();
-        DSshortBranchRemovalRight rightMarkerRemovalForBranch= new DSshortBranchRemovalRight();
+                subKmer = BinaryBlocksToString(subKmerArray);
+                attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
+                extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
 
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(leftPreparationsForBranchRemoval, ReflexivLongSubKmerEncoderCompressed);
-        ReflexivLongSubKmerDS.cache();
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+                reflexivKmerStringList.add(
+                        RowFactory.create(
+                                subKmer, attributeString, extension)
+                );
+            }
+            return reflexivKmerStringList.iterator();
+        }
 
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(leftRemovalRightPrepartionForBranch, ReflexivLongSubKmerEncoderCompressed);
-        ReflexivLongSubKmerDS.cache();
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
 
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(rightMarkerRemovalForBranch, ReflexivLongSubKmerEncoderCompressed);
-        ReflexivLongSubKmerDS.cache();
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
 
-        while (iterations <= param.maximumIteration +30) {
-            iterations++;
-            if (iterations % 3 == 0) {
-                ReflexivLongSubKmerDS.cache();
-                long currentContigNumber = 0;
-                currentContigNumber = ReflexivLongSubKmerDS.count();
-                System.out.println("mark iteration: " + iterations + " has kmers: " + currentContigNumber);
+            return leftMarker;
+        }
 
-                if (contigNumber == currentContigNumber) {
-                    if (param.scramble == 2){
-                        param.scramble =3;
-                        contigNumber = currentContigNumber;
-                    }else {
-                        break;
-                    }
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0) {
+                nucleotide = 'A';
+            } else if (twoBits == 1) {
+                nucleotide = 'C';
+            } else if (twoBits == 2) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
+        }
+
+        private String BinaryBlocksToString (long[] binaryBlocks){
+            //           String KmerString="";
+            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
+
+            for (int i=0; i< KmerLength; i++){
+                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
+                currentNucleotideBinary &= 3L;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
+            }
+
+            return sb.toString();
+        }
+
+        private long[] leftShiftArray(long[] blocks, int shiftingLength) throws Exception {
+            int startingBlockIndex = (shiftingLength)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            int residueLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(blocks[blocks.length-1])/2+1); // last block length
+
+            int remainLength=nucleotideLength-shiftingLength-1;
+            if (remainLength <0){
+                remainLength=0;
+            }
+            long[] newBlock = new long[remainLength/31+1];
+            int relativeShiftSize = shiftingLength % 31;
+
+            if (shiftingLength >= nucleotideLength){
+                // apparantly, it is possible. meaning the block has nothing left
+                // throw new Exception("shifting length longer than the kmer length");
+                newBlock[0]|=(1L<<2*31); //add c marker at the end
+                return newBlock;
+            }
+
+            // if (relativeShiftSize ==0) then only shifting blocks
+
+            int j=0; // new index for shifted blocks
+            //           long oldShiftOut=0L; // if only one block, then 0 bits
+//            if (blocks.length-(startingBlockIndex+1) >=1) { // more than one block, newBlock.length = blocks.length-startingBlockIndex
+//                oldShiftOut = blocks[startingBlockIndex + 1] >>> 2 * (32 - relativeShiftSize);
+            //           }
+            for (int i=startingBlockIndex; i<blocks.length-1; i++){ // without the last block
+                long shiftOut = blocks[i+1] >>> 2*(31-relativeShiftSize); // ooooxxxxxxx -> -------oooo  o=shift out x=needs to be left shifted
+                newBlock[j]= blocks[i] << 2*relativeShiftSize; // 00000xxxxx -> xxxxx-----
+                newBlock[j] |= shiftOut;
+                newBlock[j] &= (~0L<<2); // remove the last two bits, in case of overlength  xxxxxxxxxxx - > xxxxxxxxxxx-  C marker will be added later if necessary
+
+                j++;
+            }
+
+            if (residueLength > relativeShiftSize){ // still some nucleotide left in the last block
+                newBlock[j]= blocks[blocks.length-1] << 2*relativeShiftSize;
+            }else if (residueLength == relativeShiftSize){ // nothing left in the last block, but the new last block needs a C marker in the end
+                newBlock[j-1] |= 1L; // j-1 == newBlock.length-1
+            } // else the last block has been completely shift into the new last block, including the C marker
+
+            return newBlock;
+
+        }
+
+        private long[] leftShiftOutFromArray(long[] blocks, int shiftingLength) throws Exception{
+            int relativeShiftSize = shiftingLength % 31;
+            int endingBlockIndex = (shiftingLength-1)/31;
+            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
+            long[] shiftOutBlocks = new long[endingBlockIndex+1];
+
+            if (shiftingLength > nucleotideLength){
+                // throw new Exception("shifting length longer than the kmer length");
+                return blocks;
+            }
+
+            for (int i=0; i<endingBlockIndex; i++){
+                shiftOutBlocks[i]=blocks[i];
+            }
+
+            if (relativeShiftSize > 0) {
+                shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex] & (~0L << 2 * (32 - relativeShiftSize));  //   1111111100000000000
+                shiftOutBlocks[endingBlockIndex] |= (1L << (2 * (32 - relativeShiftSize - 1)));
+            }else{ // relativeShiftSize == 0;
+                if (endingBlockIndex+1 == blocks.length) { // a block with C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                }else{ // endingBlockIndex < blocks.length -1     means a block without C marker
+                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
+                    shiftOutBlocks[endingBlockIndex]|=1L;  // adding C marker in the end xxxxxxxxxC
+                }
+
+            }
+
+            return shiftOutBlocks;
+        }
+
+        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
+            int kmerSize;
+            int blockSize = binaryBlocks.length;
+            kmerSize= (blockSize-1) *31;
+            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
+            int lastMers = Long.SIZE/2-suffix0s/2-1;
+
+            kmerSize+=lastMers;
+            return kmerSize;
+
+        }
+
+
+        private long[] seq2array(Seq a){
+            long[] array =new long[a.length()];
+            for (int i = 0; i < a.length(); i++) {
+                array[i] = (Long) a.apply(i);
+            }
+            return array;
+        }
+
+        private int getReflexivMarker(long attribute){
+            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
+            return reflexivMarker;
+        }
+
+        private long[] combineTwoLongBlocks(long[] leftBlocks, long[] rightBlocks) throws Exception {
+            int leftNucleotideLength = currentKmerSizeFromBinaryBlockArray(leftBlocks);
+            int leftRelativeNTLength = (leftNucleotideLength-1) % 31+1;
+            int leftVacancy = 31-leftRelativeNTLength;
+            int rightNucleotideLength = currentKmerSizeFromBinaryBlockArray(rightBlocks);
+            int combinedBlockSize = (leftNucleotideLength+rightNucleotideLength-1)/31+1;
+            long[] newBlocks= new long[combinedBlockSize];
+
+            if (rightNucleotideLength==0){
+                return leftBlocks;
+            }
+
+            if (leftNucleotideLength==0){
+                return rightBlocks;
+            }
+
+            if (leftVacancy ==0){ // left last block is a perfect block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove the last block's C marker
+
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){
+                    newBlocks[j]=rightBlocks[j-leftBlocks.length];
+                }
+            }else{
+                // String rightBlocksString = BinaryBlocksToString(rightBlocks);
+                // String leftBlocksString = BinaryBlocksToString(leftBlocks);
+
+                long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
+                for (int i =0; i<leftBlocks.length; i++){
+                    newBlocks[i]=leftBlocks[i];
+                }
+
+                newBlocks[leftBlocks.length-1] &= (~0L<<2*(leftVacancy+1)); // leftVacancy = 32-leftRelativeNTLength-1. This is to remove the C marker
+                newBlocks[leftBlocks.length-1] |= (shiftOutBlocks[0]>>> 2*(leftRelativeNTLength));
+                if (leftBlocks.length<combinedBlockSize) { // this is not the end block, the last 2 bits (C marker) of shift out needs to be removed  ----------C
+                    newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove shift out blocks C marker. apparently, if there is a C marker, this is the last block anyway
+                }
+
+                long[] rightBlocksLeftShifted = leftShiftArray(rightBlocks, leftVacancy);
+
+                int k=0; // rightBlocksLeftShifted index
+                for (int j=leftBlocks.length;j<combinedBlockSize;j++){ // including the last blocks.
+                    newBlocks[j]=rightBlocksLeftShifted[k];
+                    k++;
+                    long[] rightBlocksLeftShiftedArray= new long[1];
+                    rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
+                    //  String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
+                    //  System.out.println("rightShift: " + rightShift);
+                }
+
+                // String mergedKmer= BinaryBlocksToString(newBlocks);
+
+                //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
+            }
+
+            return newBlocks;
+        }
+    }
+
+    class DynamicKmerBinarizerFromReducedToSubKmer implements MapPartitionsFunction<Row, Row>, Serializable{
+        List<Row> kmerList = new ArrayList<Row>();
+        Row units;
+        String kmer;
+        String extension;
+        int currentExtensionSize;
+        int currentExtensionBlockSize;
+        int currentSubKmerSize;
+        int currentSubKmerBlockSize;
+        long attribute;
+        char nucleotide;
+        long nucleotideInt;
+        //     Long suffixBinary;
+        //     Long[] suffixBinaryArray;
+
+
+        public Iterator<Row> call(Iterator<Row> s) {
+
+            while (s.hasNext()) {
+                units = s.next();
+
+                kmer = units.getString(0);
+                extension = units.getString(2);
+
+                if (kmer.startsWith("(")) {
+                    kmer = kmer.substring(1);
+                }
+
+                currentSubKmerSize= kmer.length();
+                currentSubKmerBlockSize = (currentSubKmerSize-1)/31+1;
+
+                currentExtensionSize = extension.length();
+                currentExtensionBlockSize = (currentExtensionSize-1)/31+1;
+
+                if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
+
+                if (units.getString(1).endsWith(")")) {
+                    String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                    // attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
                 } else {
-                    contigNumber = currentContigNumber;
+                    String[] attributeStringArray = units.getString(1).split("\\|");
+                    attribute = buildingAlongFromThreeInt(
+                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                    );
+                    // attribute = Long.parseLong(units.getString(1));
                 }
 
-                if (partitionNumber >= 16) {
-                    if (currentContigNumber / partitionNumber <= 20) {
-                        partitionNumber = partitionNumber / 4 + 1;
-                        if (ReflexivLongSubKmerDS != null) {
-                            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
-                        }
-                    }
-                }
-            }
+                long[] nucleotideBinarySlot = new long[currentSubKmerBlockSize];
+                //       Long nucleotideBinary = 0L;
 
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongSubKmerEncoderCompressed);
-        }
-*/
-/*
-        if (ExtendableReflexivKmer != null && UnExtendableReflexivKmer!=null) {
-            long extendableCount = ExtendableReflexivKmer.count();
-            long unExtendableCount = UnExtendableReflexivKmer.count();
-            System.out.println("mark after extention, extandable: " + extendableCount);
-            System.out.println("mark after extention, unextandable: " + unExtendableCount);
-            ReflexivLongSubKmerDS = ExtendableReflexivKmer.union(UnExtendableReflexivKmer);
-            long afterextention = ReflexivLongSubKmerDS.count();
-            System.out.println("mark after extention, all: " + afterextention);
+                for (int i = 0; i < currentSubKmerSize; i++) {
+                    nucleotide = kmer.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideInt <<= 2*(32-1-(i%31)); // shift to the left   [ATCGGATCC-,ATCGGATCC-]
 
-            ReflexivLongSubKmerDS.cache();
-
-            DSFilterUnExtendableKmerLeftEnds leftEndsFilter = new DSFilterUnExtendableKmerLeftEnds();
-            DSFilterUnExtendableKmerRightEnds rightEndsFilter = new DSFilterUnExtendableKmerRightEnds();
-            DSFilterStillExtendableKmerEnds EndsRemover = new DSFilterStillExtendableKmerEnds();
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(leftEndsFilter, ReflexivLongKmerEncoder);
-            ReflexivLongSubKmerDS.cache();
-            long longMark1 = ReflexivLongSubKmerDS.count();
-            System.out.println("mark 1: " + longMark1);
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(EndsRemover, ReflexivLongKmerEncoder);
-            ReflexivLongSubKmerDS.cache();
-            long longMark2 = ReflexivLongSubKmerDS.count();
-            System.out.println("mark 2: " + longMark2);
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(rightEndsFilter, ReflexivLongKmerEncoder);
-            ReflexivLongSubKmerDS.cache();
-            long longMark3 = ReflexivLongSubKmerDS.count();
-            System.out.println("mark 3: " + longMark3);
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(EndsRemover, ReflexivLongKmerEncoder);
-            ReflexivLongSubKmerDS.cache();
-            long longMark4 = ReflexivLongSubKmerDS.count();
-            System.out.println("mark 4: " + longMark4);
-
-            ReflexivLongSubKmerDS.cache();
-            long afterFilterExtention = ReflexivLongSubKmerDS.count();
-            System.out.println("mark after extention all and filter ends: " + afterFilterExtention);
-
-
-        }
-        ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-*/
-      /*  if (param.mercy) {
-
-            DSLowCoverageSubKmerExtraction lowCoverageSubKmerExtractor = new DSLowCoverageSubKmerExtraction();
-
-            ContigProbRows = ReflexivLongSubKmerDS.mapPartitions(lowCoverageSubKmerExtractor, ReflexivSubKmerProbEncoder);
-
-            List<Row> ProbSubKmerArray = ContigProbRows.collectAsList();
-
-            Hashtable<List<Long>, Integer> ProbSubKmerTable = SubKmerProbRowToHash(ProbSubKmerArray);
-            final Broadcast<Hashtable<List<Long>, Integer>> ProbSubKmerArrayBroadCast = jsc.broadcast(ProbSubKmerTable);
-            DSLowCoverageReadDetection LowCoverageReadDetector = new DSLowCoverageReadDetection(ProbSubKmerArrayBroadCast);
-
-
-            FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
-
-            DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-            FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-            FastqDS = FastqDS.filter(FilterDSUnit);
-
-            if (param.partitions > 0) {
-                FastqDS = FastqDS.repartition(param.partitions);
-            }
-            if (param.cache) {
-                FastqDS.cache();
-            }
-
-            ReflexivLongFragmentDS = FastqDS.mapPartitions(LowCoverageReadDetector, ReflexivLongKmerEncoder);
-            ReflexivLongFragmentDS = ReflexivLongFragmentDS.sort("k-1");
-            long beforeFilter = ReflexivLongFragmentDS.count();
-            System.out.println("mark before low cover filter: " + beforeFilter);
-            DSFilterRepeatLowCoverageFragment repeatLowCoverageFragmentFilter = new DSFilterRepeatLowCoverageFragment();
-            ReflexivLongFragmentDS = ReflexivLongFragmentDS.mapPartitions(repeatLowCoverageFragmentFilter, ReflexivLongKmerEncoder);
-
-            long afterFilter = ReflexivLongFragmentDS.count();
-            System.out.println("mark after low cover filter: " + afterFilter);
-
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.union(ReflexivLongFragmentDS);
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-            iterations = 6;
-
-            while (iterations <= param.maximumIteration) {
-                iterations++;
-                if (iterations >= param.minimumIteration){
-                    if (iterations % 3 == 0) {
-
-                        /**
-                         *  problem ------------------------------------------v
-                         */
-        /*
-                        ReflexivLongSubKmerDS.cache();
-                        long currentContigNumber = ReflexivLongSubKmerDS.count();
-                        if (contigNumber == currentContigNumber) {
-                            break;
-                        } else {
-                            contigNumber = currentContigNumber;
-                        }
-
-                        if (partitionNumber >= 16) {
-                            if (currentContigNumber / partitionNumber <= 20) {
-                                partitionNumber = partitionNumber / 4 + 1;
-                                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.coalesce(partitionNumber);
-                            }
-                        }
-                    }
+                    nucleotideBinarySlot[i / 31] |= nucleotideInt;
                 }
 
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
-                ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
+                // marking the end of the kmer
+                long kmerEndMark = 1L;
+                kmerEndMark <<= 2*(32-1-((currentSubKmerSize-1)%31+1));
+                nucleotideBinarySlot[currentSubKmerBlockSize-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
+
+
+                long[] extensionBinarySlot = new long[currentExtensionBlockSize];
+
+                for (int i = 0; i < currentExtensionSize; i++) {
+                    nucleotide = kmer.charAt(i);
+                    if (nucleotide >= 256) nucleotide = 255;
+                    nucleotideInt = nucleotideValue(nucleotide);
+                    // forward kmer in bits
+                    nucleotideInt <<= 2*(32-1-(i%31)); // shift to the left   [ATCGGATCC-,ATCGGATCC-]
+
+                    extensionBinarySlot[i / 31] |= nucleotideInt;
+                }
+
+                kmerEndMark <<= 2*(32-1-((currentExtensionSize-1)%31+1));
+                nucleotideBinarySlot[currentExtensionBlockSize-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
+
+                // attribute= onlyChangeReflexivMarker(attribute,1);
+                kmerList.add(
+                        RowFactory.create(nucleotideBinarySlot, attribute, extensionBinarySlot)
+                );
             }
 
-            ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
+            return kmerList.iterator();
+        }
+
+        private long buildingAlongFromThreeInt(int ReflexivMarker, int leftCover, int rightCover){
+            long info = (long) ReflexivMarker <<2*(32-1);  //move to the left most
+
+            /**
+             * shorten the int and change negative to positive to avoid two's complementary
+             */
+            if (leftCover>=30000){
+                leftCover=30000;
+            }else if (leftCover<=-30000){
+                leftCover=30000-(-30000);
+            }else if (leftCover<0){
+                leftCover=30000-leftCover;
+            }
+
+            if (rightCover>=30000){
+                rightCover=30000;
+            }else if (rightCover<=-30000){
+                rightCover=30000-(-30000);
+            }else if (rightCover<0){
+                rightCover=30000-rightCover;
+            }
+
+            info |= ((long) leftCover << 32) ; // move one integer (32 bits) to the left
+            info |= ((long) rightCover); //  01--LeftCover---RightCover
+
+            return info;
+        }
+
+        private long onlyChangeReflexivMarker(long oldMarker, int reflexivMarker){
+            Long maxSubKmerBinary = ~((~0L) << 2 * 31);
+            long newMarker = oldMarker & maxSubKmerBinary;
+            newMarker |= ((long) reflexivMarker) << 2*(32-1);
+            return newMarker;
+        }
+
+        private boolean kmerSizeCheck(String kmer, HashMap<Integer, Integer> kmerList){
+            if (kmerList.containsKey(kmer.length())) {
+                return true;
+            }else {
+                return false;
+            }
+        }
+
+        private long nucleotideValue(char a) {
+            long value;
+            if (a == 'A') {
+                value = 0L;
+            } else if (a == 'C') {
+                value = 1L;
+            } else if (a == 'G') {
+                value = 2L;
+            } else { // T
+                value = 3L;
+            }
+            return value;
+        }
+
+        private String BinaryBlocksToString (long[] binaryBlocks){
+            String KmerString="";
+            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+
+            for (int i=0; i< KmerLength; i++){
+                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
+                currentNucleotideBinary &= 3L;
+                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                KmerString += currentNucleotide;
+            }
+
+            return KmerString;
+        }
+        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
+            int kmerSize;
+            int blockSize = binaryBlocks.length;
+            kmerSize= (blockSize-1) *31;
+            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
+            int lastMers = Long.SIZE/2-suffix0s/2-1;
+
+            kmerSize+=lastMers;
+            return kmerSize;
 
         }
-        */
 
-        /**
-         *
-         */
-
-//        ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-
-        /**
-         *
-         */
-     //   DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
-     //   ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
-
-
-        // DSFormatContigs ContigFormater = new DSFormatContigs();
-        // ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
-
-
-
-     //   DSKmerToContig contigformaterDS = new DSKmerToContig();
-
-       // ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-
-        /**
-         *
-         */
-/*
-        ContigRowsRDD = ContigRows.toJavaRDD();
-
-        ContigRowsRDD.cache();
-
-        ContigsRDDIndex = ContigRowsRDD.zipWithIndex();
-
-       // TagRowContigID DSIdLabeling = new TagRowContigID();
-        ContigRDD = ContigsRDDIndex.flatMap(DSIdLabeling);
-
-        ContigRDD.cache();
-       //  long
-                filteredCountig = ContigRDD.count();
-        System.out.println("mark contig number: " + filteredCountig);
-
-        if (param.gzip) {
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly", GzipCodec.class);
-        }else{
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly");
+        private char BinaryToNucleotide(Long twoBits) {
+            char nucleotide;
+            if (twoBits == 0L) {
+                nucleotide = 'A';
+            } else if (twoBits == 1L) {
+                nucleotide = 'C';
+            } else if (twoBits == 2L) {
+                nucleotide = 'G';
+            } else {
+                nucleotide = 'T';
+            }
+            return nucleotide;
         }
-*/
-        spark.stop();
+
     }
 
     class DSShorterForwardAndRCContigRemoval implements MapPartitionsFunction<Row, String>, Serializable{

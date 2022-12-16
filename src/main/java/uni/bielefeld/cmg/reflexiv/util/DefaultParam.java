@@ -86,7 +86,7 @@ public class DefaultParam implements Serializable{
 
     // metagenome assembly
     public int kmerIncrease = 10;
-    public int maxKmerSize = 93;
+    public int maxKmerSize = 99;
 
 
     public int kmerBits = (1 << (kmerSize*2)) - 1;
@@ -94,16 +94,17 @@ public class DefaultParam implements Serializable{
     public int minReadSize = kmerSize;
     public int minKmerCoverage = 2;
     public int maxKmerCoverage = 10000000;
-    public int minErrorCoverage = minKmerCoverage * 6; // equal to minKmerCoverage
+    public int minErrorCoverage = 4* minKmerCoverage; // equal to minKmerCoverage
     public int minContig = 300;
     public boolean bubble= true;
 
     public boolean cache = false;
     public boolean cacheLocal = false;
-    public boolean gzip = false;
+    public boolean gzip = true;
     public int partitions = 0;
     public int maximumIteration = 150;
     public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)
+    public int numberIteration=5;
     public int frontClip = 0;
     public int endClip = 0;
 
@@ -117,7 +118,7 @@ public class DefaultParam implements Serializable{
 
     public boolean RCmerge = true;
 
-    public boolean mercy = false;
+    public boolean stitch = false;
 
 
     public void setAllbyKmerSize(int k){
