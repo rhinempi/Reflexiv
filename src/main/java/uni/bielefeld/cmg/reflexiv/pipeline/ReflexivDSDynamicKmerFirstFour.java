@@ -201,18 +201,13 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
         DSBinarySubKmerWithShortExtensionToString SubKmerToString = new DSBinarySubKmerWithShortExtensionToString();
         ReflexivLongSubKmerStringDS = ReflexivSubKmerDS.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
 
-        if (param.gzip) {
+
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("codec", "org.apache.hadoop.io.compress.GzipCodec").
-                    save(param.outputPath + "/Assembly_intermediate/firstFour");
-        }else{
-            ReflexivLongSubKmerStringDS.write().
-                    mode(SaveMode.Overwrite).
-                    format("csv").
-                    save(param.outputPath + "/Assembly_intermediate/firstFour");
-        }
+                    option("compression", "gzip").
+                    save(param.outputPath + "/Assembly_intermediate/00firstFour");
+
 
         spark.stop();
     }
@@ -223,7 +218,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
         int FixedKmerSize=31;
         long[] combinedArray;
-        long[] subKmerArray = new long[1];
+        long[] subKmerArray;
 
         public Iterator<Row> call(Iterator<Row> sIterator) throws Exception {
             while (sIterator.hasNext()) {
@@ -239,6 +234,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
                     combinedArray = combineTwoLongBlocks( seq2array(s.getSeq(2)), subKmerArray );
                 }
 */
+                combinedArray = new long[1];
                 combinedArray[0]=s.getLong(2);
                 subKmer = BinaryBlocksToString(subKmerArray);
                 String attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
@@ -2947,7 +2943,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
                 currentKmerBlockSize = (currentKmerSize-1)/31+1; // each 31 mer is a block
                 currentSubKmerBlockSize = (currentSubKmerSize-1)/31+1;
 
-                if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
+            //    if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
                 if (units.getString(1).endsWith(")")) {
                     String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");

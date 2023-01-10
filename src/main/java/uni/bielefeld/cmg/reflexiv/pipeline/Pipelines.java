@@ -191,14 +191,107 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
-    public void reflexivDSStitchingPipe(){
+    public void reflexivDSStitchingPipe() throws IOException {
         ReflexivDSStitching rfPipe = new ReflexivDSStitching();
         rfPipe.setParam(param);
+        ReflexivDSStitchingLonger rfPipeLong= new ReflexivDSStitchingLonger();
+        rfPipeLong.setParam(param);
+/*
+        param.stitchKmerLength=21;
+        reflexivDSLowCoverageCountingPipe();
 
-        param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + 31 + "_sorted/part*.csv.gz";
-        param.inputKmerPath2 = param.outputPath + "/Assembly/part*";
+        param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + param.stitchKmerLength + "_sorted/part*.csv.gz";
+        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
 
         rfPipe.assemblyFromKmer();
+
+        param.stitchKmerLength=31;
+        reflexivDSLowCoverageCountingPipe();
+
+        param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + param.stitchKmerLength + "_sorted/part*.csv.gz";
+        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + 21 + "/part*";
+
+        rfPipe.assemblyFromKmer();
+*/
+        param.stitchKmerLength=61;
+        reflexivDSLowCoverageCountingPipe();
+
+        param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + param.stitchKmerLength + "_sorted/part*.csv.gz";
+        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
+//        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + 31 + "/part*";
+        rfPipeLong.assemblyFromKmer();
+    }
+
+    public void reflexivDSLowCoverageCountingPipe() throws IOException {
+        int stitchSize=param.stitchKmerLength;
+        info.readMessage("-------- Starting stitch k-mer checking: stitch k-mer size " + stitchSize + " --------");
+        info.screenDump();
+
+        String oldPath= param.outputPath ;
+        param.outputPath= param.outputPath + "/Stitch_kmer";
+        param.maxKmerCoverage=1; // stitch k-mer has only 1 coverage
+        param.minKmerCoverage=1;
+
+        if (!checkOutputFile(param.outputPath + "/Count_" + stitchSize + "_sorted")) {
+            info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + "_sorted does not exist");
+            info.screenDump();
+
+            if (!checkOutputFile(param.outputPath + "/Count_" + stitchSize)) {
+                info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize+ " does not exist");
+                info.screenDump();
+
+                param.setKmerSize(stitchSize); // set kmer size for counter
+                param.setAllbyKmerSize(stitchSize);
+
+                info.readMessage("Start counting stitch k-mer" + stitchSize);
+                info.screenDump();
+
+                if (param.kmerSize <= 31) {
+                    reflexivDSCounterPipe();
+                } else {
+                    reflexivDS64CounterPipe();
+                }
+
+
+            }else{
+                info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + " succeeded");
+                info.screenDump();
+                info.readMessage("Skip counting stitch k-mer" + stitchSize);
+                info.screenDump();
+            }
+
+            param.inputKmerPath = param.outputPath + "/Count_" + stitchSize + "/part*.csv.gz";
+
+            param.setKmerSize(stitchSize); // set kmer size for counter
+            param.setAllbyKmerSize(stitchSize);
+
+            info.readMessage("Start sorting stitch k-mer" + stitchSize);
+            info.screenDump();
+
+            param.maxKmerCoverage=1000000;
+            reflexivLeftAndRightSortingPipe();
+
+
+            if (checkOutputFile(param.outputPath + "/Count_" + stitchSize+ "_sorted")) {
+                info.readMessage("Finished stitch k-mer sorting : " + stitchSize+ " succeeded");
+                info.screenDump();
+
+                info.readMessage("Removing : stitch k-mer Count_" + stitchSize);
+                info.screenDump();
+
+                cleanDiskStorage(param.outputPath + "/Count_" + stitchSize);
+            } else {
+                info.readMessage("Failed stitch k-mer sorting : " + stitchSize + " failed:");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+            }
+
+            param.outputPath=oldPath;
+
+        }else{
+            info.readMessage("Checking existing stitch k-mer counts: Count_" + stitchSize + "_sorted succeeded");
+            info.screenDump();
+        }
     }
 
     public void reflexivDSDecompresserPipe() throws IOException {
@@ -287,6 +380,108 @@ public class Pipelines implements Pipeline, Serializable{
         }else{
             Runtime.getRuntime().exec("mv -v " + oldFile + " " + newFile);
         }
+    }
+
+    public void reflexivDSDynamicKmerFirstFourPipe() throws IOException{
+
+        ReflexivDSDynamicKmerFirstFour rfPipe = new ReflexivDSDynamicKmerFirstFour();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerIterationPipe() throws IOException{
+
+        ReflexivDSDynamicKmerIteration rfPipe = new ReflexivDSDynamicKmerIteration();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerFixingPipe() throws IOException{
+
+        ReflexivDSDynamicKmerFixing rfPipe = new ReflexivDSDynamicKmerFixing();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerFixingRoundTwoPipe() throws IOException{
+
+        ReflexivDSDynamicKmerFixingRoundTwo rfPipe = new ReflexivDSDynamicKmerFixingRoundTwo();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerDedupPipe() throws IOException{
+
+        ReflexivDSDynamicKmerDedup rfPipe = new ReflexivDSDynamicKmerDedup();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicAssemblyStepsPipe() throws IOException{
+        param.inputKmerPath = param.outputPath + "/Count_*_reduced/part*.csv.gz";
+
+        info.readMessage("Starting first 4 iterations");
+        info.screenDump();
+        reflexivDSDynamicKmerFirstFourPipe();
+
+        info.readMessage("First 4 iterations finished");
+        info.screenDump();
+
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/00firstFour/part*.gz";
+        for (int i = 5;i<=20;i+=5) {
+            param.startIteration=i;
+            param.endIteration=i+5;
+
+            info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
+            info.screenDump();
+            reflexivDSDynamicKmerIterationPipe();
+
+            info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished" );
+            info.screenDump();
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration"+ param.startIteration + "_" + param.endIteration + "/part*.gz";
+        }
+
+        for (int i =21 ;i<71;i+=10){
+            param.startIteration=i;
+            param.endIteration=i+10;
+
+            info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
+            info.screenDump();
+            reflexivDSDynamicKmerIterationPipe();
+
+            info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished" );
+            info.screenDump();
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration"+ param.startIteration + "_" + param.endIteration + "/part*.gz";
+        }
+
+        info.readMessage("Start Fixing Contigs");
+        info.screenDump();
+        reflexivDSDynamicKmerFixingPipe();
+
+        info.readMessage("Fixing Contigs finished");
+        info.screenDump();
+
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/02Fixing/part*.gz";
+
+        info.readMessage("Start Fixing Contigs round two");
+        info.screenDump();
+        reflexivDSDynamicKmerFixingRoundTwoPipe();
+
+        info.readMessage("Fixing Contigs round two finished");
+        info.screenDump();
+
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*.gz";
+
+        param.gzip=false;
+        info.readMessage("Start removing duplication");
+        info.screenDump();
+        reflexivDSDynamicKmerDedupPipe();
+
+        info.readMessage("Duplication removal finished");
+        info.screenDump();
+
     }
 
     public void reflexivDSDynamicAssemblyPipe() throws IOException{
@@ -628,7 +823,7 @@ public class Pipelines implements Pipeline, Serializable{
         }
 
         if (param.stitch){
-            int stitchSize=99;
+            int stitchSize=param.stitchKmerLength;
             info.readMessage("-------- Starting stitch k-mer checking: stitch k-mer size " + stitchSize + " --------");
             info.screenDump();
 
@@ -647,7 +842,7 @@ public class Pipelines implements Pipeline, Serializable{
                     param.setKmerSize(stitchSize); // set kmer size for counter
                     param.setAllbyKmerSize(stitchSize);
 
-                    info.readMessage("Start counting stitch k-mer" + param.kmerSize1);
+                    info.readMessage("Start counting stitch k-mer" + stitchSize);
                     info.screenDump();
 
                     if (param.kmerSize <= 31) {

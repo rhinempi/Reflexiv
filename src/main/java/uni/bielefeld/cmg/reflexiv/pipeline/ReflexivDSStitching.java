@@ -193,9 +193,9 @@ public class ReflexivDSStitching implements Serializable {
         ContigRDD = ContigsDSIndex.flatMap(DSIDLabel);
 
         if (param.gzip) {
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly_stitched", GzipCodec.class);
+            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + param.stitchKmerLength, GzipCodec.class);
         }else{
-            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly_stitched");
+            ContigRDD.saveAsTextFile(param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + param.stitchKmerLength);
         }
 
         spark.stop();
@@ -2644,7 +2644,7 @@ public class ReflexivDSStitching implements Serializable {
         Row units;
         String kmer;
         int currentContigSize;
-        int currentSubKmerSize=30;
+        int currentSubKmerSize=param.stitchKmerLength;
         long attribute;
         char nucleotide;
         long nucleotideInt;
@@ -2657,19 +2657,27 @@ public class ReflexivDSStitching implements Serializable {
 
                 units = s.next();
 
-                kmer = units.getString(0);
+                if (units.length()>1){
+                    kmer = units.getString(1);
+                }else{
+                    kmer = units.getString(0);
+                    if (kmer.startsWith(">")){
+                        continue;
+                    }
+                }
 
+                /*
                 if (kmer.startsWith(">")){
                     continue;
                 }
-
+*/
                 if (kmer.startsWith("(")) {
                     kmer = kmer.substring(1);
                 }
 
                 currentContigSize= kmer.length();
 
-
+                if (currentContigSize<=currentSubKmerSize){continue;}
 
              //   if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
@@ -2724,10 +2732,10 @@ public class ReflexivDSStitching implements Serializable {
                 int extensionLength=currentContigSize-currentSubKmerSize;
                 suffixBinaryArray[(extensionLength-1)/31] |=(1L<< 2*(32-1-(extensionLength-1)%31-1) );
 
-                long[] nucleotideBinaryArray = new long[1];
-                nucleotideBinaryArray[0] = nucleotideBinary;
+               // long[] nucleotideBinaryArray = new long[1];
+              //  nucleotideBinaryArray[0] = nucleotideBinary;
 
-                System.out.println("original: " + kmer + "\nNew suffix: " + BinaryBlocksToString(nucleotideBinaryArray) + " Puffix: " + BinaryBlocksToString(suffixBinaryArray) + "\nReflexiv marker: " + getReflexivMarker(attribute) + " left marker: " + getLeftMarker(attribute) + " right marker: " + getRightMarker(attribute));
+              //  System.out.println("original: " + kmer + "\nNew suffix: " + BinaryBlocksToString(nucleotideBinaryArray) + " Prefix: " + BinaryBlocksToString(suffixBinaryArray) + "\nReflexiv marker: " + getReflexivMarker(attribute) + " left marker: " + getLeftMarker(attribute) + " right marker: " + getRightMarker(attribute));
 
                 kmerList.add(
                         RowFactory.create(nucleotideBinary, attribute, suffixBinaryArray)
@@ -2888,18 +2896,18 @@ public class ReflexivDSStitching implements Serializable {
                 currentKmerBlockSize = (currentKmerSize-1)/31+1; // each 31 mer is a block
                 currentSubKmerBlockSize = (currentSubKmerSize-1)/31+1;
 
-                if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
+                // if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
                 if (units.getString(1).endsWith(")")) {
                     String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");
                     attribute = buildingAlongFromThreeInt(
-                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                            Integer.parseInt(attributeStringArray[0]), Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
                     );
                    // attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
                 } else {
                     String[] attributeStringArray = units.getString(1).split("\\|");
                     attribute = buildingAlongFromThreeInt(
-                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                            Integer.parseInt(attributeStringArray[0]), Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
                     );
                     // attribute = Long.parseLong(units.getString(1));
                 }
@@ -2934,7 +2942,7 @@ public class ReflexivDSStitching implements Serializable {
                 suffixBinaryArray =new long[1];
                 suffixBinaryArray[0]=lastNtLong;
 
-                attribute= onlyChangeReflexivMarker(attribute,1);
+                // attribute= onlyChangeReflexivMarker(attribute,1);
                 kmerList.add(
                         RowFactory.create(nucleotideBinarySlot[0], attribute, suffixBinaryArray)
                 );

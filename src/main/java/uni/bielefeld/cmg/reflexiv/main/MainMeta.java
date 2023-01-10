@@ -71,7 +71,8 @@ public class MainMeta {
 
         Pipelines pipes = new Pipelines();
         pipes.setParameter(param);
-        pipes.reflexivDSDynamicAssemblyPipe();
+        pipes.reflexivDSDynamicAssemblyStepsPipe();
+       //  pipes.reflexivDSDynamicAssemblyPipe();
 //        pipes.reflexivDSIterativeAssemblerPipe();
 
         /*

@@ -105,6 +105,8 @@ public class DefaultParam implements Serializable{
     public int maximumIteration = 150;
     public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)
     public int numberIteration=5;
+    public int startIteration=5;
+    public int endIteration=9;
     public int frontClip = 0;
     public int endClip = 0;
 
@@ -119,6 +121,7 @@ public class DefaultParam implements Serializable{
     public boolean RCmerge = true;
 
     public boolean stitch = false;
+    public int stitchKmerLength = 31;
 
 
     public void setAllbyKmerSize(int k){
