@@ -196,7 +196,7 @@ public class Pipelines implements Pipeline, Serializable{
         rfPipe.setParam(param);
         ReflexivDSStitchingLonger rfPipeLong= new ReflexivDSStitchingLonger();
         rfPipeLong.setParam(param);
-/*
+
         param.stitchKmerLength=21;
         reflexivDSLowCoverageCountingPipe();
 
@@ -212,13 +212,13 @@ public class Pipelines implements Pipeline, Serializable{
         param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + 21 + "/part*";
 
         rfPipe.assemblyFromKmer();
-*/
+
         param.stitchKmerLength=61;
         reflexivDSLowCoverageCountingPipe();
 
         param.inputKmerPath1 = param.outputPath + "/Stitch_kmer/Count_" + param.stitchKmerLength + "_sorted/part*.csv.gz";
-        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
-//        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + 31 + "/part*";
+//        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
+        param.inputKmerPath2 = param.outputPath + "/Assembly_intermediate/Assembly_stitched_" + 31 + "/part*";
         rfPipeLong.assemblyFromKmer();
     }
 
@@ -417,62 +417,325 @@ public class Pipelines implements Pipeline, Serializable{
         rfPipe.assemblyFromKmer();
     }
 
+
+    private int checkStepsForDynamicAssemblyPipe() throws IOException {
+        if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
+            info.readParagraphedMessages("03FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/02Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/02Fixing");
+
+            return 5;
+
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/02Fixing")){
+            info.readParagraphedMessages("02Fixing succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/02Fixing");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            return 4;
+
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration61_70")){
+            info.readParagraphedMessages("01Iteration61_70 succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            return 3;
+
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration15_19")){
+            info.readParagraphedMessages("01Iteration15_19 succeed, will use existing results:"+ param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            return 2;
+
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/00firstFour")){
+            info.readParagraphedMessages("00firstFour succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+
+            return 1;
+        }else{
+            info.readParagraphedMessages("Start from the k-mers :\n"+ param.outputPath + "/Count_*_reduced/part*");
+            info.screenDump();
+
+            return 0;
+        }
+    }
+
+    /**
+     * Small chucks of steps for dynamic genome assembly
+     *
+     * Spark keeping shuffle intermediate results to preserve the linage for fault tolerance
+     * Splitting the long pipeline to steps reduces storage for intermediate results
+     *
+     * @throws IOException
+     */
     public void reflexivDSDynamicAssemblyStepsPipe() throws IOException{
-        param.inputKmerPath = param.outputPath + "/Count_*_reduced/part*.csv.gz";
 
-        info.readMessage("Starting first 4 iterations");
-        info.screenDump();
-        reflexivDSDynamicKmerFirstFourPipe();
-
-        info.readMessage("First 4 iterations finished");
+        info.readMessage("-------- Starting Assembly pipeline --------");
         info.screenDump();
 
-        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/00firstFour/part*.gz";
-        for (int i = 5;i<=20;i+=5) {
-            param.startIteration=i;
-            param.endIteration=i+5;
+        int OriginalShufflePartition = param.shufflePartition;
+        int OriginalPartition = param.partitions;
 
-            info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
+        param.setGzip(true);
+
+        int step = checkStepsForDynamicAssemblyPipe();
+
+        if (step<1) {
+            param.inputKmerPath = param.outputPath + "/Count_*_reduced/part*.csv.gz";
+
+            info.readMessage("Starting first 4 iterations");
             info.screenDump();
-            reflexivDSDynamicKmerIterationPipe();
+            reflexivDSDynamicKmerFirstFourPipe();
 
-            info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished" );
+            info.readMessage("First 4 iterations finished");
             info.screenDump();
 
-            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration"+ param.startIteration + "_" + param.endIteration + "/part*.gz";
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/00firstFour")){
+                info.readMessage("00firstFour succeed");
+                info.screenDump();
+            }else{
+                info.readMessage("Failed first four iterations : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
         }
 
-        for (int i =21 ;i<71;i+=10){
-            param.startIteration=i;
-            param.endIteration=i+10;
+        if (step<2) {
+            if (OriginalPartition>=10){
+                param.partitions=param.partitions*80/100;
+            }
+            if (OriginalShufflePartition>=10){
+                param.shufflePartition=param.shufflePartition*80/100;
+            }
 
-            info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
-            info.screenDump();
-            reflexivDSDynamicKmerIterationPipe();
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/00firstFour/part*";
+            for (int i = 5; i < 20; i += 5) {
+                param.startIteration = i;
+                param.endIteration = i + 4;
 
-            info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished" );
-            info.screenDump();
+                info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
+                info.screenDump();
+                reflexivDSDynamicKmerIterationPipe();
 
-            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration"+ param.startIteration + "_" + param.endIteration + "/part*.gz";
+                info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished");
+                info.screenDump();
+
+                if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" +  param.endIteration)){
+                    info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                    info.screenDump();
+                    cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                }else{
+                    info.readMessage("Failed " + param.startIteration + " -> " + param.endIteration + " iterations : ");
+                    info.screenDump();
+                    info.readMessage("The process is finished. However, one or more results are not complete");
+                    info.screenDump();
+                }
+
+                param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" + param.endIteration + "/part*";
+            }
+
+
         }
 
-        info.readMessage("Start Fixing Contigs");
-        info.screenDump();
-        reflexivDSDynamicKmerFixingPipe();
+        if (step <3) {
 
-        info.readMessage("Fixing Contigs finished");
-        info.screenDump();
+            if (OriginalPartition >=10){
+                param.partitions=OriginalPartition*60/100;
+            }
+            if (OriginalShufflePartition >=10){
+                param.shufflePartition=OriginalShufflePartition*60/100;
+            }
 
-        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/02Fixing/part*.gz";
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration15_19/part*";
 
-        info.readMessage("Start Fixing Contigs round two");
-        info.screenDump();
-        reflexivDSDynamicKmerFixingRoundTwoPipe();
+            for (int i = 21; i < 71; i += 10) {
+                param.startIteration = i;
+                param.endIteration = i + 9;
 
-        info.readMessage("Fixing Contigs round two finished");
-        info.screenDump();
+                info.readMessage("Starting " + param.startIteration + " -> " + param.endIteration + " iterations");
+                info.screenDump();
+                reflexivDSDynamicKmerIterationPipe();
 
-        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*.gz";
+                info.readMessage("Iterations from " + param.startIteration + " -> " + param.endIteration + " finished");
+                info.screenDump();
+
+                if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" + param.endIteration)){
+                    info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                    info.screenDump();
+
+                    cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                }else{
+                    info.readMessage("Failed " + param.startIteration + " -> " + param.endIteration + " iterations : ");
+                    info.screenDump();
+                    info.readMessage("The process is finished. However, one or more results are not complete");
+                    info.screenDump();
+                }
+
+                param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" + param.endIteration + "/part*";
+            }
+
+
+        }
+
+        if (step <4) {
+
+            if (OriginalPartition>=10) {
+                if (OriginalPartition>=1000 ){
+                    param.partitions = OriginalPartition * 10 / 100;
+                } else if (OriginalPartition>=100 && OriginalPartition<1000){
+                    param.partitions = OriginalPartition * 20 / 100;
+                }else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+            if (OriginalShufflePartition>=10) {
+                if (OriginalShufflePartition>=1000 ){
+                    param.shufflePartition = OriginalShufflePartition * 10 / 100;
+                } else if (OriginalShufflePartition>=100 && OriginalShufflePartition<1000){
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+
+
+
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/01Iteration61_70/part*";
+
+            info.readMessage("Start Fixing Contigs");
+            info.screenDump();
+            reflexivDSDynamicKmerFixingPipe();
+
+            info.readMessage("Fixing Contigs finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/02Fixing")){
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                info.screenDump();
+                cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            }else{
+                info.readMessage("Failed Fixing contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
+
+        if (step <5) {
+
+            if (OriginalPartition>=10) {
+                if (OriginalPartition>=1000 ){
+                    param.partitions = OriginalPartition * 10 / 100;
+                } else if (OriginalPartition>=100 && OriginalPartition<1000){
+                    param.partitions = OriginalPartition * 20 / 100;
+                }else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+            if (OriginalShufflePartition>=10) {
+                if (OriginalShufflePartition>=1000 ){
+                    param.shufflePartition = OriginalShufflePartition * 10 / 100;
+                } else if (OriginalShufflePartition>=100 && OriginalShufflePartition<1000){
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/02Fixing/part*";
+
+            info.readMessage("Start Fixing Contigs round two");
+            info.screenDump();
+            reflexivDSDynamicKmerFixingRoundTwoPipe();
+
+            info.readMessage("Fixing Contigs round two finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                info.screenDump();
+                cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            }else{
+                info.readMessage("Failed Fixing contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
+
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
+
+        if (OriginalPartition>=10) {
+            if (OriginalPartition>=20000){
+                param.partitions = OriginalPartition * 2 / 100;
+            } else if (OriginalPartition>=5000 && OriginalPartition< 20000){
+                param.partitions = OriginalPartition * 4 / 100;
+            } else if (OriginalPartition>=1000 && OriginalPartition <5000 ){
+                param.partitions = OriginalPartition * 6 / 100;
+            } else if (OriginalPartition>=100 && OriginalPartition<1000){
+                param.partitions = OriginalPartition * 20 / 100;
+            }else {
+                param.partitions = OriginalPartition * 40 / 100;
+            }
+        }
+
+
+        if (OriginalShufflePartition>=10) {
+            if (OriginalShufflePartition>=20000){
+                param.shufflePartition = OriginalShufflePartition * 2 / 100;
+            } else if (OriginalShufflePartition>=5000 && OriginalShufflePartition< 20000){
+                param.shufflePartition = OriginalShufflePartition * 4 / 100;
+            } else if (OriginalShufflePartition>=1000 && OriginalShufflePartition <5000 ){
+                param.shufflePartition = OriginalShufflePartition * 6 / 100;
+            } else if (OriginalShufflePartition>=100 && OriginalShufflePartition<1000){
+                param.shufflePartition = OriginalShufflePartition * 20 / 100;
+            } else {
+                param.shufflePartition = OriginalShufflePartition * 40 / 100;
+            }
+        }
+
+
 
         param.gzip=false;
         info.readMessage("Start removing duplication");
@@ -481,6 +744,25 @@ public class Pipelines implements Pipeline, Serializable{
 
         info.readMessage("Duplication removal finished");
         info.screenDump();
+
+
+        if (checkOutputFile(param.outputPath + "/Assembly")){
+            info.readParagraphedMessages("Assembly succeed at : \n\t" + param.outputPath + "/Assembly");
+            info.screenDump();
+            info.readMessage("\t\"Thank you for choosing Reflexiv\"");
+            info.screenDump();
+
+            /*   not removing for now
+            info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            info.screenDump();
+            cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            */
+        }else{
+            info.readMessage("Failed Fixing contigs : ");
+            info.screenDump();
+            info.readMessage("The process is finished. However, one or more results are not complete");
+            info.screenDump();
+        }
 
     }
 
@@ -589,12 +871,12 @@ public class Pipelines implements Pipeline, Serializable{
                     if (param.kmerSize1>=61){
                         param.minErrorCoverage=6;
                     }else if (param.kmerSize1>=81 && param.kmerSize2<100) {
-                        param.minErrorCoverage=6;
+                        param.minErrorCoverage=4;
                     }else if (param.kmerSize1>=100){
                         param.minErrorCoverage=2;
                     }
 
-                    System.out.println("minErrorCoverage: " + param.minErrorCoverage);
+                    // System.out.println("minErrorCoverage: " + param.minErrorCoverage);
 
                     info.readMessage("Start sorting " + param.kmerSize1);
                     info.screenDump();
@@ -657,7 +939,7 @@ public class Pipelines implements Pipeline, Serializable{
                     if (param.kmerSize2>=61){
                         param.minErrorCoverage=6;
                     }else if (param.kmerSize2>=81 && param.kmerSize2<100) {
-                        param.minErrorCoverage=6;
+                        param.minErrorCoverage=4;
                     }else if (param.kmerSize2>=100){
                         param.minErrorCoverage=2;
                     }

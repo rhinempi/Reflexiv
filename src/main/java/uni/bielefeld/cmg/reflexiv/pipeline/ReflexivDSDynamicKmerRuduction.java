@@ -102,7 +102,15 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
+                .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.8")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -243,7 +251,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         ShorterKmerNeutralization SKNeutralizer = new ShorterKmerNeutralization();
         MixedFullKmerDS = MixedFullKmerDS.mapPartitions(SKNeutralizer, ReflexivFullKmerEncoder);
 
-        MixedFullKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
+        MixedFullKmerDS.persist(StorageLevel.DISK_ONLY());
 
       //  if(param.partitions>10) {
       //      MixedFullKmerDS = MixedFullKmerDS.coalesce(param.partitions - 1);
@@ -399,17 +407,19 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
 
         private char BinaryToNucleotide(Long twoBits) {
@@ -472,17 +482,19 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
 
         private long[] seq2array(Seq a){
@@ -920,7 +932,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 }
              //   System.out.println("Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(newFullKmer));
             }else{
-                System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(newFullKmer));
+                // System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(newFullKmer));
                 fullKmer=null;
                 // something is wrong
             }
@@ -3442,7 +3454,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 }
                // System.out.println("Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(fullKmerArray));
             }else{
-                System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(fullKmerArray));
+              //   System.out.println("Null Enlightening before: " + BinaryBlocksToString(fullKmerArray) + " after: " + BinaryBlocksToString(fullKmerArray));
                 fullKmer=null;
                 // something is wrong
             }

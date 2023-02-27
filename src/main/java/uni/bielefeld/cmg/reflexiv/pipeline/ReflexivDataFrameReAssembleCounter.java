@@ -87,7 +87,15 @@ public class ReflexivDataFrameReAssembleCounter implements Serializable{
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
+                .config("spark.checkpoint.compress",true)
+                .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.8")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;

@@ -6,6 +6,8 @@ import com.fing.mapreduce.FourMcTextInputFormat;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -24,6 +26,7 @@ import scala.collection.Seq;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -101,7 +104,15 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-                .config("spark.sql.shuffle.partitions", shufflePartitions)
+                .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
+                .config("spark.checkpoint.compress",true)
+                .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "6000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","6mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.2")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -115,6 +126,30 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
         return conf;
     }
+
+    private void cleanDiskStorage(String file) throws IOException{
+        if (file.startsWith("hdfs")){
+            Configuration conf = new Configuration();
+            String header = file.substring(0,file.indexOf(":9000")+5);
+            conf.set("fs.default.name", header);
+            FileSystem hdfs = FileSystem.get(conf);
+
+            Path fileHDFSPath= new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS");
+            Path folderHDFSPath= new Path(file.substring(file.indexOf(":9000")+5));
+
+            if (hdfs.exists(fileHDFSPath)){
+                hdfs.delete(folderHDFSPath, true);
+            }
+
+        }else{
+            File localFile= new File(file);
+            if (localFile.exists()) {
+                Runtime.getRuntime().exec("rm -r " + file);
+            }
+        }
+
+    }
+
 
     /**
      *
@@ -137,12 +172,12 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
-
+/*
         Dataset<Row> FastqBinaryDS;
         StructType readBinaryStruct = new StructType();
         readBinaryStruct = readBinaryStruct.add("read", DataTypes.createArrayType(DataTypes.LongType), false);
         ExpressionEncoder<Row> readBinaryEncoder = RowEncoder.apply(readBinaryStruct);
-/*
+/
         Configuration baseConfiguration = new Configuration();
         Job jobConf = Job.getInstance(baseConfiguration);
         JavaPairRDD<LongWritable, Text> FastqPairRDD= sc.newAPIHadoopFile(param.inputFqPath, FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
@@ -151,39 +186,67 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
         JavaRDD<String> FastqRDD= FastqPairRDD.mapPartitions(tupleToString);
 */
-
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
+        //FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+
+        //   DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual(); // for sparkhit
 
 
-//        FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+        if (param.gzip) {
 
-        DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual(); // for sparkhit
-        DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
-        FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
+            if (param.partitions > 0) {
+                FastqDS = FastqDS.repartition(param.partitions);
+            }
 
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+            DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+            FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
 
-        FastqDS = FastqDS.filter(FilterDSUnit);
+            /*
+            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
-        FirstNFastq extractFirstN = new FirstNFastq();
-        FastqDS=FastqDS.mapPartitions(extractFirstN, Encoders.STRING());
+            FastqDS = FastqDS.filter(FilterDSUnit);
 
+            FirstNFastq extractFirstN = new FirstNFastq();
+            FastqDS = FastqDS.mapPartitions(extractFirstN, Encoders.STRING());
+*/
 //        ReadBinarizer binarizerRead = new ReadBinarizer();
 
- //       FastqBinaryDS = FastqDS.mapPartitions(binarizerRead, readBinaryEncoder);
+            //       FastqBinaryDS = FastqDS.mapPartitions(binarizerRead, readBinaryEncoder);
 
-        if (param.partitions > 0) {
-            FastqDS = FastqDS.repartition(param.partitions);
-        }
 
- //       DSBinaryReadToString readBinary2String = new DSBinaryReadToString();
- //       FastqDS = FastqBinaryDS.mapPartitions(readBinary2String, Encoders.STRING());
-        if (param.gzip){
+            //       DSBinaryReadToString readBinary2String = new DSBinaryReadToString();
+            //       FastqDS = FastqBinaryDS.mapPartitions(readBinary2String, Encoders.STRING());
+
             FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
         }else {
             JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
+            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned_4MC/", FourMcCodec.class);
+
+            Configuration baseConfiguration = new Configuration();
+            Job jobConf = Job.getInstance(baseConfiguration);
+            JavaPairRDD<LongWritable, Text> FastqPairRDD= sc.newAPIHadoopFile(param.outputPath + "/Read_Repartitioned_4MC/part*", FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
+
+            DSInputTupleToString tupleToString= new DSInputTupleToString();
+
+            FastqRDD= FastqPairRDD.mapPartitions(tupleToString);
+
+            FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+
+            DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+            FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
+
+            if (param.partitions > 0) {
+                FastqDS = FastqDS.repartition(param.partitions);
+            }
+
+            FastqRDD = FastqDS.toJavaRDD();
             FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned", FourMcCodec.class);
+
+           // FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
+
+            cleanDiskStorage(param.outputPath+"/Read_Repartitioned_4MC");
+
         }
 
 
@@ -229,9 +292,81 @@ public class ReflexivDataFrameDecompresser implements Serializable{
     /**
      *
      */
-    class DSFastqFilterOnlySeq implements MapFunction<String, String>, Serializable{
-        String line = "";
-        int lineMark = 0;
+    class DSFastqFilterOnlySeq implements MapPartitionsFunction<String, String>, Serializable{
+        ArrayList<String> seqArray = new ArrayList<String>();
+        //String line;
+        //int lineMark = 0;
+
+        public Iterator<String> call(Iterator<String> sIterator) {
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                if (s.length()<= 20) {
+                    continue;
+                } else if (s.startsWith("@")) {
+                    continue;
+                } else if (s.startsWith("+")) {
+                    continue;
+                } else if (!checkSeq(s.charAt(0))) {
+                    continue;
+                } else if (!checkSeq(s.charAt(4))){
+                    continue;
+                } else if (!checkSeq(s.charAt(9))){
+                    continue;
+                } else if (!checkSeq(s.charAt(14))){
+                    continue;
+                } else if (!checkSeq(s.charAt(19))){
+                    continue;
+                } else {
+                    seqArray.add(s);
+                }
+            }
+
+            return seqArray.iterator();
+        }
+
+        private boolean checkSeq(char a){
+            int match =0;
+            if (a=='A'){
+                match++;
+            }else if (a=='T'){
+                match++;
+            }else if (a=='C'){
+                match++;
+            }else if (a=='G'){
+                match++;
+            }else if (a=='N'){
+                match++;
+            }
+
+            if (match >0){
+                return true;
+            }else{
+                return false;
+            }
+        }
+
+        /*
+        public Iterator<String> call(Iterator<String> sIterator) {
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                if (lineMark == 2) {
+                    lineMark++;
+                } else if (lineMark == 3) {
+                    lineMark++;
+                    seqArray.add(line);
+                } else if (s.startsWith("@")) {
+                    lineMark = 1;
+                } else if (lineMark == 1) {
+                    line = s;
+                    lineMark++;
+                }
+            }
+
+            return seqArray.iterator();
+        }
+        */
+
+/*
         public String call(String s) {
             if (lineMark == 2) {
                 lineMark++;
@@ -250,6 +385,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 return null;
             }
         }
+        */
     }
 
     class FirstNFastq implements MapPartitionsFunction<String,String>, Serializable{
@@ -402,17 +538,19 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
 
         private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){

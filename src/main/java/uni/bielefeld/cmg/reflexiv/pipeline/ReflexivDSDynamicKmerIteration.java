@@ -103,6 +103,12 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.7")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -185,7 +191,7 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
                 ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongSubKmerEncoderCompressed);
         }
 
-        ReflexivLongSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
+       // ReflexivLongSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
 
         DSBinarySubKmerWithLongExtensionToString SubKmerToString = new DSBinarySubKmerWithLongExtensionToString();
         ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
@@ -194,7 +200,7 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("compression", "gzip").
+                    option("compression", "lz4").
                     save(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" + param.endIteration);
 
 
@@ -214,7 +220,11 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
                 String extension ="";
                 Row s = sIterator.next();
 
-                subKmerArray=seq2array(s.getSeq(0));
+                if (s.get(0) instanceof Seq) {
+                    subKmerArray = seq2array(s.getSeq(0));
+                }else {
+                    subKmerArray = (long[]) s.get(0);
+                }
                 /*
                 if (getReflexivMarker(s.getLong(1)) ==1){
                     combinedArray = combineTwoLongBlocks( subKmerArray, seq2array(s.getSeq(2)));
@@ -224,7 +234,12 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
 */
                 subKmer = BinaryBlocksToString(subKmerArray);
                 attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
-                extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
+
+                if (s.get(2) instanceof  Seq) {
+                    extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
+                }else{
+                    extension = BinaryBlocksToString((long[]) s.get(2));
+                }
 
                 reflexivKmerStringList.add(
                         RowFactory.create(

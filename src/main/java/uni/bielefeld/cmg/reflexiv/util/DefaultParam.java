@@ -59,7 +59,7 @@ public class DefaultParam implements Serializable{
     public String inputFaPath;
     public String inputContigPath;
     public String outputPath;
-    public String inputFormat = "4mc"; // 4mc zipped file
+    public String inputFormat = "4mc"; // 4mc zipped file or gzip or bzip
     public long readLimit =Long.MAX_VALUE;
 
     public int kmerSize = 31;
@@ -100,7 +100,7 @@ public class DefaultParam implements Serializable{
 
     public boolean cache = false;
     public boolean cacheLocal = false;
-    public boolean gzip = true;
+    public boolean gzip = false;
     public int partitions = 0;
     public int maximumIteration = 150;
     public int minimumIteration = 15; // 20 - 4 (four Long iteration) -1 (one Long to LongArray)

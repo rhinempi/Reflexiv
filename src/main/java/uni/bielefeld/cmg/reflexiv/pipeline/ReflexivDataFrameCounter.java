@@ -101,18 +101,34 @@ public class ReflexivDataFrameCounter implements Serializable{
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
+                .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "6000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","8mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.6")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
     }
 
     private SparkConf setSparkConfiguration(){
-        SparkConf conf = new SparkConf().setAppName("SparkHit");
+        SparkConf conf = new SparkConf().setAppName("Reflexiv");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         conf.set("spark.kryo.referenceTracking", "false");
         conf.set("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator");
-        conf.set("spark.sql.shuffle.partitions","4000");
+        conf.set("spark.cleaner.referenceTracking.cleanCheckpoints", "true");
+        conf.set("spark.checkpoint.compress", "true");
+        conf.set("spark.hadoop.mapred.max.split.size", "6000000");
+        conf.set("spark.sql.files.maxPartitionBytes", "6000000");
+        conf.set("spark.sql.adaptive.advisoryPartitionSizeInBytes","8mb");
+        conf.set("spark.driver.maxResultSize","1000g");
+        conf.set("spark.memory.fraction","0.6");
+        conf.set("spark.network.timeout","60000s");
+        conf.set("spark.executor.heartbeatInterval","20000s");
 
         return conf;
     }
@@ -144,8 +160,15 @@ public class ReflexivDataFrameCounter implements Serializable{
 
         if (param.inputFormat.equals("4mc")){
             Configuration baseConfiguration = new Configuration();
+            // baseConfiguration.setInt("mapred.min.split.size", 6000000);
+            // baseConfiguration.setInt("mapred.max.split.size", 6000000);
             Job jobConf = Job.getInstance(baseConfiguration);
+            //  sc.hadoopConfiguration().setInt("mapred.max.split.size", 6000000);
             JavaPairRDD<LongWritable, Text> FastqPairRDD = sc.newAPIHadoopFile(param.inputFqPath, FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
+
+            if (param.partitions > 0) {
+                FastqPairRDD = FastqPairRDD.repartition(param.partitions);
+            }
 
             DSInputTupleToString tupleToString = new DSInputTupleToString();
 
@@ -155,17 +178,26 @@ public class ReflexivDataFrameCounter implements Serializable{
         }else {
             FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
+            if (param.partitions > 0) {
+                FastqDS = FastqDS.repartition(param.partitions);
+            }
+
+            if (!param.inputFormat.equals("line")) {
+                DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+                FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
+            }
+
+            /*
             DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
             FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
 
             DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
             FastqDS = FastqDS.filter(FilterDSUnit);
+            */
         }
 
-        if (param.partitions > 0) {
-            FastqDS = FastqDS.repartition(param.partitions);
-        }
+
         if (param.cache) {
             FastqDS.cache();
         }
@@ -213,6 +245,102 @@ public class ReflexivDataFrameCounter implements Serializable{
         spark.stop();
     }
 
+    class DSFastqFilterOnlySeq implements MapPartitionsFunction<String, String>, Serializable{
+        ArrayList<String> seqArray = new ArrayList<String>();
+        //String line;
+        //int lineMark = 0;
+
+        public Iterator<String> call(Iterator<String> sIterator) {
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                if (s.length()<= 20) {
+                    continue;
+                } else if (s.startsWith("@")) {
+                    continue;
+                } else if (s.startsWith("+")) {
+                    continue;
+                } else if (!checkSeq(s.charAt(0))) {
+                    continue;
+                } else if (!checkSeq(s.charAt(4))){
+                    continue;
+                } else if (!checkSeq(s.charAt(9))){
+                    continue;
+                } else if (!checkSeq(s.charAt(14))){
+                    continue;
+                } else if (!checkSeq(s.charAt(19))){
+                    continue;
+                } else {
+                    seqArray.add(s);
+                }
+            }
+
+            return seqArray.iterator();
+        }
+
+        private boolean checkSeq(char a){
+            int match =0;
+            if (a=='A'){
+                match++;
+            }else if (a=='T'){
+                match++;
+            }else if (a=='C'){
+                match++;
+            }else if (a=='G'){
+                match++;
+            }else if (a=='N'){
+                match++;
+            }
+
+            if (match >0){
+                return true;
+            }else{
+                return false;
+            }
+        }
+
+        /*
+        public Iterator<String> call(Iterator<String> sIterator) {
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                if (lineMark == 2) {
+                    lineMark++;
+                } else if (lineMark == 3) {
+                    lineMark++;
+                    seqArray.add(line);
+                } else if (s.startsWith("@")) {
+                    lineMark = 1;
+                } else if (lineMark == 1) {
+                    line = s;
+                    lineMark++;
+                }
+            }
+
+            return seqArray.iterator();
+        }
+        */
+
+/*
+        public String call(String s) {
+            if (lineMark == 2) {
+                lineMark++;
+                return null;
+            } else if (lineMark == 3) {
+                lineMark++;
+                return line;
+            } else if (s.startsWith("@")) {
+                lineMark = 1;
+                return null;
+            } else if (lineMark == 1) {
+                line = s;
+                lineMark++;
+                return null;
+            }else{
+                return null;
+            }
+        }
+        */
+    }
+
     class DSInputTupleToString implements FlatMapFunction<Iterator<Tuple2<LongWritable, Text>>, String>, Serializable {
         List<String> reflexivKmerStringList = new ArrayList<String>();
         String seq;
@@ -222,12 +350,51 @@ public class ReflexivDataFrameCounter implements Serializable{
 
                 Tuple2<LongWritable, Text> s = sIterator.next();
                 seq = s._2().toString();
-
-                reflexivKmerStringList.add(
-                        seq
-                );
+/*
+                if (seq.length()<= 20) {
+                    continue;
+                } else if (seq.startsWith("@")) {
+                    continue;
+                } else if (seq.startsWith("+")) {
+                    continue;
+                } else if (!checkSeq(seq.charAt(0))) {
+                    continue;
+                } else if (!checkSeq(seq.charAt(4))){
+                    continue;
+                } else if (!checkSeq(seq.charAt(9))){
+                    continue;
+                } else if (!checkSeq(seq.charAt(14))){
+                    continue;
+                } else if (!checkSeq(seq.charAt(19))){
+                    continue;
+                } else {
+                    reflexivKmerStringList.add(seq);
+                }
+*/
+                reflexivKmerStringList.add(seq);
             }
             return reflexivKmerStringList.iterator();
+        }
+
+        private boolean checkSeq(char a){
+            int match =0;
+            if (a=='A'){
+                match++;
+            }else if (a=='T'){
+                match++;
+            }else if (a=='C'){
+                match++;
+            }else if (a=='G'){
+                match++;
+            }else if (a=='N'){
+                match++;
+            }
+
+            if (match >0){
+                return true;
+            }else{
+                return false;
+            }
         }
     }
 

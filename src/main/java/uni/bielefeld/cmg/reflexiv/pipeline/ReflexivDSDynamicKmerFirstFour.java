@@ -106,6 +106,12 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.7")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -196,7 +202,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
             ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoderCompressed);
         }
 
-        ReflexivSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
+       // ReflexivSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
 
         DSBinarySubKmerWithShortExtensionToString SubKmerToString = new DSBinarySubKmerWithShortExtensionToString();
         ReflexivLongSubKmerStringDS = ReflexivSubKmerDS.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
@@ -205,7 +211,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("compression", "gzip").
+                    option("compression", "lz4").
                     save(param.outputPath + "/Assembly_intermediate/00firstFour");
 
 
@@ -226,7 +232,11 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
                 String extension ="";
                 Row s = sIterator.next();
 
-                subKmerArray=seq2array(s.getSeq(0));
+                if (s.get(0) instanceof Seq) {
+                    subKmerArray = seq2array(s.getSeq(0));
+                }else {
+                    subKmerArray = (long[]) s.get(0);
+                }
                 /*
                 if (getReflexivMarker(s.getLong(1)) ==1){
                     combinedArray = combineTwoLongBlocks( subKmerArray, seq2array(s.getSeq(2)));

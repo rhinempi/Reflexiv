@@ -106,6 +106,12 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.7")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -202,12 +208,12 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
             }
         }
 
-        FixingKmerDSCount.persist(StorageLevel.MEMORY_AND_DISK());
+        // FixingKmerDSCount.persist(StorageLevel.DISK_ONLY());
 
         DSBinaryFixingKmerToFullKmer FixingKmer2FullKmer = new DSBinaryFixingKmerToFullKmer();
 
         FixingFullKmer = FixingKmerDSCount.mapPartitions(FixingKmer2FullKmer,markerTupleEncoder );
-        FixingFullKmer.persist(StorageLevel.MEMORY_AND_DISK());
+        FixingFullKmer.persist(StorageLevel.DISK_ONLY());
 
         ContigsRDDIndex = FixingFullKmer.toJavaRDD().zipWithIndex();
 
@@ -421,6 +427,7 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
 
         long[] subKmerArray = new long[1];
         long[] combinedArray;
+        long[] extensionArray;
 
 
         public Iterator<Row> call(Iterator<Row> sIterator) throws Exception {
@@ -429,10 +436,16 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
 
                 subKmerArray[0]=s.getLong(0);
 
-                if (getReflexivMarker(s.getLong(1)) ==1){
-                    combinedArray = combineTwoLongBlocks( subKmerArray, seq2array(s.getSeq(2)));
+                if (s.get(2) instanceof  Seq) {
+                    extensionArray = seq2array(s.getSeq(2));
                 }else{
-                    combinedArray = combineTwoLongBlocks( seq2array(s.getSeq(2)), subKmerArray );
+                    extensionArray = (long[]) s.get(2);
+                }
+
+                if (getReflexivMarker(s.getLong(1)) ==1){
+                    combinedArray = combineTwoLongBlocks( subKmerArray, extensionArray);
+                }else{
+                    combinedArray = combineTwoLongBlocks( extensionArray, subKmerArray );
                 }
 
 

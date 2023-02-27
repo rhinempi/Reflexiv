@@ -106,6 +106,12 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.7")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -190,7 +196,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         DynamicKmerBinarizerFromReducedToSubKmer ReducedKmerToSubKmer= new DynamicKmerBinarizerFromReducedToSubKmer();
         markerTupleRow = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, KmerBinaryCountLongEncoder);
 
-        markerTupleRow.persist(StorageLevel.MEMORY_AND_DISK());
+        markerTupleRow.persist(StorageLevel.DISK_ONLY());
 
         ReverseComplementKmerMarkerExtraction MarkerKmerExtract = new ReverseComplementKmerMarkerExtraction();
         markerKmer = markerTupleRow.mapPartitions(MarkerKmerExtract, ReflexivKmerMarkerEncoder);
@@ -213,7 +219,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         markerShortIDRow = MarkerIDCount.mapPartitions(getShorterKmerID, KmerBinaryCountLongEncoder );
 
         markerTupleRow = markerTupleRow.union(markerShortIDRow);
-        markerTupleRow.persist(StorageLevel.MEMORY_AND_DISK());
+        markerTupleRow.persist(StorageLevel.DISK_ONLY());
 
         markerTupleRow = markerTupleRow.sort("count");
 
@@ -239,7 +245,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         DSTupleToDataset tuple2Dataset = new DSTupleToDataset();
         markerTupleRow = markerTuple.mapPartitions(tuple2Dataset, KmerBinaryCountLongEncoder);
 
-        markerTupleRow.persist(StorageLevel.MEMORY_AND_DISK());
+        markerTupleRow.persist(StorageLevel.DISK_ONLY());
 
         ForwardAndReverseComplementKmerMarkerExtraction bothMarkerKmerExtract = new ForwardAndReverseComplementKmerMarkerExtraction();
         markerKmer = markerTupleRow.mapPartitions(bothMarkerKmerExtract, ReflexivKmerMarkerEncoder);
@@ -259,7 +265,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         markerShortIDRow = MarkerIDCount.mapPartitions(getShorterKmerID, KmerBinaryCountLongEncoder );
 
         markerTupleRow = markerTupleRow.union(markerShortIDRow);
-        markerTupleRow.persist(StorageLevel.MEMORY_AND_DISK());
+        markerTupleRow.persist(StorageLevel.DISK_ONLY());
 
         markerTupleRow = markerTupleRow.sort("count");
 
@@ -270,7 +276,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         DSShorterForwardAndRCContigRemoval shorterForwardAndRCRemoval=new DSShorterForwardAndRCContigRemoval();
         ContigDS = markerTupleRow.mapPartitions(shorterForwardAndRCRemoval, Encoders.STRING());
 
-        ContigDS.persist(StorageLevel.MEMORY_AND_DISK());
+        ContigDS.persist(StorageLevel.DISK_ONLY());
 
         ContigsDSIndex = ContigDS.toJavaRDD().zipWithIndex();
 

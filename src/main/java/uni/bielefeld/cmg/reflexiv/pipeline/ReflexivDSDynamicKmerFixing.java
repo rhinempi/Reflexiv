@@ -106,6 +106,12 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.7")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
@@ -186,7 +192,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         DSExtractFixingKmerFromContigEnds FixingKmerPreperation = new DSExtractFixingKmerFromContigEnds();
         ReflexivLongFullKmerDS= ReflexivLongSubKmerDS.mapPartitions(FixingKmerPreperation, KmerBinaryCountLongEncoder);
 
-        ReflexivLongFullKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
+        ReflexivLongFullKmerDS.persist(StorageLevel.DISK_ONLY());
 
         DSgetFixingLongKmer FixingLongerKmerExtraction = new DSgetFixingLongKmer();
         FixingLongKmerDS = ReflexivLongFullKmerDS.mapPartitions(FixingLongerKmerExtraction, ReflexivFixingKmerEndocer);
@@ -204,7 +210,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerLeftAndRight, ReflexivFixingKmerEndocer);
 
         FixingKmerDSCount = FixingKmerDSCount.union(FixingLongKmerDS);
-        FixingKmerDSCount.persist(StorageLevel.MEMORY_AND_DISK());
+        FixingKmerDSCount.persist(StorageLevel.DISK_ONLY());
 
         FixingKmerDSCount = FixingKmerDSCount.sort("k-1");
 
@@ -235,7 +241,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
             }
         }
 
-        FixingKmerDSCount.persist(StorageLevel.MEMORY_AND_DISK());
+        // FixingKmerDSCount.persist(StorageLevel.MEMORY_AND_DISK());
 
         DSBinaryFixingKmerWithLongExtensionToString SubKmerToString = new DSBinaryFixingKmerWithLongExtensionToString();
         ReflexivLongSubKmerStringDS = FixingKmerDSCount.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
@@ -244,7 +250,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("compression", "gzip").
+                    option("compression", "lz4").
                     save(param.outputPath + "/Assembly_intermediate/02Fixing");
 
 
@@ -276,7 +282,12 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
 */
                 subKmer = BinaryBlocksToString(subKmerArray);
                 attributeString = getReflexivMarker(s.getLong(1))+"|"+getLeftMarker(s.getLong(1))+ "|"+getRightMarker(s.getLong(1));
-                extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
+
+                if (s.get(2) instanceof  Seq) {
+                    extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
+                }else{
+                    extension = BinaryBlocksToString((long[]) s.get(2));
+                }
 
                 reflexivKmerStringList.add(
                         RowFactory.create(
@@ -6321,6 +6332,10 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
 
                 currentExtensionSize = extension.length();
                 currentExtensionBlockSize = (currentExtensionSize-1)/31+1;
+
+                if (currentSubKmerSize + currentExtensionSize < 2*param.maxKmerSize) {
+                    continue;
+                }
 
                 //   if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 

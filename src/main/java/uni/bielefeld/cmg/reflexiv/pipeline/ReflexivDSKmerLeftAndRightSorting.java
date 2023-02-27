@@ -69,23 +69,6 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
 
     /**
      *
-     */
-    private void clockStart() {
-        time = System.currentTimeMillis();
-    }
-
-    /**
-     *
-     * @return
-     */
-    private long clockCut() {
-        long tmp = time;
-        time = System.currentTimeMillis();
-        return time - tmp;
-    }
-
-    /**wc
-     *
      * @return
      */
     private SparkConf setSparkConfiguration() {
@@ -102,24 +85,18 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                 .appName("Reflexiv")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
+                .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
+                .config("spark.sql.files.maxPartitionBytes", "12000000")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.driver.maxResultSize","1000g")
+                .config("spark.memory.fraction","0.8")
+                .config("spark.network.timeout","60000s")
+                .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
 
         return spark;
-    }
-
-    private Hashtable<List<Long>, Integer> SubKmerProbRowToHash(List<Row> s){
-        Hashtable<List<Long>, Integer> ProbHash = new Hashtable<List<Long>, Integer>();
-        for (int i =0; i<s.size();i++){
-            List<Long> Key = new ArrayList<Long>();
-            for (int j=0; j<s.get(i).getSeq(0).size(); j++){
-                Key.add((Long) s.get(i).getSeq(0).apply(j));
-            }
-            Integer Value = s.get(i).getInt(1);
-            ProbHash.put(Key, Value);
-        }
-
-        return ProbHash;
     }
 
     /**
@@ -328,17 +305,19 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
 
         private long[] seq2array(Seq a){
@@ -1061,17 +1040,19 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
 
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
 
         private int getReflexivMarker(long attribute){
@@ -1265,18 +1246,21 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
+
         private int getReflexivMarker(long attribute){
             int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
             return reflexivMarker;
@@ -1549,17 +1533,19 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         }
 
         private String BinaryBlocksToString (long[] binaryBlocks){
-            String KmerString="";
+            //           String KmerString="";
             int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
+            StringBuilder sb= new StringBuilder();
+            char currentNucleotide;
 
             for (int i=0; i< KmerLength; i++){
                 Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
                 currentNucleotideBinary &= 3L;
-                char currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                KmerString += currentNucleotide;
+                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
+                sb.append(currentNucleotide);
             }
 
-            return KmerString;
+            return sb.toString();
         }
     }
 
