@@ -191,6 +191,12 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSPatchingPipe() throws IOException {
+        ReflexivDSDynamicKmerPatching rfPipe = new ReflexivDSDynamicKmerPatching();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
     public void reflexivDSStitchingPipe() throws IOException {
         ReflexivDSStitching rfPipe = new ReflexivDSStitching();
         rfPipe.setParam(param);
@@ -740,7 +746,8 @@ public class Pipelines implements Pipeline, Serializable{
         param.gzip=false;
         info.readMessage("Start removing duplication");
         info.screenDump();
-        reflexivDSDynamicKmerDedupPipe();
+        reflexivDSPatchingPipe();
+        // reflexivDSDynamicKmerDedupPipe();
 
         info.readMessage("Duplication removal finished");
         info.screenDump();
@@ -868,7 +875,7 @@ public class Pipelines implements Pipeline, Serializable{
 
                     param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
 
-                    if (param.kmerSize1>=61){
+                    if (param.kmerSize1>=61 ){
                         param.minErrorCoverage=6;
                     }else if (param.kmerSize1>=81 && param.kmerSize2<100) {
                         param.minErrorCoverage=4;
@@ -936,7 +943,7 @@ public class Pipelines implements Pipeline, Serializable{
 
                     param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
 
-                    if (param.kmerSize2>=61){
+                    if (param.kmerSize2>=61 ){
                         param.minErrorCoverage=6;
                     }else if (param.kmerSize2>=81 && param.kmerSize2<100) {
                         param.minErrorCoverage=4;
