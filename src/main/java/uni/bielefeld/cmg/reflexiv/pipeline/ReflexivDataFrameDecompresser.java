@@ -199,14 +199,15 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 FastqDS = FastqDS.repartition(param.partitions);
             }
 
-            DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
-            FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
+            DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
+            // DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+            FastqDS = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
 
-            /*
+
             DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
             FastqDS = FastqDS.filter(FilterDSUnit);
-
+/*
             FirstNFastq extractFirstN = new FirstNFastq();
             FastqDS = FastqDS.mapPartitions(extractFirstN, Encoders.STRING());
 */
@@ -233,8 +234,14 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
             FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
-            DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
-            FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
+           //  DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+
+            DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
+            FastqDS = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
+
+            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+
+            FastqDS = FastqDS.filter(FilterDSUnit);
 
             if (param.partitions > 0) {
                 FastqDS = FastqDS.repartition(param.partitions);
@@ -283,6 +290,33 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 line = line + "\n" + s;
                 lineMark++;
                 return null;
+            } else {
+                return null;
+            }
+        }
+    }
+
+    class DSFastqFilterWithOutSeq implements MapFunction<String, String>, Serializable {
+        String line = "";
+        int lineMark = 0;
+
+        public String call(String s) {
+            if (lineMark == 2) {
+                lineMark++;
+              //  line = line + "\n" + s;
+                return null;
+            } else if (lineMark == 3) {
+                lineMark++;
+                // line = line + "\n" + s;
+                return null;
+            } else if (s.startsWith("@")) {
+                // line = s;
+                lineMark = 1;
+                return null;
+            } else if (lineMark == 1) {
+                //line = line + "\n" + s;
+                lineMark++;
+                return s;
             } else {
                 return null;
             }
