@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import org.apache.hadoop.fs.Path;
 import java.nio.file.Paths;
 
+import static java.lang.System.exit;
+
 /**
  * Created by rhinempi on 22.07.2017.
  *
@@ -425,8 +427,9 @@ public class Pipelines implements Pipeline, Serializable{
 
 
     private int checkStepsForDynamicAssemblyPipe() throws IOException {
-        if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
-            info.readParagraphedMessages("03FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+        /*
+        if (checkOutputFile(param.outputPath + "/Assembly_intermediate/04Patching")){
+            info.readParagraphedMessages("04Patching succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/04Patching");
             info.screenDump();
 
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
@@ -440,6 +443,37 @@ public class Pipelines implements Pipeline, Serializable{
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
             info.screenDump();
             cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/02Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/02Fixing");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/03FixingAgain");
+
+            return 6;
+        }*/
+        if (checkOutputFile(param.outputPath + "/Assembly")){
+            info.readParagraphedMessages("An assembly already exist: \nUse a new output directory or delete the existing one at:\n\t"+ param.outputPath + "/Assembly");
+            info.screenDump();
+            return 6; // 6 as kill
+        } else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
+
+            info.readParagraphedMessages("03FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+           // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
 
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/02Fixing");
             info.screenDump();
@@ -461,7 +495,7 @@ public class Pipelines implements Pipeline, Serializable{
 
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
             info.screenDump();
-            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
 
             return 4;
 
@@ -521,6 +555,10 @@ public class Pipelines implements Pipeline, Serializable{
         param.setGzip(true);
 
         int step = checkStepsForDynamicAssemblyPipe();
+
+        if (step ==6){
+            exit(1);
+        }
 
         if (step<1) {
             param.inputKmerPath = param.outputPath + "/Count_*_reduced/part*.csv.gz";
@@ -657,7 +695,7 @@ public class Pipelines implements Pipeline, Serializable{
             if (checkOutputFile(param.outputPath + "/Assembly_intermediate/02Fixing")){
                 info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                 info.screenDump();
-                cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                // cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
             }else{
                 info.readMessage("Failed Fixing contigs : ");
                 info.screenDump();
@@ -710,6 +748,64 @@ public class Pipelines implements Pipeline, Serializable{
             }
         }
 
+ //       if (step <6){
+/*
+            if (OriginalPartition>=10) {
+                if (OriginalPartition>=20000){
+                    param.partitions = OriginalPartition * 2 / 100;
+                } else if (OriginalPartition>=5000 && OriginalPartition< 20000){
+                    param.partitions = OriginalPartition * 4 / 100;
+                } else if (OriginalPartition>=1000 && OriginalPartition <5000 ){
+                    param.partitions = OriginalPartition * 6 / 100;
+                } else if (OriginalPartition>=100 && OriginalPartition<1000){
+                    param.partitions = OriginalPartition * 20 / 100;
+                }else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+
+            if (OriginalShufflePartition>=10) {
+                if (OriginalShufflePartition>=20000){
+                    param.shufflePartition = OriginalShufflePartition * 2 / 100;
+                } else if (OriginalShufflePartition>=5000 && OriginalShufflePartition< 20000){
+                    param.shufflePartition = OriginalShufflePartition * 4 / 100;
+                } else if (OriginalShufflePartition>=1000 && OriginalShufflePartition <5000 ){
+                    param.shufflePartition = OriginalShufflePartition * 6 / 100;
+                } else if (OriginalShufflePartition>=100 && OriginalShufflePartition<1000){
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+*/
+            /*
+            param.partitions=0;
+
+
+
+            info.readMessage("Start patching Contigs with reads");
+            info.screenDump();
+
+            reflexivDSPatchingPipe();
+
+            info.readMessage("Contig patching finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/04Patching")){
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                info.screenDump();
+                cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            }else{
+                info.readMessage("Failed Patching contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
+
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/04Patching/part*";
+*/
         param.inputKmerPath = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
 
         if (OriginalPartition>=10) {
@@ -746,8 +842,8 @@ public class Pipelines implements Pipeline, Serializable{
         param.gzip=false;
         info.readMessage("Start removing duplication");
         info.screenDump();
-        reflexivDSPatchingPipe();
-        // reflexivDSDynamicKmerDedupPipe();
+
+        reflexivDSDynamicKmerDedupPipe();
 
         info.readMessage("Duplication removal finished");
         info.screenDump();

@@ -284,7 +284,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                     save(param.outputPath + "/Count_" + param.kmerSize1 + "_reduced");
         }
 
-        if (param.kmerSize2<100) {
+       // if (param.kmerSize2<100) { // longer than 100 will not be enlightened by shorter k-mer
             if (param.kmerSize2 == param.kmerListInt[param.kmerListInt.length - 1]) {
                 if (param.gzip) {
                     DSFullKmerStringLong.write().
@@ -312,7 +312,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                             save(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
                 }
             }
-        }
+       // }
 
         spark.stop();
     }

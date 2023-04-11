@@ -54,7 +54,7 @@ public class MainOfStitch {
      *
      * @param args  a space separated command line arguments.
      */
-    public static void main(String[] args){
+    public static void main(String[] args) throws IOException {
         InfoDumper info = new InfoDumper();
         info.readParagraphedMessages("Reflexiv main initiating ... \ninterpreting parameters.");
         info.screenDump();

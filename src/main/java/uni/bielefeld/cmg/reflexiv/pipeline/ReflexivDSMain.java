@@ -606,7 +606,7 @@ public class ReflexivDSMain implements Serializable{
 
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-        if (param.mercy==true) {
+        if (param.stitch==true) {
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.localCheckpoint();
 

@@ -94,8 +94,8 @@ public class DefaultParam implements Serializable{
     public int minReadSize = kmerSize;
     public int minKmerCoverage = 2;
     public int maxKmerCoverage = 10000000;
-    public int minErrorCoverage = 4* minKmerCoverage; // equal to minKmerCoverage
-    public int minContig = 300;
+    public int minErrorCoverage = 5 * minKmerCoverage; // equal to minKmerCoverage
+    public int minContig = 500;
     public boolean bubble= true;
 
     public boolean cache = false;

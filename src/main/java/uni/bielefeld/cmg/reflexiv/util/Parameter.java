@@ -342,9 +342,11 @@ public class Parameter {
 
                 param.setKmerListArray(value);
                 param.setKmerListHash(value);
+                param.setMaxKmerSize(value);
             }else{
                 param.setKmerListArray(param.kmerList);  // using default kmer list
                 param.setKmerListHash(param.kmerList);
+                param.setMaxKmerSize(param.kmerList);
             }
 
             if ((value = cl.getOptionValue(OVERLAP)) != null) {
