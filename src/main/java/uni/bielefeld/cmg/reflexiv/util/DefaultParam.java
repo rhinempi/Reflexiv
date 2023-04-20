@@ -53,6 +53,13 @@ public class DefaultParam implements Serializable{
 
     public String mightyName = "Reflexiv";
     public String inputFqPath;
+    public String inputSingle =null;
+    public boolean inputSingleSwitch=false;
+    public String inputPaired = null ;
+    public boolean inputPairedSwitch =false;
+    public String interleaved = null;
+    public boolean interleavedSwitch= false;
+    public boolean pairing = false;
     public String inputKmerPath;
     public String inputKmerPath1; // for kmer reduction, shorter one
     public String inputKmerPath2; // for kmer reduction, longer one
@@ -92,9 +99,9 @@ public class DefaultParam implements Serializable{
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
-    public int minKmerCoverage = 2;
+    public int minKmerCoverage = 3;
     public int maxKmerCoverage = 10000000;
-    public int minErrorCoverage = 5 * minKmerCoverage; // equal to minKmerCoverage
+    public int minErrorCoverage = 4 * minKmerCoverage; // equal to minKmerCoverage
     public int minContig = 500;
     public boolean bubble= true;
 
@@ -123,6 +130,9 @@ public class DefaultParam implements Serializable{
     public boolean stitch = false;
     public int stitchKmerLength = 31;
 
+    public String executable;
+
+    public String mode="local";
 
     public void setAllbyKmerSize(int k){
         this.subKmerSize= k-1;

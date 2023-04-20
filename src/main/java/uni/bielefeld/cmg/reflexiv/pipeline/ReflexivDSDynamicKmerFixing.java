@@ -1233,9 +1233,9 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                     long[] cuttedKmer= leftShiftArray(fullKmerArray, param.maxKmerSize-FixedKmerSize+1);
                     cuttedKmer = leftShiftOutFromArray(cuttedKmer, length-2*(param.maxKmerSize-FixedKmerSize+1));
 
-                    if (currentKmerSizeFromBinaryBlockArray(cuttedKmer) <32){
-                        System.out.println("short k-mer length: " + BinaryBlocksToString(cuttedKmer) + " length: " + currentKmerSizeFromBinaryBlockArray(cuttedKmer));
-                    }
+                //    if (currentKmerSizeFromBinaryBlockArray(cuttedKmer) <32){
+                //        System.out.println("short k-mer length: " + BinaryBlocksToString(cuttedKmer) + " length: " + currentKmerSizeFromBinaryBlockArray(cuttedKmer));
+                 //   }
 
                     long attribute2=onlyChangeReflexivMarker(subKmer.getLong(1), 1);
                     if (getLeftMarker(subKmer.getLong(1)) >0 && getRightMarker(subKmer.getLong(1)) >0){
@@ -2378,10 +2378,8 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         // private int randomReflexivMarker = ThreadLocalRandom.current().nextInt(1, 3);
         private int randomReflexivMarker = 2;
 
-
-
-
         long maxSubKmerResidueBinary = ~((~0L) << 2 * param.subKmerSizeResidue);
+
         long maxSubKmerBinary = ~((~0L) << 2 * 31);
 
 
@@ -3140,7 +3138,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                 currentExtensionSize = extension.length();
                 currentExtensionBlockSize = (currentExtensionSize-1)/31+1;
 
-                if (currentSubKmerSize + currentExtensionSize < 2* (param.maxKmerSize)) {
+                if (currentSubKmerSize + currentExtensionSize < 2 * (param.maxKmerSize)) {
                     continue;
                 }
 

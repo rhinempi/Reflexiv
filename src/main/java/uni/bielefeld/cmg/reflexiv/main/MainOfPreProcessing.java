@@ -60,9 +60,9 @@ public class MainOfPreProcessing {
         info.readParagraphedMessages("Reflexiv main initiating ... \ninterpreting parameters.");
         info.screenDump();
 
-        ParameterOfCounter parameter = null;
+        Parameter parameter = null;
         try{
-            parameter = new ParameterOfCounter(args);
+            parameter = new Parameter(args);
         } catch (IOException e) {
             e.fillInStackTrace();
         } catch (ParseException e){

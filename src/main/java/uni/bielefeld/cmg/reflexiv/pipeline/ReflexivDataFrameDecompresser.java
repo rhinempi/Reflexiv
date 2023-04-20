@@ -10,8 +10,10 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -21,18 +23,17 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
 import scala.collection.Seq;
+import scala.io.Source;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
 
 import static org.apache.spark.sql.functions.col;
 
@@ -150,6 +151,27 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
     }
 
+    private boolean checkOutputFile(String file) throws IOException {
+        //  System.out.println("input path: " + file);
+
+        if (file.startsWith("hdfs")){
+            Configuration conf = new Configuration();
+            String header = file.substring(0,file.indexOf(":9000")+5);
+
+            //     System.out.println("input path header: " + header);
+
+            conf.set("fs.default.name", header);
+            FileSystem hdfs = FileSystem.get(conf);
+
+            //      System.out.println("input path suffix: " + file.substring(file.indexOf(":9000")+5)+"/_SUCCESS");
+
+            //      System.out.println("input path exists or not: " + hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS")));
+
+            return hdfs.exists(new Path(file.substring(file.indexOf(":9000")+5)+"/_SUCCESS"));
+        }else{
+            return Files.exists(Paths.get(file+"/_SUCCESS"));
+        }
+    }
 
     /**
      *
@@ -157,18 +179,15 @@ public class ReflexivDataFrameDecompresser implements Serializable{
     public void assembly() throws IOException {
 
         SparkConf conf = setSparkConfiguration();
-        info.readMessage("Initiating Spark context ...");
-        info.screenDump();
         info.readMessage("Start Spark framework");
         info.screenDump();
+        info.readMessage("Initiating Spark context ...");
+        info.screenDump();
+
         JavaSparkContext sc = new JavaSparkContext(conf);
 
-
         SparkSession spark = setSparkSessionConfiguration(param.shufflePartition);
-
-        info.readMessage("Initiating Spark context ...");
-        info.screenDump();
-        info.readMessage("Start Spark framework");
+        info.readMessage("Initiating Spark Session ...");
         info.screenDump();
 
         Dataset<String> FastqDS;
@@ -186,13 +205,14 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
         JavaRDD<String> FastqRDD= FastqPairRDD.mapPartitions(tupleToString);
 */
+
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
         //FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
         //   DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual(); // for sparkhit
 
-
+/*
         if (param.gzip) {
 
             if (param.partitions > 0) {
@@ -213,48 +233,145 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 */
 //        ReadBinarizer binarizerRead = new ReadBinarizer();
 
-            //       FastqBinaryDS = FastqDS.mapPartitions(binarizerRead, readBinaryEncoder);
+        //       FastqBinaryDS = FastqDS.mapPartitions(binarizerRead, readBinaryEncoder);
 
 
-            //       DSBinaryReadToString readBinary2String = new DSBinaryReadToString();
-            //       FastqDS = FastqBinaryDS.mapPartitions(readBinary2String, Encoders.STRING());
-
+        //       DSBinaryReadToString readBinary2String = new DSBinaryReadToString();
+        //       FastqDS = FastqBinaryDS.mapPartitions(readBinary2String, Encoders.STRING());
+/*
             FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
         }else {
-            JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
+*/
+        JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
+
+        if (!param.inputFormat.equals("bzip2")){
+
+
+            if (checkOutputFile(param.outputPath + "/Read_Repartitioned_4MC")){
+                cleanDiskStorage(param.outputPath + "/Read_Repartitioned_4MC");
+            }
+
             FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned_4MC/", FourMcCodec.class);
 
             Configuration baseConfiguration = new Configuration();
             Job jobConf = Job.getInstance(baseConfiguration);
-            JavaPairRDD<LongWritable, Text> FastqPairRDD= sc.newAPIHadoopFile(param.outputPath + "/Read_Repartitioned_4MC/part*", FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
+            JavaPairRDD<LongWritable, Text> FastqPairRDD = sc.newAPIHadoopFile(param.outputPath + "/Read_Repartitioned_4MC/part*", FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
 
-            DSInputTupleToString tupleToString= new DSInputTupleToString();
+            DSInputTupleToString tupleToString = new DSInputTupleToString();
 
-            FastqRDD= FastqPairRDD.mapPartitions(tupleToString);
+            FastqRDD = FastqPairRDD.mapPartitions(tupleToString);
+            FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
-            FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+        }
+        //  DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
 
-           //  DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
+        DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
+        Dataset<String> FastqDSLine = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
 
-            DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
-            FastqDS = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
+        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
-            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+        FastqDSLine = FastqDSLine.filter(FilterDSUnit);
+
+        if (param.partitions > 0) {
+            FastqDSLine = FastqDSLine.repartition(param.partitions);
+        }
+
+        if (param.pairing && param.inputSingleSwitch ){
+            FastqRDD = FastqDSLine.toJavaRDD();
+            FastqRDD.persist(StorageLevel.DISK_ONLY());
+            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Single", FourMcCodec.class);
+            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned", FourMcCodec.class);
+        }
+
+        if (param.interleavedSwitch) {
+            FastqRDD =FastqDSLine.toJavaRDD();
+            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Interleaved", FourMcCodec.class);
+
+            // FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+
+            DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
+            FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
 
             FastqDS = FastqDS.filter(FilterDSUnit);
 
+            DSInputFastqToTab FastqToTab = new DSInputFastqToTab();
+            FastqDS = FastqDS.mapPartitions(FastqToTab, Encoders.STRING());
+
+            JavaRDD<String> MergedSeq;
+
+            DSJavaPipe myPipe = new DSJavaPipe();
+            MergedSeq=FastqDS.toJavaRDD().mapPartitions(myPipe);
+            /*
+            if (param.mode.equals("local")) {
+                param.executable = param.executable + "/flash";
+                MergedSeq = FastqDS.toJavaRDD().pipe(param.executable + " -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");// |awk '{if ($4){print $2\"\\n\"$4}else{print $2}}'");
+            }else{
+                MergedSeq = FastqDS.toJavaRDD().pipe("./flash -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");
+            }
+*/
+            DSFlashOutputToSeq FlashMergedTabToSeq = new DSFlashOutputToSeq();
+            MergedSeq= MergedSeq.mapPartitions(FlashMergedTabToSeq);
+
             if (param.partitions > 0) {
-                FastqDS = FastqDS.repartition(param.partitions);
+                MergedSeq = MergedSeq.repartition(param.partitions);
             }
 
-            FastqRDD = FastqDS.toJavaRDD();
-            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned", FourMcCodec.class);
+            MergedSeq.saveAsTextFile(param.outputPath + "/Read_Interleaved_Merged", FourMcCodec.class);
+        }
 
-           // FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
+        if (param.inputPairedSwitch){
+            FastqRDD =FastqDSLine.toJavaRDD();
+            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Paired", FourMcCodec.class);
 
-            cleanDiskStorage(param.outputPath+"/Read_Repartitioned_4MC");
+            StructType ReadStringStruct = new StructType();
+            ReadStringStruct = ReadStringStruct.add("ID", DataTypes.StringType, false);
+            ReadStringStruct = ReadStringStruct.add("Read", DataTypes.StringType, false);
+            ExpressionEncoder<Row> ReadStringEncoder = RowEncoder.apply(ReadStringStruct);
+
+            // FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
+
+            DSFastqFilterWithQualPairs DSFastqFilterToFastqPair = new DSFastqFilterWithQualPairs();
+            Dataset<Row> FastqPairDS = FastqDS.map(DSFastqFilterToFastqPair, ReadStringEncoder);
+
+            DSFastqRowFilter FilterDSRow = new DSFastqRowFilter();
+
+            FastqPairDS = FastqPairDS.filter(FilterDSRow);
+
+            FastqPairDS = FastqPairDS.sort("ID");
+
+            DSInputTaggedFastqToString TaggedFastqToString = new DSInputTaggedFastqToString();
+
+            FastqDS=  FastqPairDS.mapPartitions(TaggedFastqToString, Encoders.STRING());
+
+            DSInputFastqToTab FastqToTab = new DSInputFastqToTab();
+            FastqDS = FastqDS.mapPartitions(FastqToTab, Encoders.STRING());
+
+            JavaRDD<String> MergedSeq;
+            /*
+            if (param.mode.equals("local")) {
+                param.executable = param.executable + "/flash";
+                MergedSeq = FastqDS.toJavaRDD().pipe(param.executable + " -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");// |awk '{if ($4){print $2\"\\n\"$4}else{print $2}}'");
+            }else{
+                MergedSeq = FastqDS.toJavaRDD().pipe("./flash -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");
+            }
+*/
+            DSJavaPipe myPipe = new DSJavaPipe();
+            MergedSeq=FastqDS.toJavaRDD().mapPartitions(myPipe);
+
+            DSFlashOutputToSeq FlashMergedTabToSeq = new DSFlashOutputToSeq();
+            MergedSeq= MergedSeq.mapPartitions(FlashMergedTabToSeq);
+
+            if (param.partitions > 0) {
+                MergedSeq = MergedSeq.repartition(param.partitions);
+            }
+
+            MergedSeq.saveAsTextFile(param.outputPath + "/Read_Paired_Merged", FourMcCodec.class);
 
         }
+
+        // FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
+
+        cleanDiskStorage(param.outputPath + "/Read_Repartitioned_4MC");
 
 
         spark.stop();
@@ -265,6 +382,12 @@ public class ReflexivDataFrameDecompresser implements Serializable{
      */
     class DSFastqUnitFilter implements FilterFunction<String>, Serializable{
         public boolean call(String s){
+            return s != null;
+        }
+    }
+
+    class DSFastqRowFilter implements FilterFunction<Row>, Serializable{
+        public boolean call(Row s){
             return s != null;
         }
     }
@@ -285,6 +408,35 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             } else if (s.startsWith("@")) {
                 line = s;
                 lineMark = 1;
+                return null;
+            } else if (lineMark == 1) {
+                line = line + "\n" + s;
+                lineMark++;
+                return null;
+            } else {
+                return null;
+            }
+        }
+    }
+
+    class DSFastqFilterWithQualPairs implements MapFunction<String, Row>, Serializable {
+        String line = "";
+        String head = "";
+        int lineMark = 0;
+
+        public Row call(String s) {
+            if (lineMark == 2) {
+                lineMark++;
+                line = line + "\n" + s;
+                return null;
+            } else if (lineMark == 3) {
+                lineMark++;
+                line = line + "\n" + s;
+                return RowFactory.create(head, line);
+            } else if (s.startsWith("@")) {
+                line = s;
+                lineMark = 1;
+                head = s;
                 return null;
             } else if (lineMark == 1) {
                 line = line + "\n" + s;
@@ -516,6 +668,181 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             return value;
         }
 
+    }
+
+    class DSInputFastqToTab implements MapPartitionsFunction<String, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+        String[] seq;
+        String[] ID;
+        String seqID;
+        String lastSeqID;
+        String[] lastSeq;
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            while (sIterator.hasNext()) {
+
+                String s = sIterator.next();
+                seq = s.split("\\n");
+                ID=seq[0].split("\\s+");
+                seqID=ID[0].substring(0, ID[0].length()-2);
+
+                if (lastSeq==null){
+                    lastSeq=seq;
+                    lastSeqID=seqID;
+                    continue;
+                }
+
+                if (ID[0].endsWith("/1") || ID[0].endsWith("/2")){
+                    if (seqID.equals(lastSeqID)){
+                        reflexivKmerStringList.add(
+                                ID[0] + "\t" + lastSeq[1] + "\t" + lastSeq[3] + "\t" + seq[1] + "\t" + seq[3]
+                        );
+
+                        lastSeq=null;
+                        lastSeqID=null;
+
+                    }else{
+                        reflexivKmerStringList.add(
+                                lastSeqID + "\t" + lastSeq[1] + "\t" + lastSeq[3]
+                        );
+
+                        lastSeqID= seqID;
+                        lastSeq=seq;
+
+                        System.out.println(reflexivKmerStringList.get(reflexivKmerStringList.size()-1).split("\\t")[0] + " and " + lastSeqID);
+                    }
+                }else{
+                    reflexivKmerStringList.add(
+                            lastSeqID + "\t" + lastSeq[1] + "\t" + lastSeq[3]
+                    );
+
+                    lastSeqID= seqID;
+                    lastSeq=seq;
+                }
+            }
+
+            if (lastSeq!=null){
+                reflexivKmerStringList.add(
+                        lastSeqID + "\t" + lastSeq[1] + "\t" + lastSeq[3]
+                );
+            }
+
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class DSJavaPipe implements FlatMapFunction<Iterator<String>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            String executable = SparkFiles.get("flash");
+            List<String> executeCommands = Arrays.asList(
+                    executable,
+                    "-t", "1",
+                    "--tab-delimited-input",
+                    "--tab-delimited-output",
+                    "--allow-outies",
+                    "--max-overlap", "85",
+                    "-c", "/dev/stdin"
+            );
+
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command(executeCommands);
+            // Start the process
+            final Process process = pb.start();
+
+            // Get the output stream of the process
+            OutputStream outputStream = process.getOutputStream();
+
+            // Start a separate thread to read the output of the external program
+            final List<String> output = new ArrayList<String>();
+
+            Thread outputThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        reflexivKmerStringList.add(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            outputThread.start();
+
+
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                outputStream.write(s.getBytes());
+                outputStream.write("\n".getBytes());
+              //  outputStream.flush();
+            }
+
+            outputStream.close();
+
+            // Wait for the output thread to finish
+            try {
+                outputThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+
+            try {
+                int exitCode = process.waitFor();
+               // System.out.println("External process finished with exit code " + exitCode);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class DSInputTaggedFastqToString implements MapPartitionsFunction<Row, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+        String seq;
+
+        public Iterator<String> call(Iterator<Row> sIterator) throws Exception {
+            while (sIterator.hasNext()) {
+
+                Row s = sIterator.next();
+                seq = s.getString(2);
+
+                reflexivKmerStringList.add(
+                        seq
+                );
+            }
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class DSFlashOutputToSeq implements FlatMapFunction<Iterator<String>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+        String[] seq;
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            while (sIterator.hasNext()) {
+
+                String s = sIterator.next();
+                seq = s.split("\\s+");
+
+                if (seq.length>=4){
+                    reflexivKmerStringList.add(
+                            seq[1]
+                    );
+                    reflexivKmerStringList.add(
+                            seq[3]
+                    );
+                }else{
+                    reflexivKmerStringList.add(
+                            seq[1]
+                    );
+                }
+
+            }
+            return reflexivKmerStringList.iterator();
+        }
     }
 
     class DSInputTupleToString implements FlatMapFunction<Iterator<Tuple2<LongWritable, Text>>, String>, Serializable {

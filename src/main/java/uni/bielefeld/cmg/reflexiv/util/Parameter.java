@@ -67,6 +67,9 @@ public class Parameter {
 
     private static final String
             INPUT_FASTQ = "fastq",
+            INPUT_PAIR = "paired",
+            INPUT_SINGLE = "single",
+            INPUT_INTERLEAVED = "inter",
             INPUT_FASTA = "fasta",
             INPUT_CODEC= "infmt",
             READNUMBER= "reads",
@@ -90,6 +93,9 @@ public class Parameter {
             MINCONTIG = "mincontig",
             PARTITIONS = "partition",
             SHUFFLEPARTITIONS = "partitionredu",
+
+            SBIN="sbin",
+            MODE="mode",
             CACHE = "cache",
             VERSION = "version",
             HELP2 = "h",
@@ -104,6 +110,9 @@ public class Parameter {
         int o = 0;
 
         parameterMap.put(INPUT_FASTQ, o++);
+        parameterMap.put(INPUT_PAIR, o++);
+        parameterMap.put(INPUT_SINGLE, o++);
+        parameterMap.put(INPUT_INTERLEAVED, o++);
         parameterMap.put(INPUT_FASTA, o++);
         parameterMap.put(INPUT_CODEC, o++);
         parameterMap.put(READNUMBER, o++);
@@ -127,6 +136,8 @@ public class Parameter {
         parameterMap.put(OUTPUT_CODEC, o++);
         parameterMap.put(BUBBLE, o++);
         parameterMap.put(STITCH, o++);
+        parameterMap.put(SBIN, o++);
+        parameterMap.put(MODE, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
         parameterMap.put(HELP2, o++);
@@ -143,6 +154,18 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("input fastq file")
                 .hasArg().withDescription("Input NGS data, fastq file format, four line per unit")
                 .create(INPUT_FASTQ));
+
+        parameter.addOption(OptionBuilder.withArgName("input fastq pairs")
+                .hasArg().withDescription("Input fastq paired fastq file. Can be mixed file, Reflexiv will find the pairs")
+                .create(INPUT_PAIR));
+
+        parameter.addOption(OptionBuilder.withArgName("input single fastq")
+                .hasArg().withDescription("Input NGS data, fastq file format, unpaired single end file")
+                .create(INPUT_SINGLE));
+
+        parameter.addOption(OptionBuilder.withArgName("input interleaved fastq")
+                .hasArg().withDescription("Input paired-end fastq file, interleaved")
+                .create(INPUT_INTERLEAVED));
 
         parameter.addOption(OptionBuilder.withArgName("input fasta file")
                 .hasArg().withDescription("Also input NGS data, but in fasta file format, two line per unit")
@@ -235,6 +258,14 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("re-partition number")
                 .hasArg().withDescription("re generate N number of partitions for reducer")
                 .create(SHUFFLEPARTITIONS));
+
+        parameter.addOption(OptionBuilder.withArgName("executable path")
+                .hasArg().withDescription("directory to other utilities")
+                .create(SBIN));
+
+        parameter.addOption(OptionBuilder.withArgName("executable path")
+                .hasArg().withDescription("directory to other utilities")
+                .create(MODE));
 
         parameter.addOption(OptionBuilder.withArgName("cache data RAM")
                 .hasArg(false).withDescription("weather to store data in memory or not")
@@ -480,17 +511,46 @@ public class Parameter {
                 }
             }
 
+            if ((value = cl.getOptionValue(SBIN)) != null){
+                param.executable = value;
+            }
+
+            if ((value = cl.getOptionValue(MODE)) != null){
+                param.mode = value;
+            }
+
             if ((value = cl.getOptionValue(INPUT_CODEC)) != null){
                 param.inputFormat = value;
             }
 
+            boolean input =false;
             if ((value = cl.getOptionValue(INPUT_FASTQ)) != null) {
                 param.inputFqPath = value;
+                input=true;
             } else if ((value = cl.getOptionValue(INPUT_FASTA)) != null){
                 param.inputFaPath = value;
+                input=true;
             } else if ((value = cl.getOptionValue(INPUT_KMER)) != null) {
                 param.inputKmerPath = value;
-            } else{
+                input=true;
+            }
+
+            if ((value = cl.getOptionValue(INPUT_SINGLE)) != null){
+                param.inputSingle = value;
+                input=true;
+            }
+            if ((value = cl.getOptionValue(INPUT_PAIR)) != null){
+                param.inputPaired = value;
+                param.pairing=true;
+                input=true;
+            }
+            if ((value = cl.getOptionValue(INPUT_INTERLEAVED)) != null){
+                param.interleaved = value;
+                param.pairing=true;
+                input=true;
+            }
+
+            if (!input){
                 help.printHelp();
                 System.exit(0);
                 //throw new IOException("Input query file not specified.\nUse -help for list of options");

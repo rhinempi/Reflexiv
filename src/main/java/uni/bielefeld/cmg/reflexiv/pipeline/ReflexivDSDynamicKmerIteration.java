@@ -200,7 +200,7 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("compression", "lz4").
+                    option("compression", "gzip").
                     save(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" + param.endIteration);
 
 
