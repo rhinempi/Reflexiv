@@ -82,7 +82,7 @@ public class DefaultParam implements Serializable{
     public int kmerSizeResidueAssemble = kmerSize % 31;
     public int kmerBinarySlotsAssemble = (kmerSize-1) / 31 +1; /* for assembly, each slot stores 31 mer, load entire k-mer */
     public int maxKmerBinarySlotsAssemble= 99;  /* for dynamic kmer length, the maximum kmer length */
-    public String kmerList= "21,31,41,51,61,71,81,91,99" ; /* a list of kmers for dynamic kmer length assembly */
+    public String kmerList= "23,31,41,53,67,81,95" ; /* a list of kmers for dynamic kmer length assembly. 27,37,47,59,71,83,97 */
     public int[] kmerListInt;
     public HashMap<Integer, Integer> kmerListHash =new HashMap<Integer, Integer>(); /* a kmer list hashmap for checking valid k-mer length */
     /* Key: kmer size, Value: kmer binary slot size*/
@@ -99,9 +99,10 @@ public class DefaultParam implements Serializable{
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;
     public int minReadSize = kmerSize;
-    public int minKmerCoverage = 3;
+    public int minKmerCoverage = 2;
     public int maxKmerCoverage = 10000000;
     public int minErrorCoverage = 4 * minKmerCoverage; // equal to minKmerCoverage
+    public double minRepeatFold = 1.5;
     public int minContig = 500;
     public boolean bubble= true;
 
@@ -121,7 +122,9 @@ public class DefaultParam implements Serializable{
 
     public float minLonger=60.0f;
     public float minIdentity=90.0f;
-    public int searchableLength= 3000;
+    public int searchableLength= 600;
+
+    public int maxReadLength=600;
 
     public int scramble = 2;
 

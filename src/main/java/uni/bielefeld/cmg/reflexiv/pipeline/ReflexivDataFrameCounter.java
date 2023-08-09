@@ -107,7 +107,7 @@ public class ReflexivDataFrameCounter implements Serializable{
                 .config("spark.sql.files.maxPartitionBytes", "6000000")
                 .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","8mb")
                 .config("spark.driver.maxResultSize","1000g")
-                .config("spark.memory.fraction","0.6")
+                .config("spark.memory.fraction","06")
                 .config("spark.network.timeout","60000s")
                 .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
@@ -349,7 +349,14 @@ public class ReflexivDataFrameCounter implements Serializable{
             while (sIterator.hasNext()) {
 
                 Tuple2<LongWritable, Text> s = sIterator.next();
+
                 seq = s._2().toString();
+
+                if (seq.length() >= param.maxReadLength){
+                    continue;
+                }else if (!checkSeq(seq.charAt(0))){
+                    continue;
+                }
 /*
                 if (seq.length()<= 20) {
                     continue;

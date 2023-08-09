@@ -552,7 +552,9 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
                                         }
 
                                         if (lengthS<lengthTemp){ // longer kmer overlapped shorter kmer
-                                            singleKmerRandomizer(s);
+                                            if (param.startIteration<61) {
+                                                singleKmerRandomizer(s);
+                                            }
                                             break;
                                         }else if (getLeftMarker(s.getLong(1))< 0 && getRightMarker(tmpReflexivKmerExtendList.get(i).getLong(1))< 0) {
                                             reflexivExtend(s, tmpReflexivKmerExtendList.get(i), -1);
@@ -601,6 +603,9 @@ public class ReflexivDSDynamicKmerIteration implements Serializable {
                                         }
 
                                         if (lengthTemp<lengthS){ // longer kmer overlapped shorter kmer
+                                            if (param.startIteration>=61) {
+                                                tmpReflexivKmerExtendList.remove(i);
+                                            }
                                             singleKmerRandomizer(s);
                                             break;
                                         }else if (getRightMarker(s.getLong(1)) < 0 && getLeftMarker(tmpReflexivKmerExtendList.get(i).getLong(1))< 0) {

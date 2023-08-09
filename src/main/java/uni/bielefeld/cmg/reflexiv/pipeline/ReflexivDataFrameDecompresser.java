@@ -110,8 +110,8 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
                 .config("spark.sql.files.maxPartitionBytes", "6000000")
                 .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","6mb")
-                .config("spark.driver.maxResultSize","1000g")
-                .config("spark.memory.fraction","0.2")
+                .config("spark.driver.maxResultSize","1000G")
+                .config("spark.memory.fraction","0.7")
                 .config("spark.network.timeout","60000s")
                 .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
@@ -124,6 +124,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         conf.set("spark.kryo.referenceTracking", "false");
         conf.set("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator");
+        conf.set("spark.driver.maxResultSize","1000G");
 
         return conf;
     }
@@ -191,57 +192,9 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
-/*
-        Dataset<Row> FastqBinaryDS;
-        StructType readBinaryStruct = new StructType();
-        readBinaryStruct = readBinaryStruct.add("read", DataTypes.createArrayType(DataTypes.LongType), false);
-        ExpressionEncoder<Row> readBinaryEncoder = RowEncoder.apply(readBinaryStruct);
-/
-        Configuration baseConfiguration = new Configuration();
-        Job jobConf = Job.getInstance(baseConfiguration);
-        JavaPairRDD<LongWritable, Text> FastqPairRDD= sc.newAPIHadoopFile(param.inputFqPath, FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
-
-        DSInputTupleToString tupleToString= new DSInputTupleToString();
-
-        JavaRDD<String> FastqRDD= FastqPairRDD.mapPartitions(tupleToString);
-*/
 
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
-        //FastqDS= spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
-
-        //   DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual(); // for sparkhit
-
-/*
-        if (param.gzip) {
-
-            if (param.partitions > 0) {
-                FastqDS = FastqDS.repartition(param.partitions);
-            }
-
-            DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
-            // DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
-            FastqDS = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
-
-
-            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-            FastqDS = FastqDS.filter(FilterDSUnit);
-/*
-            FirstNFastq extractFirstN = new FirstNFastq();
-            FastqDS = FastqDS.mapPartitions(extractFirstN, Encoders.STRING());
-*/
-//        ReadBinarizer binarizerRead = new ReadBinarizer();
-
-        //       FastqBinaryDS = FastqDS.mapPartitions(binarizerRead, readBinaryEncoder);
-
-
-        //       DSBinaryReadToString readBinary2String = new DSBinaryReadToString();
-        //       FastqDS = FastqBinaryDS.mapPartitions(readBinary2String, Encoders.STRING());
-/*
-            FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Repartitioned");
-        }else {
-*/
         JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
 
         if (!param.inputFormat.equals("bzip2")){
@@ -278,14 +231,14 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
         if (param.pairing && param.inputSingleSwitch ){
             FastqRDD = FastqDSLine.toJavaRDD();
-            FastqRDD.persist(StorageLevel.DISK_ONLY());
+         //   FastqRDD.persist(StorageLevel.DISK_ONLY());
             FastqRDD.saveAsTextFile(param.outputPath + "/Read_Single", FourMcCodec.class);
-            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned", FourMcCodec.class);
+         //   FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned", FourMcCodec.class);
         }
 
         if (param.interleavedSwitch) {
-            FastqRDD =FastqDSLine.toJavaRDD();
-            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Interleaved", FourMcCodec.class);
+          //  FastqRDD =FastqDSLine.toJavaRDD();
+          //  FastqRDD.saveAsTextFile(param.outputPath + "/Read_Interleaved", FourMcCodec.class);
 
             // FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
@@ -320,8 +273,8 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
 
         if (param.inputPairedSwitch){
-            FastqRDD =FastqDSLine.toJavaRDD();
-            FastqRDD.saveAsTextFile(param.outputPath + "/Read_Paired", FourMcCodec.class);
+        //    FastqRDD =FastqDSLine.toJavaRDD();
+        //    FastqRDD.saveAsTextFile(param.outputPath + "/Read_Paired", FourMcCodec.class);
 
             StructType ReadStringStruct = new StructType();
             ReadStringStruct = ReadStringStruct.add("ID", DataTypes.StringType, false);
@@ -336,6 +289,10 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             DSFastqRowFilter FilterDSRow = new DSFastqRowFilter();
 
             FastqPairDS = FastqPairDS.filter(FilterDSRow);
+
+            if (param.partitions > 0) {
+                FastqPairDS = FastqPairDS.repartition(param.partitions);
+            }
 
             FastqPairDS = FastqPairDS.sort("ID");
 
@@ -360,11 +317,11 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
             DSFlashOutputToSeq FlashMergedTabToSeq = new DSFlashOutputToSeq();
             MergedSeq= MergedSeq.mapPartitions(FlashMergedTabToSeq);
-
+/*
             if (param.partitions > 0) {
                 MergedSeq = MergedSeq.repartition(param.partitions);
             }
-
+*/
             MergedSeq.saveAsTextFile(param.outputPath + "/Read_Paired_Merged", FourMcCodec.class);
 
         }
@@ -709,7 +666,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                         lastSeqID= seqID;
                         lastSeq=seq;
 
-                        System.out.println(reflexivKmerStringList.get(reflexivKmerStringList.size()-1).split("\\t")[0] + " and " + lastSeqID);
+                    //    System.out.println(reflexivKmerStringList.get(reflexivKmerStringList.size()-1).split("\\t")[0] + " and " + lastSeqID);
                     }
                 }else{
                     reflexivKmerStringList.add(
@@ -807,7 +764,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             while (sIterator.hasNext()) {
 
                 Row s = sIterator.next();
-                seq = s.getString(2);
+                seq = s.getString(1);
 
                 reflexivKmerStringList.add(
                         seq
@@ -831,13 +788,85 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                     reflexivKmerStringList.add(
                             seq[1]
                     );
+                 //   reflexivKmerStringList.add(
+                 //           seq[1]
+                 //   );
                     reflexivKmerStringList.add(
                             seq[3]
                     );
+                //    reflexivKmerStringList.add(
+                //            seq[3]
+                //    );
                 }else{
+                    /*
+                    String addition;
+
+                    String addition2;
+                    int mergedLength= seq[1].length();
+                    int middle = mergedLength/2;
+
+                    if (mergedLength>=500 ){
+                        int readLength=300;
+                        int radius=(2*readLength-mergedLength)/2;
+                        addition=seq[1].substring(0, middle+radius);
+                        addition2=seq[1].substring(middle-radius, seq[1].length());
+                    }else if (mergedLength>=300 && mergedLength<500){
+                        int readLength=250;
+                        int radius=(2*readLength-mergedLength)/2;
+                        addition=seq[1].substring(0, middle+radius);
+                        addition2=seq[1].substring(middle-radius, seq[1].length());
+                    }else if (mergedLength>188 && mergedLength<300){
+                        int readLength=150;
+                        int radius=(2*readLength-mergedLength)/2;
+                        addition=seq[1].substring(0, middle+radius);
+                        addition2=seq[1].substring(middle-radius, seq[1].length());
+                    }else if (mergedLength>=120 && mergedLength<=188){
+                        int readLength=100;
+                        int radius=(2*readLength-mergedLength)/2;
+                        addition=seq[1].substring(0, middle+radius);
+                        addition2=seq[1].substring(middle-radius, seq[1].length());
+                    }else if (mergedLength>=75 && mergedLength<120){
+                        int readLength=75;
+                        int radius=(2*readLength-mergedLength)/2;
+                        addition=seq[1].substring(0, middle+radius);
+                        addition2=seq[1].substring(middle-radius, seq[1].length());
+                    }else{
+                        addition=seq[1];
+                        addition2=seq[1];
+                    }
+*/
                     reflexivKmerStringList.add(
                             seq[1]
                     );
+/*                    reflexivKmerStringList.add(
+                            seq[1]
+                    );
+
+                    int margin250=50;
+                    int margin150=1;
+                    int margin100=1;
+                    if (mergedLength>=490-margin250 && mergedLength<490){ // 490 because the paired-end overlap is min 10nt
+                        reflexivKmerStringList.add(
+                                seq[1]
+                        );
+                    }else if (mergedLength>=290-margin150 && mergedLength<=290){
+                        reflexivKmerStringList.add(
+                                seq[1]
+                        );
+                    }else if (mergedLength>=190-margin100 && mergedLength<=190){
+                        reflexivKmerStringList.add(
+                                seq[1]
+                        );
+                    }
+
+                    reflexivKmerStringList.add(
+                            addition
+                    );
+                    reflexivKmerStringList.add(
+                            addition2
+                    );
+
+                     */
                 }
 
             }

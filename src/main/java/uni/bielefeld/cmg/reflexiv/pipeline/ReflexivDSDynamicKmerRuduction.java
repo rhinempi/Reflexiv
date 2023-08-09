@@ -92,7 +92,13 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         SparkConf conf = new SparkConf().setAppName("Reflexiv");
         conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         conf.set("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator");
-
+        conf.set("spark.hadoop.mapred.max.split.size", "12000000");
+        conf.set("spark.sql.files.maxPartitionBytes", "12000000");
+        conf.set("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb");
+        conf.set("spark.driver.maxResultSize","1000g");
+        conf.set("spark.memory.fraction","0.7");
+        conf.set("spark.network.timeout","60000s");
+        conf.set("spark.executor.heartbeatInterval","20000s");
         return conf;
     }
 
@@ -108,7 +114,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
                 .config("spark.sql.files.maxPartitionBytes", "12000000")
                 .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
                 .config("spark.driver.maxResultSize","1000g")
-                .config("spark.memory.fraction","0.8")
+                .config("spark.memory.fraction","0.7")
                 .config("spark.network.timeout","60000s")
                 .config("spark.executor.heartbeatInterval","20000s")
                 .getOrCreate();
@@ -237,7 +243,7 @@ public class ReflexivDSDynamicKmerRuduction implements Serializable {
         MixedReflexivSubkmerDS = MixedReflexivSubkmerDS.mapPartitions(rightAdjustmentAndNeutralization, ReflexivSubKmerCompressedEncoder);
 
         MixedFullKmerDS = MixedReflexivSubkmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-        MixedReflexivSubkmerDS.unpersist();
+        // MixedReflexivSubkmerDS.unpersist();
 
 
 

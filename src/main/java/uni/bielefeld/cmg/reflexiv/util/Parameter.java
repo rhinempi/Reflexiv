@@ -94,6 +94,8 @@ public class Parameter {
             PARTITIONS = "partition",
             SHUFFLEPARTITIONS = "partitionredu",
 
+            ACCURATE = "accurate",
+
             SBIN="sbin",
             MODE="mode",
             CACHE = "cache",
@@ -137,6 +139,7 @@ public class Parameter {
         parameterMap.put(BUBBLE, o++);
         parameterMap.put(STITCH, o++);
         parameterMap.put(SBIN, o++);
+        parameterMap.put(ACCURATE, o++);
         parameterMap.put(MODE, o++);
         parameterMap.put(CACHE, o++);
         parameterMap.put(VERSION, o++);
@@ -262,6 +265,10 @@ public class Parameter {
         parameter.addOption(OptionBuilder.withArgName("executable path")
                 .hasArg().withDescription("directory to other utilities")
                 .create(SBIN));
+
+        parameter.addOption(OptionBuilder.withArgName("sensitive mode")
+                .hasArg(false).withDescription("enable sensitive mode")
+                .create(ACCURATE));
 
         parameter.addOption(OptionBuilder.withArgName("executable path")
                 .hasArg().withDescription("directory to other utilities")
@@ -405,6 +412,11 @@ public class Parameter {
                     throw new RuntimeException("Parameter " + SHUFFLEPARTITIONS+
                             " should be larger than 0");
                 }
+            }
+
+            if (cl.hasOption(ACCURATE)){
+                param.minRepeatFold = 2;
+                System.out.println("param.minRepeatFold: " + param.minRepeatFold);
             }
 
             if (cl.hasOption(BUBBLE)){

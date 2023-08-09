@@ -986,9 +986,12 @@ public class Pipelines implements Pipeline, Serializable{
         //      }
 
         param.setInputFqPath(param.inputFqPath);
-        if (checkOutputFile(param.outputPath + "Read_Interleaved_Merged") || checkOutputFile(param.outputPath + "/Read_Paired_Merged")){
-            param.minKmerCoverage=2*param.minKmerCoverage-1;
-        }
+    //    if (checkOutputFile(param.outputPath + "/Read_Interleaved_Merged") || checkOutputFile(param.outputPath + "/Read_Paired_Merged")){
+    //        param.minKmerCoverage=2*param.minKmerCoverage-1;
+    //        param.minErrorCoverage = 4*param.minKmerCoverage;
+    //    }
+
+        System.out.println("minKmerCoverage: " + param.minKmerCoverage);
 
         if (param.kmerListInt.length<2){ // only one kmer in the kmerlist
             info.readMessage("Only 1 kmer size has been provided: " + param.kmerSize1 + ". Require at least two");

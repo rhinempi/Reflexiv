@@ -482,7 +482,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                     int highestLeftMarker = getLeftMarker(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(1));
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
                         if (leftMarker > highestLeftMarker) {
-                            if (highestLeftMarker <= param.minErrorCoverage && leftMarker >= 2 * highestLeftMarker) {
+                            if (highestLeftMarker <= param.minErrorCoverage && leftMarker >= param.minRepeatFold * highestLeftMarker) {
                                 attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))
@@ -511,7 +511,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                                 );
                             }
                         } else {
-                            if (leftMarker <= param.minErrorCoverage && highestLeftMarker >= 2 * leftMarker) {
+                            if (leftMarker <= param.minErrorCoverage && highestLeftMarker >= param.minRepeatFold * leftMarker) {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
                                 reflexivMarker=getReflexivMarker(subKmer.getLong(1));
                                 leftMarker=getLeftMarker(subKmer.getLong(1));
@@ -733,7 +733,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                     int highestLeftMarker = getLeftMarker(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(1));
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
                         if (leftMarker > HighCoverLastCoverage) {
-                            if (HighCoverLastCoverage <= param.minErrorCoverage && leftMarker >= 2 * HighCoverLastCoverage) {
+                            if (HighCoverLastCoverage <= param.minErrorCoverage && leftMarker >= param.minRepeatFold * HighCoverLastCoverage) {
                                 HighCoverLastCoverage = leftMarker;
                                 attribute = buildingAlongFromThreeInt(reflexivMarker, -1, rightMarker);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
@@ -772,7 +772,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                                 );
                             }
                         } else {
-                            if (leftMarker <= param.minErrorCoverage && HighCoverLastCoverage >= 2 * leftMarker) {
+                            if (leftMarker <= param.minErrorCoverage && HighCoverLastCoverage >= param.minRepeatFold * leftMarker) {
                                 subKmer = HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1);
 
                                 reflexivMarker=getReflexivMarker(subKmer.getLong(1));
