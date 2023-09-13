@@ -116,10 +116,8 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         String checkpointDir= sc.getCheckpointDir().get();
 
         Dataset<Row> KmerCountDS;
-        Dataset<Row> LongerKmerCountDS;
 
         Dataset<Row> KmerBinaryCountDS;
-        Dataset<Row>LongerKmerBinaryCountDS;
 
         StructType kmerCountTupleStruct = new StructType();
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmer", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -159,10 +157,6 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         ReflexivFullKmerStringStruct = ReflexivFullKmerStringStruct.add("reflection", DataTypes.StringType, false);
         ExpressionEncoder<Row> ReflexivFullKmerStringEncoder = RowEncoder.apply(ReflexivFullKmerStringStruct);
 
-
-
-
-
         /**
          * loading Kmer counts
          */
@@ -188,10 +182,6 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                 )
         );
 
-     //   if (param.partitions > 0) {
-     //       LongerKmerBinaryCountDS = LongerKmerBinaryCountDS.repartition(param.partitions);
-     //   }
-
 
         if (param.cache) {
             KmerBinaryCountDS.cache();
@@ -199,11 +189,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
 
         KmerBinaryCountDS = KmerBinaryCountDS.mapPartitions(DSRCKmer, KmerBinaryCountEncoder);
 
-//        KmerBinaryCountDS.show();
-
         ReflexivSubKmerDS = KmerBinaryCountDS.mapPartitions(DSextractForwardSubKmer, ReflexivSubKmerCompressedEncoder);
-
-//        ReflexivSubKmerDS.show();
 
         if (param.bubble == true) {
             ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
@@ -233,10 +219,6 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
          */
 
         ReflexivFullKmerDS= ReflexivSubKmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-/*
-        LongerKmerToEnglightenKmer LongerKmerEnlightmentPreparation = new LongerKmerToEnglightenKmer();
-        ReflexivFullKmerDS =ReflexivSubKmerDS.mapPartitions(LongerKmerEnlightmentPreparation, ReflexivFullKmerEncoder);
-*/
 
         DSBinaryFullKmerArrayToString FullKmerToStringLong = new DSBinaryFullKmerArrayToString();
 
@@ -259,19 +241,6 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
         spark.stop();
     }
 
-
-    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long>, String>, Serializable {
-
-        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long> s) {
-
-
-            List<String> contigList = new ArrayList<String>();
-
-            contigList.add(s._1._1 + "-" + s._2 + "\n" + s._1._2);
-
-            return contigList.iterator();
-        }
-    }
 
     class DSBinaryFullKmerArrayToString implements MapPartitionsFunction<Row, Row>, Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
@@ -465,7 +434,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                 Row subKmer = s.next();
                 int reflexivMarker = getReflexivMarker(subKmer.getLong(1));
                 int leftMarker = getLeftMarker(subKmer.getLong(1));
-                int rightMarker = getRightMarker(subKmer.getLong(1));
+                int rightMarker = getRightMarker(subKmer.getLong(1)); // should use rightMarker here. However since in the beginning, left and right are the same  as coverage, it does not matter
 
                 long[] subKmerArray = seq2array(subKmer.getSeq(0));
                 long attribute=0;
@@ -482,7 +451,7 @@ public class ReflexivDSKmerLeftAndRightSorting implements Serializable {
                     int highestLeftMarker = getLeftMarker(HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getLong(1));
                     if (subKmerSlotComparator(subKmer.getSeq(0), HighCoverageSubKmer.get(HighCoverageSubKmer.size() - 1).getSeq(0)) == true) {
                         if (leftMarker > highestLeftMarker) {
-                            if (highestLeftMarker <= param.minErrorCoverage && leftMarker >= param.minRepeatFold * highestLeftMarker) {
+                            if (highestLeftMarker <= param.minErrorCoverage && leftMarker >= param.minRepeatFold * highestLeftMarker) { // should use rightMarker here . However, since in the beginning, left and right are the same  as coverage, it does not matter
                                 attribute = buildingAlongFromThreeInt(reflexivMarker, leftMarker, -1);
                                 HighCoverageSubKmer.set(HighCoverageSubKmer.size() - 1,
                                         RowFactory.create(subKmer.getSeq(0), attribute, subKmer.getLong(2))

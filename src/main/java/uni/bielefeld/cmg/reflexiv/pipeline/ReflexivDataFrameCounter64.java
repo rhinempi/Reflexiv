@@ -186,14 +186,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
                 FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
             }
 
-            /*
-            DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-            FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-            FastqDS = FastqDS.filter(FilterDSUnit);
-*/
         }
 
         if (param.cache) {
@@ -207,15 +199,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
 
         ReverseComplementKmerBinaryExtractionFromDataset64 DSExtractRCKmerBinaryFromFastq = new ReverseComplementKmerBinaryExtractionFromDataset64();
         KmerBinaryDS = FastqDS.mapPartitions(DSExtractRCKmerBinaryFromFastq, kmerBinaryEncoder);
-
-       // PrintElement ElementPrinter = new PrintElement();
-      //  KmerBinaryDS = KmerBinaryDS.mapPartitions(ElementPrinter, kmerBinaryEncoder);
-
-
-      //  KmerBinaryDS = KmerBinaryDS.sort("kmerBlocks");
-      //  KmerBinaryDS.cache();
-
-     //   KmerBinaryDS = KmerBinaryDS.mapPartitions(ElementPrinter, kmerBinaryEncoder);
 
         DFKmerBinaryCount = KmerBinaryDS.groupBy("kmerBlocks")
                 .count()
@@ -259,8 +242,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
 
     class DSFastqFilterOnlySeq implements MapPartitionsFunction<String, String>, Serializable{
         ArrayList<String> seqArray = new ArrayList<String>();
-        //String line;
-        //int lineMark = 0;
 
         public Iterator<String> call(Iterator<String> sIterator) {
             while (sIterator.hasNext()) {
@@ -309,48 +290,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
                 return false;
             }
         }
-
-        /*
-        public Iterator<String> call(Iterator<String> sIterator) {
-            while (sIterator.hasNext()) {
-                String s = sIterator.next();
-                if (lineMark == 2) {
-                    lineMark++;
-                } else if (lineMark == 3) {
-                    lineMark++;
-                    seqArray.add(line);
-                } else if (s.startsWith("@")) {
-                    lineMark = 1;
-                } else if (lineMark == 1) {
-                    line = s;
-                    lineMark++;
-                }
-            }
-
-            return seqArray.iterator();
-        }
-        */
-
-/*
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                return line;
-            } else if (s.startsWith("@")) {
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = s;
-                lineMark++;
-                return null;
-            }else{
-                return null;
-            }
-        }
-        */
     }
 
 
@@ -363,27 +302,7 @@ public class ReflexivDataFrameCounter64 implements Serializable{
 
                 Tuple2<LongWritable, Text> s = sIterator.next();
                 seq = s._2().toString();
-/*
-                if (seq.length()<= 20) {
-                    continue;
-                } else if (seq.startsWith("@")) {
-                    continue;
-                } else if (seq.startsWith("+")) {
-                    continue;
-                } else if (!checkSeq(seq.charAt(0))) {
-                    continue;
-                } else if (!checkSeq(seq.charAt(4))){
-                    continue;
-                } else if (!checkSeq(seq.charAt(9))){
-                    continue;
-                } else if (!checkSeq(seq.charAt(14))){
-                    continue;
-                } else if (!checkSeq(seq.charAt(19))){
-                    continue;
-                } else {
-                    reflexivKmerStringList.add(seq);
-                }
-*/
+
                 reflexivKmerStringList.add(seq);
             }
             return reflexivKmerStringList.iterator();
@@ -464,59 +383,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
                 nucleotide = 'T';
             }
             return nucleotide;
-        }
-    }
-
-    /**
-     *
-     */
-    class DSFastqUnitFilter implements FilterFunction<String>, Serializable{
-        public boolean call(String s){
-            return s != null;
-        }
-    }
-
-    /**
-     *
-     */
-    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable{
-        String line = "";
-        int lineMark = 0;
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                return line;
-            } else if (s.startsWith("@")) {
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = s;
-                lineMark++;
-                return null;
-            }else{
-                return null;
-            }
-        }
-    }
-
-    class PrintElement implements MapPartitionsFunction<Row, Row>, Serializable{
-        List<Row> theSameList = new ArrayList<Row>();
-
-        public Iterator<Row> call(Iterator<Row> s){
-            while (s.hasNext()){
-                Row sIterator = s.next();
-              //  Long a = (Long)sIterator.getSeq(0).apply(0);
-              //  Long b = (Long)sIterator.getSeq(0).apply(1);
-
-            //    System.out.println(sIterator.getList(0).get(0));
-            //    System.out.println(sIterator.getInt(1));
-
-                theSameList.add(sIterator);
-            }
-            return theSameList.iterator();
         }
     }
 
@@ -861,87 +727,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
             return previousKmer;
         }
     }
-
-
-    /**
-     *
-     */
-    /*
-    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable{
-        long maxKmerBits= ~((~0L) << (2*param.kmerSize));
-
-        List<Long> kmerList = new ArrayList<Long>();
-        int readLength;
-        String[] units;
-        String read;
-        char nucleotide;
-        long nucleotideInt;
-        long nucleotideIntComplement;
-
-        public Iterator<Long> call(Iterator<String> s){
-
-            while (s.hasNext()) {
-                units = s.next().split("\\n");
-                read = units[1];
-                readLength = read.length();
-
-                if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {
-                    continue;
-                }
-
-                Long nucleotideBinary = 0L;
-                Long nucleotideBinaryReverseComplement = 0L;
-
-                for (int i = param.frontClip; i < readLength - param.endClip; i++) {
-                    nucleotide = read.charAt(i);
-                    if (nucleotide >= 256) nucleotide = 255;
-                    nucleotideInt = nucleotideValue(nucleotide);
-                    // forward kmer in bits
-                    nucleotideBinary <<= 2;
-                    nucleotideBinary |= nucleotideInt;
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinary &= maxKmerBits;
-                    }
-
-                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
-                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
-
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinaryReverseComplement >>>= 2;
-                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
-                    } else {
-                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
-                    }
-                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
-
-                    // reach the first complete K-mer
-                    if (i - param.frontClip >= param.kmerSize - 1) {
-                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
-                            kmerList.add(nucleotideBinary);
-                        } else {
-                            kmerList.add(nucleotideBinaryReverseComplement);
-                        }
-                    }
-                }
-            }
-            return kmerList.iterator();
-        }
-
-        private long nucleotideValue(char a) {
-            long value;
-            if (a == 'A') {
-                value = 0L;
-            } else if (a == 'C') {
-                value = 1L;
-            } else if (a == 'G') {
-                value = 2L;
-            } else { // T
-                value = 3L;
-            }
-            return value;
-        }
-    }
-    */
 
     /**
      *

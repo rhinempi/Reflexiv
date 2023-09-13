@@ -117,62 +117,16 @@ public class ReflexivDSMerger implements Serializable{
         info.screenDump();
 
         Dataset<String> FastqDS;
-        Dataset<Long> KmerBinaryDS;
-
-        Dataset<Row> KmerBinaryCountLongDS;
-        Dataset<Row> KmerBinaryCountDS;
-        StructType kmerCountTupleStruct = new StructType();
-        kmerCountTupleStruct= kmerCountTupleStruct.add("kmer", DataTypes.LongType, false);
-        kmerCountTupleStruct= kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-
-        Dataset<Row> ReflexivSubKmerDS;
-        StructType ReflexivKmerStruct = new StructType();
-        ReflexivKmerStruct= ReflexivKmerStruct.add("k-1", DataTypes.LongType, false);
-        ReflexivKmerStruct= ReflexivKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStruct= ReflexivKmerStruct.add("extension", DataTypes.LongType, false);
-        ReflexivKmerStruct= ReflexivKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStruct= ReflexivKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivSubKmerEncoder = RowEncoder.apply(ReflexivKmerStruct);
-
-        Dataset<Row> ReflexivSubKmerStringDS;
-        StructType ReflexivKmerStringStruct = new StructType();
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivKmerStringEncoder = RowEncoder.apply(ReflexivKmerStringStruct);
-
-        Dataset<Row> ReflexivLongSubKmerDS;
-        StructType ReflexivLongKmerStruct = new StructType();
-        ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("k-1", DataTypes.LongType, false);
-        ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerEncoder = RowEncoder.apply(ReflexivLongKmerStruct);
-
-        Dataset<Row> ReflexivLongSubKmerStringDS;
-        StructType ReflexivLongKmerStringStruct = new StructType();
-        ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivLongKmerStringStruct= ReflexivLongKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
 
         Dataset<Row> ContigLengthRows;
-        Dataset<Row> ContigLengthRowsLarge;
-        Dataset<Row> ContigLengthRowsSmall;
+
         StructType ContigLengthStruct = new StructType();
         ContigLengthStruct = ContigLengthStruct.add("length", DataTypes.DoubleType, false);
         ContigLengthStruct = ContigLengthStruct.add("contig", DataTypes.StringType, false);
         ExpressionEncoder<Row> ContigLengthEncoder = RowEncoder.apply(ContigLengthStruct);
 
         Dataset<Row> ContigMergedRow;
-        Dataset<Row> ContigMergedRowLarge;
-        Dataset<Row> ContigMergedRowSmall;
+
         StructType ContigMergedStruct = new StructType();
         ContigMergedStruct = ContigMergedStruct.add("contig", DataTypes.StringType, false);
         ExpressionEncoder<Row> ContigMergedEncoder = RowEncoder.apply(ContigMergedStruct);
@@ -189,15 +143,7 @@ public class ReflexivDSMerger implements Serializable{
 
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
-      //  DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-      //  FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-     //   DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-    //    FastqDS = FastqDS.filter(FilterDSUnit);
-
         DSContigInputParser contigParser = new DSContigInputParser();
-
 
         ContigLengthRows = FastqDS.mapPartitions(contigParser, ContigLengthEncoder);
 
@@ -207,8 +153,6 @@ public class ReflexivDSMerger implements Serializable{
          *
          */
 
-        DSMergeReverseComplementaryContigs RCcontigMerger =  new DSMergeReverseComplementaryContigs();
-        DSMergeRedundantContigs RedundantMerger = new DSMergeRedundantContigs();
         DSMergeRedundantNonRCContigs RedundantNonRCMerger = new DSMergeRedundantNonRCContigs();
 
         ContigLengthRows.cache();
@@ -216,16 +160,6 @@ public class ReflexivDSMerger implements Serializable{
 
         ContigLengthRows = ContigLengthRows.sort("length");
 
-   //     DSContgiLengthRowsToPairedRDD RowsToPair = new DSContgiLengthRowsToPairedRDD();
-   //     JavaPairRDD<Integer, String> ContigPairedRDD = ContigLengthRows.toJavaRDD().mapPartitionsToPair(RowsToPair);
-   //     ContigPairedRDD = ContigPairedRDD.sortByKey(true, param.partitions);
-
-   //     ContigLengthRows = spark.createDataset(JavaPairRDD.toRDD(ContigPairedRDD), Encoders.tuple(Encoders.INT(),Encoders.STRING())).toDF();
-
-      //  PairedRDDToContigLengthRows PairToRows = new PairedRDDToContigLengthRows();
-      //  ContigLengthRows = ContigPairedRDD.map(PairToRows);
-
-     //   ContigLengthRows = ContigLengthRows.sort("length");
 
         ContigLengthRows.cache();
 
@@ -234,23 +168,11 @@ public class ReflexivDSMerger implements Serializable{
 
         ContigMergedRow = ContigLengthRows.mapPartitions(RedundantNonRCMerger, ContigMergedEncoder);
 
-  //      ContigMergedRow.cache();
-//        ContigMergedRow.toJavaRDD().saveAsTextFile(param.outputPath + 2);
-
         /**
          *
          */
         DSFormatContigs ContigFormater = new DSFormatContigs();
         ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
-
-        /**
-         *
-         */
-        /*
-        DSKmerToContig contigformaterDS = new DSKmerToContig();
-        ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-        */
-
 
         /**
          *
@@ -297,15 +219,6 @@ public class ReflexivDSMerger implements Serializable{
         ReflexivKmerStruct= ReflexivKmerStruct.add("right", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> ReflexivSubKmerEncoder = RowEncoder.apply(ReflexivKmerStruct);
 
-        Dataset<Row> ReflexivSubKmerStringDS;
-        StructType ReflexivKmerStringStruct = new StructType();
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("reflection", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("left", DataTypes.IntegerType, false);
-        ReflexivKmerStringStruct= ReflexivKmerStringStruct.add("right", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> ReflexivKmerStringEncoder = RowEncoder.apply(ReflexivKmerStringStruct);
-
         Dataset<Row> ReflexivLongSubKmerDS;
         StructType ReflexivLongKmerStruct = new StructType();
         ReflexivLongKmerStruct= ReflexivLongKmerStruct.add("k-1", DataTypes.LongType, false);
@@ -325,16 +238,13 @@ public class ReflexivDSMerger implements Serializable{
         ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
 
         Dataset<Row> ContigLengthRows;
-        Dataset<Row> ContigLengthRowsLarge;
-        Dataset<Row> ContigLengthRowsSmall;
         StructType ContigLengthStruct = new StructType();
         ContigLengthStruct = ContigLengthStruct.add("length", DataTypes.StringType, false);
         ContigLengthStruct = ContigLengthStruct.add("contig", DataTypes.StringType, false);
         ExpressionEncoder<Row> ContigLengthEncoder = RowEncoder.apply(ContigLengthStruct);
 
         Dataset<Row> ContigMergedRow;
-        Dataset<Row> ContigMergedRowLarge;
-        Dataset<Row> ContigMergedRowSmall;
+
         StructType ContigMergedStruct = new StructType();
         ContigMergedStruct = ContigMergedStruct.add("contig", DataTypes.StringType, false);
         ExpressionEncoder<Row> ContigMergedEncoder = RowEncoder.apply(ContigMergedStruct);
@@ -425,10 +335,6 @@ public class ReflexivDSMerger implements Serializable{
 
         ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
 
-        DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-     //   Dataset<Row>  ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-        //ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + 1);
-
         DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
         ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
 
@@ -444,10 +350,6 @@ public class ReflexivDSMerger implements Serializable{
   //      ReflexivSubKmerDS.cache();
 
         iterations++;
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-       // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
-
         /**
          * Extract Long sub kmer
          */
@@ -491,19 +393,7 @@ public class ReflexivDSMerger implements Serializable{
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-//            ReflexivLongSubKmerDS.cache();
-//            ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-//            ReflexivLongSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringDS= ReflexivLongSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-//            ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
-
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
-
         }
 
         ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
@@ -518,16 +408,6 @@ public class ReflexivDSMerger implements Serializable{
         DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
         ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
 
- //       ContigLengthRows.cache();
- //       ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-
-
-
- //       ContigLengthRows.cache();
- //       ContigLengthRows.toJavaRDD().saveAsTextFile(param.outputPath + iterations + "sort");
-
-
-
         DSMergeReverseComplementaryContigs RCcontigMerger =  new DSMergeReverseComplementaryContigs();
 
 
@@ -539,11 +419,6 @@ public class ReflexivDSMerger implements Serializable{
         DSFormatContigs ContigFormater = new DSFormatContigs();
         ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
 
-
-        /*
-        DSKmerToContig contigformaterDS = new DSKmerToContig();
-        ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-        */
         /**
          *
          */
@@ -573,43 +448,6 @@ public class ReflexivDSMerger implements Serializable{
             return contigList.iterator();
         }
     }
-
-    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long>, String>, Serializable {
-
-        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long> s) {
-
-
-            List<String> contigList = new ArrayList<String>();
-
-            contigList.add(s._1._1 + "-" + s._2 + "\n" + s._1._2);
-
-            return contigList.iterator();
-        }
-    }
-
-    class PairedRDDToContigLengthRows implements Function<Tuple2<Integer, String>, Row>, Serializable{
-        public Row call(Tuple2<Integer, String> s){
-            return RowFactory.create(s._1(), s._2());
-        }
-
-    }
-
-    class DSContgiLengthRowsToPairedRDD implements PairFlatMapFunction<Iterator<Row>, Integer, String>, Serializable{
-
-        List<Tuple2<Integer, String>> contigPairList = new ArrayList<Tuple2<Integer, String>>();
-
-        public Iterator<Tuple2<Integer, String>> call (Iterator<Row> sIterator){
-
-            while (sIterator.hasNext()){
-                Row contigPair = sIterator.next();
-
-                contigPairList.add(new Tuple2<Integer, String>(contigPair.getInt(0), contigPair.getString(1)));
-            }
-
-            return contigPairList.iterator();
-        }
-    }
-
 
     class DSMergeRedundantNonRCContigs implements MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> uniqueContig = new ArrayList<Row>();
@@ -1045,439 +883,6 @@ public class ReflexivDSMerger implements Serializable{
 
     }
 
-    class DSMergeRedundantContigs implements MapPartitionsFunction<Row, Row>, Serializable{
-        List<Row> uniqueContig = new ArrayList<Row>();
-        List<String> contigList = new ArrayList<String>();
-        Row contig;
-        String contigString;
-        int contigLength;
-        Hashtable<String, Integer> probKmerTable = new Hashtable<String, Integer>();
-        Hashtable<Integer, Boolean> redundantTable = new Hashtable<Integer, Boolean>();
-        Hashtable<Integer, Long> overlapTable = new Hashtable<Integer, Long>();
-        Hashtable<Integer, Long> overlapTableRight = new Hashtable<Integer, Long>();
-        int index=0;
-        long maxContigLengthBinary = ~((~0L) << 30);
-
-
-        public Iterator<Row> call (Iterator<Row> sIterator){
-            while (sIterator.hasNext()){
-                contig = sIterator.next();
-                index++;
-                contigString = contig.getString(1);
-                contigLength = contigString.length();
-                String probKmer;
-
-
-                if (contigLength >= param.kmerSize){
-                    probKmer = contigString.substring(0, param.kmerSize);
-                    if (!probKmerTable.containsKey(probKmer)) {
-                        probKmerTable.put(probKmer, index-1);
-                    }else{
-                        if (contigList.get(probKmerTable.get(probKmer)).length() < contigLength){
-                            probKmerTable.put(probKmer, index-1);
-                        }
-                    }
-                }
-
-                contigList.add(contigString);
-            }
-
-            for (int i = 0; i< contigList.size(); i++){
-                String contigAgain = contigList.get(i);
-                String RCcontigAgain = reverseComplement(contigAgain);
-                for (int j=0; j< contigAgain.length()-param.kmerSize;j++){
-                    String kmerSearch = contigAgain.substring(j, j+param.kmerSize);
-                    String kmerRCSearch = RCcontigAgain.substring(j, j+param.kmerSize);
-                    if (probKmerTable.containsKey(kmerSearch)){
-                        if (contigAgain.length() > contigList.get(probKmerTable.get(kmerSearch)).length()){
-                            redundantTable.put(probKmerTable.get(kmerSearch), true);
-
-                            if (contigList.get(probKmerTable.get(kmerSearch)).length() > contigAgain.length() -j){
-                                if (overlapTableRight.containsKey(i)){
-                                    if ( (int)(overlapTableRight.get(i) & maxContigLengthBinary) < contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() -j)){
-                                        Long extension = 1L << 30; // right extension
-                                        extension |= (1L << 62); // not reverse complement
-                                        extension |= ( contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() -j) );
-                                        extension |= ((long) probKmerTable.get(kmerSearch) << 32);
-                                        overlapTableRight.put(i, extension);
-                 //                       System.out.println("longer + right + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                    }else{
-                                        // longer extension already exist
-                                    }
-                                }else{
-                                    Long extension = 1L << 30; // right extension
-                                    extension |= (1L << 62); // not reverse complement
-                                    extension |= ( contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() -j) );
-                                    extension |= ((long) probKmerTable.get(kmerSearch)  << 32);
-                                    overlapTableRight.put(i, extension);
-                  //                  System.out.println("right + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                }
-                            }
-
-                        }else if (contigAgain.length() == contigList.get(probKmerTable.get(kmerSearch)).length()){ //
-                            // find itself.
-                            if (i == probKmerTable.get(kmerSearch)){
-                                //itself
-                            }else{
-                                // two identical contigs
-                                if (i < probKmerTable.get(kmerSearch)) {
-                                    redundantTable.put(probKmerTable.get(kmerSearch), true);
-
-                                    if (j>0) {
-                                        if (overlapTableRight.containsKey(i)) {
-                                            if ((int) (overlapTableRight.get(i) & maxContigLengthBinary) < contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j)) {
-                                                Long extension = 1L << 30; // right extension
-                                                extension |= (1L << 62); // not reverse complement
-                                                extension |= (contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j));
-                                                extension |= ((long) probKmerTable.get(kmerSearch) << 32);
-                                                overlapTableRight.put(i, extension);
-                 //                               System.out.println("longer + equal + right + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                            } else {
-                                                // longer extension already exist
-                                            }
-                                        } else {
-                                            Long extension = 1L << 30; // right extension
-                                            extension |= (1L << 62); // not reverse complement
-                                            extension |= (contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j));
-                                            extension |= ((long) probKmerTable.get(kmerSearch) << 32);
-                                            overlapTableRight.put(i, extension);
-                  //                          System.out.println("equal + right + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                        }
-                                    }
-                                } else {
-                                    redundantTable.put(i, true);
-                                    if (j>0) {
-                                        if (overlapTable.containsKey(probKmerTable.get(kmerSearch))) {
-                                            if ((int) (overlapTable.get(probKmerTable.get(kmerSearch)) & maxContigLengthBinary) < contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j)) {
-                                                // Long extension = 0L << 30; // left extension
-                                                Long extension = (1L << 62); // not reverse complement
-                                                extension |= (contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j));
-                                                extension |= ((long) i << 32);
-                                                overlapTable.put(probKmerTable.get(kmerSearch), extension);
-                //                                System.out.println("longer + equal + left + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                            } else {
-                                                // longer extension already exist
-                                            }
-                                        } else {
-                                            //   Long extension = 0L << 30; // left extension
-                                            Long extension = (1L << 62); // not reverse complement
-                                            extension |= (contigList.get(probKmerTable.get(kmerSearch)).length() - (contigAgain.length() - j));
-                                            extension |= ((long) i << 32);
-                                            overlapTable.put(probKmerTable.get(kmerSearch), extension);
-               //                             System.out.println("equal + left + forward: " + contigList.get(probKmerTable.get(kmerSearch)) + " " + contigList.get(i));
-                                        }
-                                    }
-
-                                    break;
-                                }
-                            }
-                        } else { // contigAgain.length() < probKmerTable.get(kmerSearch)
-                            redundantTable.put(i, true);
-
-                            if (j>0){
-                                if (overlapTable.containsKey(probKmerTable.get(kmerSearch))) {
-                                    if (j > (int) (overlapTable.get(probKmerTable.get(kmerSearch)) & maxContigLengthBinary)) {
-                                        // Long extension = 0L << 30; // left extension
-                                        Long extension = 1L << 62; // not reverse complement
-                                        extension |= ((long) j);
-                                        extension |= ((long) i << 32);
-                                        overlapTable.put(probKmerTable.get(kmerSearch), extension);
-            //                            System.out.println("longer + left + forward: " + contigList.get(i) + " " + contigList.get(probKmerTable.get(kmerSearch)));
-                                    } else {
-
-                                    }
-                                }else{
-                                    // Long extension = 0L << 30; // left extension
-                                    Long extension = 1L << 62; // not reverse complement
-                                    extension |= ((long) j);
-                                    extension |= ((long) i  << 32);
-                                    overlapTable.put(probKmerTable.get(kmerSearch), extension);
-             //                       System.out.println("left + forward: " + contigList.get(i) + " " + contigList.get(probKmerTable.get(kmerSearch)));
-                                }
-                            }
-
-                            break;
-                            // not adding, removed
-                        }
-                    }
-
-                    if (probKmerTable.containsKey(kmerRCSearch)){
-                        if (contigAgain.length() > contigList.get(probKmerTable.get(kmerRCSearch)).length()){
-                            redundantTable.put(probKmerTable.get(kmerRCSearch), true);
-
-                            if (contigList.get(probKmerTable.get(kmerRCSearch)).length() - param.kmerSize > j){
-                                if (overlapTable.containsKey(i)){
-                                    if ( (int)(overlapTable.get(i) & maxContigLengthBinary) < contigList.get(probKmerTable.get(kmerRCSearch)).length() - param.kmerSize - j ){
-                                         // Long extension = 0L << 30; // left extension
-                                      //  extension |= (0L << 62);  // reverse complement
-                                        Long extension = (long) ( contigList.get(probKmerTable.get(kmerRCSearch)).length() - param.kmerSize - j );
-                                        extension |= ((long) probKmerTable.get(kmerRCSearch) << 32);
-                                        overlapTable.put(i, extension);
-              //                          System.out.println("longer + right + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                    }else{
-                                        // longer extension already exist
-                                    }
-                                }else{
-                                     // Long extension = 0L << 30; // left extension
-                                    //reverse complement
-                                    Long extension = (long) ( contigList.get(probKmerTable.get(kmerRCSearch)).length() - param.kmerSize - j );
-                                    extension |= ((long) probKmerTable.get(kmerRCSearch) << 32);
-                                    overlapTable.put(i, extension);
-           //                         System.out.println("right + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                }
-                            }
-
-                        }else if (contigAgain.length() == contigList.get(probKmerTable.get(kmerRCSearch)).length()){ //
-                            if (i< probKmerTable.get(kmerRCSearch)){
-                                redundantTable.put(probKmerTable.get(kmerRCSearch), true);
-
-                                if (j>0) {
-                                    if (overlapTableRight.containsKey(i)) {
-                                        if ((int) (overlapTableRight.get(i) & maxContigLengthBinary) < j) {
-                                            Long extension = 1L << 30; // right extension
-                                            //  extension |= (0L << 62);  // reverse complement
-                                            extension = (long) (j);
-                                            extension |= ((long) probKmerTable.get(kmerRCSearch) << 32);
-                                            overlapTableRight.put(i, extension);
-           //                                 System.out.println("longer + equal + right + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                        } else {
-                                            // longer extension already exist
-                                        }
-                                    } else {
-                                        Long extension = 1L << 30; // Right extension
-                                        //reverse complement
-                                        extension = (long) (j);
-                                        extension |= ((long) probKmerTable.get(kmerRCSearch) << 32);
-                                        overlapTableRight.put(i, extension);
-           //                             System.out.println("equal + right + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                    }
-                                }
-                            }else{
-                                redundantTable.put(i, true);
-
-                                if (j>0) {
-                                    if (overlapTable.containsKey(probKmerTable.get(kmerRCSearch))) {
-                                        if ((int) (overlapTable.get(probKmerTable.get(kmerRCSearch)) & maxContigLengthBinary) < j) {
-                                            // Long extension = 0L << 30; // left extension
-                                            //  extension |= (0L << 62);  // reverse complement
-                                            Long extension = (long) (j);
-                                            extension |= ((long) i << 32);
-                                            overlapTable.put(probKmerTable.get(kmerRCSearch), extension);
-           //                                 System.out.println("longer + equal + left + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                        } else {
-                                            // longer extension already exist
-                                        }
-                                    } else {
-                                        // Long extension = 0L << 30; // left extension
-                                        //reverse complement
-                                        Long extension = (long) (j);
-                                        extension |= ((long) i << 32);
-                                        overlapTable.put(probKmerTable.get(kmerRCSearch), extension);
-           //                             System.out.println("equal + left + reverse: " + contigList.get(probKmerTable.get(kmerRCSearch)) + " " + contigList.get(i));
-                                    }
-                                }
-
-                                break;
-                            }
-                        } else { // contigAgain.length() < probKmerTable.get(kmerRCSearch)
-                            redundantTable.put(i, true);
-
-                            if ( j >0){
-                                if (overlapTable.containsKey(probKmerTable.get(kmerRCSearch))) {
-                                    if (j > (int) (overlapTable.get(probKmerTable.get(kmerRCSearch)) & maxContigLengthBinary)) {
-                                       // Long extension = 0L << 30; // left extension
-                                    //    Long extension = 0L << 62; not reverse complement
-                                        Long extension = ((long) j);
-                                        extension |= ((long) i << 32);
-                                        overlapTable.put(probKmerTable.get(kmerRCSearch), extension);
-       //                                 System.out.println("longer + left + reverse: " + contigList.get(i) + " " + contigList.get(probKmerTable.get(kmerRCSearch)));
-                                    } else {
-
-                                    }
-                                }else{
-                                   // Long extension = 0L << 30; // left extension
-                                    // Long extension = 0L << 62; not reverse complement
-                                    Long extension = ((long) j);
-                                    extension |= ((long) i << 32);
-                                    overlapTable.put(probKmerTable.get(kmerRCSearch), extension);
-       //                             System.out.println("left + reverse: " + contigList.get(i) + " " + contigList.get(probKmerTable.get(kmerRCSearch)));
-                                }
-                            }
-
-                            break;
-                        }
-                    }
-                }
-
-            }
-
-            for (int i =0; i< contigList.size(); i++){
-                if (overlapTable.containsKey(i)){
-                    Long extension = overlapTable.get(i);
-                    int direction = (int) ((extension >>> 30) & 3L);
-                    int RC = (int) ((extension >>> 62) & 3L);
-                    int contigIndex = (int) ((extension >>> 32) & maxContigLengthBinary);
-         //           int extensionIndex = (int) (extension & maxContigLengthBinary); not use here
-                    if (RC == 0){ // reverse complement
-                        if (direction == 0){ // left extension
-                            String contig = reverseComplement(contigList.get(contigIndex));
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(0, 2*param.kmerSize));
-                            if (kmerIndex == -1){
-                          //      System.out.println(contig);
-                             //   System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(0, kmerIndex);
-     //                       System.out.println("extension left + reverse: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, fragment + contigList.get(i));
-
-                        }else { // right extension
-                            String contig = reverseComplement(contigList.get(contigIndex));
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(contigList.get(i).length()-2*param.kmerSize));
-                            if (kmerIndex == -1){
-    //                            System.out.println(contig);
-    //                            System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(kmerIndex+2*param.kmerSize);
-   //                         System.out.println("extension right + reverse: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, contigList.get(i) + fragment);
-                        }
-                    }else { // not reverse complement
-                        if (direction == 0){ // left extension
-                            String contig = contigList.get(contigIndex);
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(0, 2*param.kmerSize));
-                            if (kmerIndex == -1){
-    //                            System.out.println(contig);
-        //                        System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(0, kmerIndex);
- //                           System.out.println("extension left + forward: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, fragment + contigList.get(i));
-                        }else { // right extension
-                            String contig = contigList.get(contigIndex);
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(contigList.get(i).length()-2*param.kmerSize));
-                            if (kmerIndex == -1){
-//                                System.out.println(contig);
-//                                System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(kmerIndex+2*param.kmerSize);
- //                           System.out.println("extension right + forward: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, contigList.get(i) + fragment);
-                        }
-                    }
-                }
-
-                if (overlapTableRight.containsKey(i)){
-                    Long extension = overlapTableRight.get(i);
-                    int direction = (int) ((extension >>> 30) & 3L);
-                    int RC = (int) ((extension >>> 62) & 3L);
-                    int contigIndex = (int) ((extension >>> 32) & maxContigLengthBinary);
-                    //           int extensionIndex = (int) (extension & maxContigLengthBinary); not use here
-                    if (RC == 0){ // reverse complement
-                        if (direction == 0){ // left extension
-                            String contig = reverseComplement(contigList.get(contigIndex));
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(0, 2*param.kmerSize));
-                            if (kmerIndex == -1){
-//                                System.out.println(contig);
-//                                System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(0, kmerIndex);
- //                           System.out.println("extension left + reverse: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, fragment + contigList.get(i));
-
-                        }else { // right extension
-                            String contig = reverseComplement(contigList.get(contigIndex));
-                            int kmerIndex = contigList.get(i).indexOf(contig.substring(0, 2*param.kmerSize));
-                           // int kmerIndex = contig.indexOf(contigList.get(i).substring(contigList.get(i).length()-param.kmerSize));
-                            if (kmerIndex == -1){
- //                               System.out.println(contig);
- //                               System.out.println(contigList.get(i));
-                                continue;
-                            }
-
-                            kmerIndex = contigList.get(i).length() - kmerIndex;
-                            if (contig.length() <= kmerIndex){
-                                continue;
-                            }
-
-                            String fragment = contig.substring(kmerIndex);
- //                           System.out.println("extension right + reverse: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, contigList.get(i) + fragment);
-                        }
-                    }else { // not reverse complement
-                        if (direction == 0){ // left extension
-                            String contig = contigList.get(contigIndex);
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(0, 2*param.kmerSize));
-                            if (kmerIndex == -1){
-//                                System.out.println(contig);
-//                                System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(0, kmerIndex);
-//                            System.out.println("extension left + forward: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, fragment + contigList.get(i));
-                        }else { // right extension
-                            String contig = contigList.get(contigIndex);
-                            int kmerIndex = contig.indexOf(contigList.get(i).substring(contigList.get(i).length()-2*param.kmerSize));
-                            if (kmerIndex == -1){
- //                               System.out.println(contig);
- //                               System.out.println(contigList.get(i));
-                                continue;
-                            }
-                            String fragment = contig.substring(kmerIndex+2*param.kmerSize);
- //                           System.out.println("extension right + forward: " + kmerIndex + " " + contigList.get(contigIndex) + " " + contigList.get(i));
-                            contigList.set(i, contigList.get(i) + fragment);
-                        }
-                    }
-                }
-            }
-
-            for (int i =0; i< contigList.size(); i++){
-                if (!redundantTable.containsKey(i)){
-                    uniqueContig.add(RowFactory.create(contigList.get(i)));
-                }
-            }
-
-
-            return uniqueContig.iterator();
-        }
-
-        private String reverseComplement(String forward){
-            String reverseComplementNucleotides;
-
-
-            char[] nucleotides = forward.toCharArray();
-            int nucleotideNum = nucleotides.length;
-            char[] nucleotidesRC = new char[nucleotideNum];
-
-            for (int i=0; i<nucleotideNum; i++){
-                nucleotidesRC[nucleotideNum-i-1] = complementary(nucleotides[i]);
-            }
-
-            reverseComplementNucleotides = new String(nucleotidesRC);
-            return reverseComplementNucleotides;
-        }
-
-        private char complementary (char a){
-            if (a == 'A' || a == 'a'){
-                return 'T';
-            }else if (a == 'T' || a == 't' || a == 'U' || a == 'u'){
-                return 'A';
-            }else if (a == 'C' || a == 'c'){
-                return 'G';
-            }else if (a == 'G' || a == 'g'){
-                return 'C';
-            }else {
-                return 'N';
-            }
-        }
-
-    }
-
     class DSMergeReverseComplementaryContigs implements MapPartitionsFunction<Row, Row>, Serializable{
         //List<Row> exceededContig = new ArrayList<Row>();
         List<Row> uniqueContig = new ArrayList<Row>();
@@ -1660,7 +1065,6 @@ public class ReflexivDSMerger implements Serializable{
 
     }
 
-
     class DSContigInputParser implements MapPartitionsFunction<String, Row>, Serializable{
         Random r = new Random();
 
@@ -1692,9 +1096,6 @@ public class ReflexivDSMerger implements Serializable{
             return contigList.iterator();
         }
     }
-
-
-
 
     class DSKmerToContigLength implements MapPartitionsFunction<Row, Row>, Serializable{
         public Iterator<Row> call (Iterator<Row> sIterator){
@@ -1766,112 +1167,6 @@ public class ReflexivDSMerger implements Serializable{
             }
 
             return blockLine;
-        }
-    }
-
-
-    class DSKmerToContig implements MapPartitionsFunction<Row, Row>, Serializable{
-
-        public Iterator<Row> call (Iterator<Row> sIterator){
-            List<Row> contigList = new ArrayList<Row>();
-
-            while (sIterator.hasNext()) {
-                Row s = sIterator.next();
-                if (s.getInt(1) == 1) {
-                    String contig = s.getString(0) + s.getString(2);
-                    int length = contig.length();
-                    if (length >= param.minContig) {
-                        String ID = ">Contig-" + length;
-                        String formatedContig = changeLine(contig, length, 100);
-                        contigList.add(RowFactory.create(ID, formatedContig));
-                    }
-                } else { // (randomReflexivMarker == 2) {
-                    String contig = s.getString(2) + s.getString(0);
-                    int length = contig.length();
-                    if (length >= param.minContig) {
-                        String ID = ">Contig-" + length;
-                        String formatedContig = changeLine(contig, length, 100);
-                        contigList.add(RowFactory.create(ID, formatedContig));
-                    }
-                }
-            }
-
-            return contigList.iterator();
-        }
-
-        public String changeLine(String oneLine, int lineLength, int limitedLength){
-            String blockLine = "";
-            int fold = lineLength / limitedLength;
-            int remainder = lineLength % limitedLength;
-            if (fold ==0) {
-                blockLine = oneLine;
-            }else if (fold == 1 && remainder == 0){
-                blockLine = oneLine;
-            }else if (fold >1 && remainder == 0){
-                for (int i =0 ; i<fold-1 ; i++ ){
-                    blockLine += oneLine.substring(i*limitedLength, (i+1)*limitedLength) + "\n";
-                }
-                blockLine += oneLine.substring((fold-1)*limitedLength);
-            }else {
-                for (int i =0 ; i<fold ; i++ ){
-                    blockLine += oneLine.substring(i*limitedLength, (i+1)*limitedLength) + "\n";
-                }
-                blockLine += oneLine.substring(fold*limitedLength);
-            }
-
-            return blockLine;
-        }
-    }
-
-
-
-    /**
-     * interface class for RDD implementation, used in step 5
-     */
-
-    class DSBinaryReflexivKmerToString implements MapPartitionsFunction<Row, Row>, Serializable{
-        List<Row> reflexivKmerStringList = new ArrayList<Row>();
-
-        public Iterator<Row> call(Iterator<Row> sIterator){
-            while (sIterator.hasNext()){
-                String subKmer = "";
-                String subString ="";
-                Row s = sIterator.next();
-                int currentSuffixLength = Long.SIZE/2 - (Long.numberOfLeadingZeros(s.getLong(2))/2 + 1);
-                for (int i=1; i<=param.subKmerSize;i++){
-                    Long currentNucleotideBinary = s.getLong(0) >>> 2*(param.subKmerSize - i);
-                    currentNucleotideBinary &= 3L;
-                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subKmer += currentNucleotide;
-                }
-
-                for (int i=1; i<=currentSuffixLength; i++){
-                    Long currentNucleotideBinary = s.getLong(2) >>> 2*(currentSuffixLength - i);
-                    currentNucleotideBinary &= 3L;
-                    char currentNucleotide =  BinaryToNucleotide(currentNucleotideBinary);
-                    subString += currentNucleotide;
-                }
-
-                reflexivKmerStringList.add (
-                        RowFactory.create(
-                                subKmer, s.getInt(1), subString, s.getInt(3), s.getInt(4))
-                );
-            }
-            return reflexivKmerStringList.iterator();
-        }
-
-        private char BinaryToNucleotide (Long twoBits){
-            char nucleotide;
-            if (twoBits == 0){
-                nucleotide = 'A';
-            }else if (twoBits == 1){
-                nucleotide = 'C';
-            }else if (twoBits == 2){
-                nucleotide = 'G';
-            }else{
-                nucleotide = 'T';
-            }
-            return nucleotide;
         }
     }
 
@@ -1948,8 +1243,6 @@ public class ReflexivDSMerger implements Serializable{
     /**
      *
      */
-
-
     class DSExtendReflexivKmerToArrayLoop implements MapPartitionsFunction<Row, Row>, Serializable{
 
         /* marker to identify similar SubKmers in the loop sequence */
@@ -2733,9 +2026,6 @@ public class ReflexivDSMerger implements Serializable{
     /**
      *
      */
-
-
-
     class DSExtendReflexivKmerToArrayFirstTime implements MapPartitionsFunction<Row, Row>, Serializable{
 
         /* marker to identify similar SubKmers in the loop sequence */
@@ -3168,8 +2458,6 @@ public class ReflexivDSMerger implements Serializable{
     /**
      *
      */
-
-
     class DSExtendReflexivKmer implements MapPartitionsFunction<Row, Row>, Serializable{
 
         /* marker to identify similar SubKmers in the loop sequence */
@@ -4004,40 +3292,6 @@ public class ReflexivDSMerger implements Serializable{
             return kmerList.iterator();
         }
     }
-
-    class DSKmerReverseComplementLong implements MapPartitionsFunction<Row, Row>, Serializable{
-        /* a capsule for all Kmers and reverseComplementKmers */
-        List<Row> kmerList = new ArrayList<Row>();
-        Long reverseComplement;
-        Row kmerTuple;
-        Long lastTwoBits;
-        Long kmerBinary;
-
-
-        public Iterator<Row> call(Iterator<Row> s){
-
-
-            while (s.hasNext()) {
-                kmerTuple = s.next();
-                kmerBinary = kmerTuple.getLong(0);
-                reverseComplement=0L;
-                for (int i = 0; i < param.kmerSize; i++) {
-                    reverseComplement<<=2;
-
-                    lastTwoBits = kmerBinary & 3L ^ 3L;
-                    kmerBinary >>>=2;
-                    reverseComplement|=lastTwoBits;
-                }
-
-                kmerList.add(RowFactory.create(kmerTuple.getLong(0), (int)kmerTuple.getLong(1)));
-                kmerList.add(RowFactory.create(reverseComplement, (int)kmerTuple.getLong(1)));
-            }
-
-            return kmerList.iterator();
-        }
-    }
-
-
     class KmerBinarizer implements MapPartitionsFunction<Row, Row>, Serializable {
 
         List<Row> kmerList = new ArrayList<Row>();
@@ -4115,138 +3369,6 @@ public class ReflexivDSMerger implements Serializable{
         }
 
     }
-
-
-
-
-    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable{
-        long maxKmerBits= ~((~0L) << (2*param.kmerSize));
-
-        List<Long> kmerList = new ArrayList<Long>();
-        int readLength;
-        String[] units;
-        String read;
-        char nucleotide;
-        long nucleotideInt;
-        long nucleotideIntComplement;
-
-        public Iterator<Long> call(Iterator<String> s){
-
-            while (s.hasNext()) {
-                units = s.next().split("\\n");
-                read = units[1];
-                readLength = read.length();
-
-                if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {
-                    continue;
-                }
-
-                Long nucleotideBinary = 0L;
-                Long nucleotideBinaryReverseComplement = 0L;
-
-                for (int i = param.frontClip; i < readLength - param.endClip; i++) {
-                    nucleotide = read.charAt(i);
-                    if (nucleotide >= 256) nucleotide = 255;
-                    nucleotideInt = nucleotideValue(nucleotide);
-                    // forward kmer in bits
-                    nucleotideBinary <<= 2;
-                    nucleotideBinary |= nucleotideInt;
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinary &= maxKmerBits;
-                    }
-
-                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
-                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
-
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinaryReverseComplement >>>= 2;
-                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
-                    } else {
-                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
-                    }
-                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
-
-                    // reach the first complete K-mer
-                    if (i - param.frontClip >= param.kmerSize - 1) {
-                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
-                            kmerList.add(nucleotideBinary);
-                        } else {
-                            kmerList.add(nucleotideBinaryReverseComplement);
-                        }
-                    }
-                }
-            }
-            return kmerList.iterator();
-        }
-
-        private long nucleotideValue(char a) {
-            long value;
-            if (a == 'A') {
-                value = 0L;
-            } else if (a == 'C') {
-                value = 1L;
-            } else if (a == 'G') {
-                value = 2L;
-            } else { // T
-                value = 3L;
-            }
-            return value;
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, used in step 3
-     *      -----------
-     *      ------
-     *       ------
-     *        ------
-     *         ------
-     *          ------
-     *           ------
-     */
-
-
-    class DSFastqUnitFilter implements FilterFunction<String>, Serializable{
-        public boolean call(String s){
-            return s != null;
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, Used in step 1
-     */
-
-
-    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable{
-        String line = "";
-        int lineMark = 0;
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                line = line + "\n" + s;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                line = line + "\n" + s;
-                return line;
-            } else if (s.startsWith("@")) {
-                line = s;
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = line + "\n" + s;
-                lineMark++;
-                return null;
-            }else{
-                return null;
-            }
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, used in step 2
-     */
-
 
     /**
      *

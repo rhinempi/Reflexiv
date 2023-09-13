@@ -523,8 +523,7 @@ public class ReflexivDSMain implements Serializable{
         ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
 
         DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-     //   Dataset<Row>  ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-        //ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + 1);
+
 
         DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
         ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
@@ -541,9 +540,6 @@ public class ReflexivDSMain implements Serializable{
  //       ReflexivSubKmerDS.cache();
 
         iterations++;
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-       // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
 
         /**
          * Extract Long sub kmer
@@ -589,18 +585,8 @@ public class ReflexivDSMain implements Serializable{
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-//            ReflexivLongSubKmerDS.cache();
-//            ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-//            ReflexivLongSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringDS= ReflexivLongSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-//            ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
 
         }
 

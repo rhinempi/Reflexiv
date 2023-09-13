@@ -157,12 +157,6 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
         ReflexivFixingKmerStruct= ReflexivFixingKmerStruct.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
         ExpressionEncoder<Row> ReflexivFixingKmerEndocer = RowEncoder.apply(ReflexivFixingKmerStruct);
 
-        StructType ReflexivLongKmerStructCompressed = new StructType();
-        ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
-        ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("attribute", DataTypes.LongType, false);
-        ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
-        ExpressionEncoder<Row> ReflexivLongSubKmerEncoderCompressed = RowEncoder.apply(ReflexivLongKmerStructCompressed);
-
         StructType ContigLongKmerStringStruct = new StructType();
         ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("ID", DataTypes.StringType, false);
         ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("contig", DataTypes.StringType, false);

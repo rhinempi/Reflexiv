@@ -133,12 +133,7 @@ public class ReflexivDSMainMeta64 implements Serializable {
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
         kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
+
         Dataset<Row> ReflexivSubKmerDS;
         StructType ReflexivKmerStruct = new StructType();
         ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -505,8 +500,6 @@ public class ReflexivDSMainMeta64 implements Serializable {
         ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
 
         DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-        //   Dataset<Row>  ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-        //ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + 1);
 
         DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
         ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
@@ -523,10 +516,6 @@ public class ReflexivDSMainMeta64 implements Serializable {
         //      ReflexivSubKmerDS.cache();
 
         iterations++;
-
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-        // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
 
         /**
          * Extract Long sub kmer
@@ -603,10 +592,6 @@ public class ReflexivDSMainMeta64 implements Serializable {
         DSKmerToContig contigformaterDS = new DSKmerToContig();
         ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
 
-        /*
-        DSKmerToSmallContig smallContigformaterDS = new DSKmerToSmallContig();
-        SmallContigRows = ReflexivLongSubKmerStringDS.mapPartitions(smallContigformaterDS, ContigStringEncoder);
-*/
         /**
          *
          */

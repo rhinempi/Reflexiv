@@ -57,7 +57,7 @@ public class MainOfPreProcessing {
      */
     public static void main(String[] args) throws IOException {
         InfoDumper info = new InfoDumper();
-        info.readParagraphedMessages("Reflexiv main initiating ... \ninterpreting parameters.");
+        info.readParagraphedMessages("Reflexiv reads preprocessing initiating ... \ninterpreting parameters.");
         info.screenDump();
 
         Parameter parameter = null;

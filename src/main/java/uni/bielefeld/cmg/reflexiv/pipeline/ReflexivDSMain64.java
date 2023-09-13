@@ -151,12 +151,7 @@ public class ReflexivDSMain64 implements Serializable {
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
         kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
+
         Dataset<Row> ReflexivSubKmerDS;
         StructType ReflexivKmerStruct = new StructType();
         ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -538,8 +533,7 @@ public class ReflexivDSMain64 implements Serializable {
         ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
 
         DSBinaryReflexivKmerToString StringOutputDS = new DSBinaryReflexivKmerToString();
-        //   Dataset<Row>  ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-        //ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + 1);
+
 
         DSExtendReflexivKmer DSKmerExtention = new DSExtendReflexivKmer();
         ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoder);
@@ -556,10 +550,6 @@ public class ReflexivDSMain64 implements Serializable {
         //      ReflexivSubKmerDS.cache();
 
         iterations++;
-
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-        // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
 
         /**
          * Extract Long sub kmer
@@ -675,18 +665,7 @@ public class ReflexivDSMain64 implements Serializable {
                 System.out.println("mark iteration: " + iterations + " has kmers: " + IterationCount);
                 ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-//            ReflexivLongSubKmerDS.cache();
-//            ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-//            ReflexivLongSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringDS= ReflexivLongSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-//            ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
-
                 ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
             }
         }
 
@@ -817,18 +796,6 @@ public class ReflexivDSMain64 implements Serializable {
 
         ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
 
-        /**
-         *
-         */
-     //   DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
-     //   ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
-
-
-        // DSFormatContigs ContigFormater = new DSFormatContigs();
-        // ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
-
-
-
         DSKmerToContig contigformaterDS = new DSKmerToContig();
         ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
 
@@ -872,20 +839,6 @@ public class ReflexivDSMain64 implements Serializable {
             return contigList.iterator();
         }
     }
-
-    class TagContigID implements FlatMapFunction<Tuple2<Tuple2<String, String>, Long>, String>, Serializable {
-
-        public Iterator<String> call(Tuple2<Tuple2<String, String>, Long> s) {
-
-
-            List<String> contigList = new ArrayList<String>();
-
-            contigList.add(s._1._1 + "-" + s._2 + "\n" + s._1._2);
-
-            return contigList.iterator();
-        }
-    }
-
     class DSKmerToContig implements MapPartitionsFunction<Row, Row>, Serializable {
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
@@ -938,7 +891,6 @@ public class ReflexivDSMain64 implements Serializable {
             return blockLine;
         }
     }
-
 
     class DSLowCoverageSubKmerExtraction implements  MapPartitionsFunction<Row, Row>, Serializable{
         List<Row> subKmerProb = new ArrayList<Row>();
@@ -10817,38 +10769,6 @@ public class ReflexivDSMain64 implements Serializable {
         }
     }
 
-    class DSKmerReverseComplementLong implements MapPartitionsFunction<Row, Row>, Serializable {
-        /* a capsule for all Kmers and reverseComplementKmers */
-        List<Row> kmerList = new ArrayList<Row>();
-        Long reverseComplement;
-        Row kmerTuple;
-        Long lastTwoBits;
-        Long kmerBinary;
-
-
-        public Iterator<Row> call(Iterator<Row> s) {
-
-
-            while (s.hasNext()) {
-                kmerTuple = s.next();
-                kmerBinary = kmerTuple.getLong(0);
-                reverseComplement = 0L;
-                for (int i = 0; i < param.kmerSize; i++) {
-                    reverseComplement <<= 2;
-
-                    lastTwoBits = kmerBinary & 3L ^ 3L;
-                    kmerBinary >>>= 2;
-                    reverseComplement |= lastTwoBits;
-                }
-
-                kmerList.add(RowFactory.create(kmerTuple.getLong(0), (int) kmerTuple.getLong(1)));
-                kmerList.add(RowFactory.create(reverseComplement, (int) kmerTuple.getLong(1)));
-            }
-
-            return kmerList.iterator();
-        }
-    }
-
     class KmerBinarizer implements MapPartitionsFunction<Row, Row>, Serializable {
 
         List<Row> kmerList = new ArrayList<Row>();
@@ -11169,92 +11089,6 @@ public class ReflexivDSMain64 implements Serializable {
         }
     }
 
-
-    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable {
-        long maxKmerBits = ~((~0L) << (2 * param.kmerSize));
-
-        List<Long> kmerList = new ArrayList<Long>();
-        int readLength;
-        String[] units;
-        String read;
-        char nucleotide;
-        long nucleotideInt;
-        long nucleotideIntComplement;
-
-        public Iterator<Long> call(Iterator<String> s) {
-
-            while (s.hasNext()) {
-                units = s.next().split("\\n");
-                read = units[1];
-                readLength = read.length();
-
-                if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {
-                    continue;
-                }
-
-                Long nucleotideBinary = 0L;
-                Long nucleotideBinaryReverseComplement = 0L;
-
-                for (int i = param.frontClip; i < readLength - param.endClip; i++) {
-                    nucleotide = read.charAt(i);
-                    if (nucleotide >= 256) nucleotide = 255;
-                    nucleotideInt = nucleotideValue(nucleotide);
-                    // forward kmer in bits
-                    nucleotideBinary <<= 2;
-                    nucleotideBinary |= nucleotideInt;
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinary &= maxKmerBits;
-                    }
-
-                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
-                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
-
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinaryReverseComplement >>>= 2;
-                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
-                    } else {
-                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
-                    }
-                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
-
-                    // reach the first complete K-mer
-                    if (i - param.frontClip >= param.kmerSize - 1) {
-                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
-                            kmerList.add(nucleotideBinary);
-                        } else {
-                            kmerList.add(nucleotideBinaryReverseComplement);
-                        }
-                    }
-                }
-            }
-            return kmerList.iterator();
-        }
-
-        private long nucleotideValue(char a) {
-            long value;
-            if (a == 'A') {
-                value = 0L;
-            } else if (a == 'C') {
-                value = 1L;
-            } else if (a == 'G') {
-                value = 2L;
-            } else { // T
-                value = 3L;
-            }
-            return value;
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, used in step 3
-     *      -----------
-     *      ------
-     *       ------
-     *        ------
-     *         ------
-     *          ------
-     *           ------
-     */
 
 
     class DSFastqUnitFilter implements FilterFunction<String>, Serializable {

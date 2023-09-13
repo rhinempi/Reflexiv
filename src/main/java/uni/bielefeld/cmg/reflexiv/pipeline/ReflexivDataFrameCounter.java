@@ -160,8 +160,7 @@ public class ReflexivDataFrameCounter implements Serializable{
 
         if (param.inputFormat.equals("4mc")){
             Configuration baseConfiguration = new Configuration();
-            // baseConfiguration.setInt("mapred.min.split.size", 6000000);
-            // baseConfiguration.setInt("mapred.max.split.size", 6000000);
+
             Job jobConf = Job.getInstance(baseConfiguration);
             //  sc.hadoopConfiguration().setInt("mapred.max.split.size", 6000000);
             JavaPairRDD<LongWritable, Text> FastqPairRDD = sc.newAPIHadoopFile(param.inputFqPath, FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
@@ -186,15 +185,6 @@ public class ReflexivDataFrameCounter implements Serializable{
                 DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
                 FastqDS = FastqDS.mapPartitions(DSFastqFilterToSeq, Encoders.STRING());
             }
-
-            /*
-            DSFastqFilterWithQual DSFastqFilter = new DSFastqFilterWithQual();
-            FastqDS = FastqDS.map(DSFastqFilter, Encoders.STRING());
-
-            DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
-
-            FastqDS = FastqDS.filter(FilterDSUnit);
-            */
         }
 
 
@@ -449,41 +439,6 @@ public class ReflexivDataFrameCounter implements Serializable{
                 nucleotide = 'T';
             }
             return nucleotide;
-        }
-    }
-
-    /**
-     *
-     */
-    class DSFastqUnitFilter implements FilterFunction<String>, Serializable{
-        public boolean call(String s){
-            return s != null;
-        }
-    }
-
-    /**
-     *
-     */
-    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable{
-        String line = "";
-        int lineMark = 0;
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                return line;
-            } else if (s.startsWith("@")) {
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = s;
-                lineMark++;
-                return null;
-            }else{
-                return null;
-            }
         }
     }
 

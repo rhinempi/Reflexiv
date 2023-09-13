@@ -23,8 +23,8 @@
  #-----------------------------------------------------------------------------
 
 name="Reflexiv"
-version="0.8"
-spark_version="2.0.0"  # only for auto downloading Spark package
+version="1.0"
+spark_version="3.2.1"  # only for auto downloading Spark package
 
 readlink -f 1>/dev/null 2>/dev/null
 readlinkReturn=$?
@@ -48,7 +48,7 @@ SH_SBIN=${SH_SBIN:-$SH_HOME/sbin}
 SH_OPT=""
 SH_URL="https://github.com/rhinempi/reflexiv/archive/latest.zip"
 
-SPARK_URL="http://d3kbcqa49mib13.cloudfront.net/spark-$spark_version-bin-hadoop2.6.tgz"  # 1.6.0 version
+SPARK_URL="https://archive.apache.org/dist/spark/spark-$spark_version/spark-$spark_version-bin-hadoop3.2.tgz"  # 1.6.0 version
 SPARK_CMD=""  # in case no spark home was found, please manually paste the "spark-submit" file path
 SPARK_OPT=""
 
@@ -80,6 +80,8 @@ function die() {
 
 function get_spark() {
     if command -v wget &>/dev/null; then
+	    echo $1
+	    echo $2
         GET="wget -q $1 -O $2"
     elif command -v curl &>/dev/null; then
         GET="curl $1 -o $2"
@@ -158,12 +160,12 @@ fi
         SPARK_CMD="$(which spark-submit)"
     elif [ -x "$SPARK_CMD" ]; then
         continue
-    elif [ -x "$SH_PACKAGE/spark-$spark_version-bin-hadoop2.6/bin/spark-submit" ]; then
-            SPARK_CMD="$SH_PACKAGE/spark-$spark_version-bin-hadoop2.6/bin/spark-submit"
+    elif [ -x "$SH_PACKAGE/spark-$spark_version-bin-hadoop3.2/bin/spark-submit" ]; then
+            SPARK_CMD="$SH_PACKAGE/spark-$spark_version-bin-hadoop3.2/bin/spark-submit"
     else
-        get_spark "$SPARK_URL" "$SH_PACKAGE/spark-$spark_version-bin-hadoop2.6.tgz"
-        untar_spark "$SH_PACKAGE/spark-$spark_version-bin-hadoop2.6.tgz" "$SH_PACKAGE"
-        SPARK_CMD= "$SH_PACKAGE/spark-$spark_version-bin-hadoop2.6/bin/spark-submit"
+        get_spark "$SPARK_URL" "$SH_PACKAGE/spark-$spark_version-bin-hadoop3.2.tgz"
+        untar_spark "$SH_PACKAGE/spark-$spark_version-bin-hadoop3.2.tgz" "$SH_PACKAGE"
+        SPARK_CMD= "$SH_PACKAGE/spark-$spark_version-bin-hadoop3.2/bin/spark-submit"
     fi
 
 # Verify reflexiv jar is available
@@ -182,6 +184,8 @@ function dump_help() {
     echo "  run             Run the entire assembly pipeline"
     echo "  counter         counting Kmer frequency"
     echo "  reassembler       re-assemble and extend genome fragments"
+    echo "  meta            assemble metagenomes"
+    echo "  reduce	    Dynamic reduction of k-mers"
     echo ""
     echo "Type each command to view its options, eg. Usage: ./reflexiv run"
     echo ""
@@ -218,7 +222,7 @@ function parse_param() {
             if [[ ${args[$i+1]} == -* ]]; then
                 SPARK_OPT+="${args[$i]} "
             else
-                SPARK_OPT+="${args[$i]} ${args[$i+1]} "
+                SPARK_OPT+="${args[$i]} \"${args[$i+1]}\" "
             fi
         elif [[ ${args[$i]} == -* ]]; then
             if [[ ${args[$i+1]} == -* ]]; then
@@ -259,13 +263,15 @@ elif [[ ${MODULE} == "merger" ]]; then
     mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfMerger"
 elif [[ ${MODULE} == "mercy" ]]; then
     mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfMercy"
+elif [[ ${MODULE} == "preprocess" ]]; then
+    mainClass="uni.bielefeld.cmg.reflexiv.main.MainOfPreProcessing"
 else
     dump_help
     exit 1;
 fi
 
 # Assemble the command line
-cmdline="$SPARK_CMD $SPARK_OPT --class $mainClass $SH_JAR $SH_OPT"
+cmdline="$SPARK_CMD $SPARK_OPT --jars $SH_LIB/hadoop-4mc-3.0.0.jar --files $SH_SBIN/flash --class $mainClass $SH_JAR $SH_OPT"
 
 # launch command
 function launch_reflexiv() {

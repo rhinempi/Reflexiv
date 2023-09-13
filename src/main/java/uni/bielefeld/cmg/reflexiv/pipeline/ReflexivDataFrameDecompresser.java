@@ -237,10 +237,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
 
         if (param.interleavedSwitch) {
-          //  FastqRDD =FastqDSLine.toJavaRDD();
-          //  FastqRDD.saveAsTextFile(param.outputPath + "/Read_Interleaved", FourMcCodec.class);
 
-            // FastqDS = spark.createDataset(FastqRDD.rdd(), Encoders.STRING());
 
             DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
             FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
@@ -254,14 +251,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
 
             DSJavaPipe myPipe = new DSJavaPipe();
             MergedSeq=FastqDS.toJavaRDD().mapPartitions(myPipe);
-            /*
-            if (param.mode.equals("local")) {
-                param.executable = param.executable + "/flash";
-                MergedSeq = FastqDS.toJavaRDD().pipe(param.executable + " -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");// |awk '{if ($4){print $2\"\\n\"$4}else{print $2}}'");
-            }else{
-                MergedSeq = FastqDS.toJavaRDD().pipe("./flash -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");
-            }
-*/
+
             DSFlashOutputToSeq FlashMergedTabToSeq = new DSFlashOutputToSeq();
             MergedSeq= MergedSeq.mapPartitions(FlashMergedTabToSeq);
 
@@ -273,8 +263,6 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
 
         if (param.inputPairedSwitch){
-        //    FastqRDD =FastqDSLine.toJavaRDD();
-        //    FastqRDD.saveAsTextFile(param.outputPath + "/Read_Paired", FourMcCodec.class);
 
             StructType ReadStringStruct = new StructType();
             ReadStringStruct = ReadStringStruct.add("ID", DataTypes.StringType, false);
@@ -304,24 +292,13 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             FastqDS = FastqDS.mapPartitions(FastqToTab, Encoders.STRING());
 
             JavaRDD<String> MergedSeq;
-            /*
-            if (param.mode.equals("local")) {
-                param.executable = param.executable + "/flash";
-                MergedSeq = FastqDS.toJavaRDD().pipe(param.executable + " -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");// |awk '{if ($4){print $2\"\\n\"$4}else{print $2}}'");
-            }else{
-                MergedSeq = FastqDS.toJavaRDD().pipe("./flash -t 1 --tab-delimited-input --tab-delimited-output --allow-outies --max-overlap 85 -c /dev/stdin");
-            }
-*/
+
             DSJavaPipe myPipe = new DSJavaPipe();
             MergedSeq=FastqDS.toJavaRDD().mapPartitions(myPipe);
 
             DSFlashOutputToSeq FlashMergedTabToSeq = new DSFlashOutputToSeq();
             MergedSeq= MergedSeq.mapPartitions(FlashMergedTabToSeq);
-/*
-            if (param.partitions > 0) {
-                MergedSeq = MergedSeq.repartition(param.partitions);
-            }
-*/
+
             MergedSeq.saveAsTextFile(param.outputPath + "/Read_Paired_Merged", FourMcCodec.class);
 
         }
@@ -430,201 +407,6 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                 return null;
             }
         }
-    }
-
-    /**
-     *
-     */
-    class DSFastqFilterOnlySeq implements MapPartitionsFunction<String, String>, Serializable{
-        ArrayList<String> seqArray = new ArrayList<String>();
-        //String line;
-        //int lineMark = 0;
-
-        public Iterator<String> call(Iterator<String> sIterator) {
-            while (sIterator.hasNext()) {
-                String s = sIterator.next();
-                if (s.length()<= 20) {
-                    continue;
-                } else if (s.startsWith("@")) {
-                    continue;
-                } else if (s.startsWith("+")) {
-                    continue;
-                } else if (!checkSeq(s.charAt(0))) {
-                    continue;
-                } else if (!checkSeq(s.charAt(4))){
-                    continue;
-                } else if (!checkSeq(s.charAt(9))){
-                    continue;
-                } else if (!checkSeq(s.charAt(14))){
-                    continue;
-                } else if (!checkSeq(s.charAt(19))){
-                    continue;
-                } else {
-                    seqArray.add(s);
-                }
-            }
-
-            return seqArray.iterator();
-        }
-
-        private boolean checkSeq(char a){
-            int match =0;
-            if (a=='A'){
-                match++;
-            }else if (a=='T'){
-                match++;
-            }else if (a=='C'){
-                match++;
-            }else if (a=='G'){
-                match++;
-            }else if (a=='N'){
-                match++;
-            }
-
-            if (match >0){
-                return true;
-            }else{
-                return false;
-            }
-        }
-
-        /*
-        public Iterator<String> call(Iterator<String> sIterator) {
-            while (sIterator.hasNext()) {
-                String s = sIterator.next();
-                if (lineMark == 2) {
-                    lineMark++;
-                } else if (lineMark == 3) {
-                    lineMark++;
-                    seqArray.add(line);
-                } else if (s.startsWith("@")) {
-                    lineMark = 1;
-                } else if (lineMark == 1) {
-                    line = s;
-                    lineMark++;
-                }
-            }
-
-            return seqArray.iterator();
-        }
-        */
-
-/*
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                return line;
-            } else if (s.startsWith("@")) {
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = s;
-                lineMark++;
-                return null;
-            }else{
-                return null;
-            }
-        }
-        */
-    }
-
-    class FirstNFastq implements MapPartitionsFunction<String,String>, Serializable{
-        List<String> fastLines = new ArrayList<String>();
-        String line;
-        int readcount=0;
-        int lineMark=0;
-
-        public Iterator<String> call(Iterator<String> s) {
-            while (s.hasNext() && readcount <= param.readLimit) {
-                line = s.next();
-                fastLines.add(line);
-                readcount++;
-            }
-            //System.out.println("how many times did you went through me");
-            return fastLines.iterator();
-        }
-    }
-
-
-    /**
-     *
-     */
-    class ReadBinarizer implements MapPartitionsFunction<String, Row>, Serializable{
-        List<Row> kmerList = new ArrayList<Row>();
-        String units;
-        String kmer;
-        int currentKmerSize;
-        int currentKmerBlockSize;
-        int currentSubKmerSize;
-        int currentSubKmerBlockSize;
-        char nucleotide;
-        long nucleotideInt;
-        //     Long suffixBinary;
-        //     Long[] suffixBinaryArray;
-
-        public Iterator<Row> call(Iterator<String> s) {
-
-            while (s.hasNext()) {
-
-                units = s.next();
-
-                kmer = units.split("\\n")[1];
-
-                if (kmer.startsWith("(")) {
-                    kmer = kmer.substring(1);
-                }
-
-                currentKmerSize= kmer.length();
-                currentSubKmerSize = currentKmerSize-1;
-                currentKmerBlockSize = (currentKmerSize-1)/31+1; // each 31 mer is a block
-                currentSubKmerBlockSize = (currentSubKmerSize-1)/31+1;
-
-                long[] nucleotideBinarySlot = new long[currentKmerBlockSize];
-                //       Long nucleotideBinary = 0L;
-
-                for (int i = 0; i < currentSubKmerSize; i++) {
-                    nucleotide = kmer.charAt(i);
-                    if (nucleotide >= 256) nucleotide = 255;
-                    nucleotideInt = nucleotideValue(nucleotide);
-                    // forward kmer in bits
-                    nucleotideInt <<= 2*(32-1-(i%31)); // shift to the left   [ATCGGATCC-,ATCGGATCC-]
-//                    nucleotideBinarySlot[i / 31] <<= 2*((32-i)%32);
-                    nucleotideBinarySlot[i / 31] |= nucleotideInt;
-
-                    //   nucleotideBinary <<= 2;
-                    //   nucleotideBinary |= nucleotideInt;
-                }
-
-                // marking the end of the kmer
-                long kmerEndMark = 1L;
-                kmerEndMark <<= 2*(32-1-((currentKmerSize-1)%31+1));
-                nucleotideBinarySlot[currentKmerBlockSize-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
-
-                kmerList.add(
-                        RowFactory.create(nucleotideBinarySlot)
-                );
-            }
-
-            return kmerList.iterator();
-        }
-
-        private long nucleotideValue(char a) {
-            long value;
-            if (a == 'A') {
-                value = 0L;
-            } else if (a == 'C') {
-                value = 1L;
-            } else if (a == 'G') {
-                value = 2L;
-            } else { // T
-                value = 3L;
-            }
-            return value;
-        }
-
     }
 
     class DSInputFastqToTab implements MapPartitionsFunction<String, String>, Serializable {
@@ -892,78 +674,6 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
     }
 
-    class DSBinaryReadToString implements MapPartitionsFunction<Row, String>, Serializable{
-        List<String> reflexivKmerStringList = new ArrayList<String>();
-        long[] subKmerArray;
-
-        public Iterator<String> call(Iterator<Row> sIterator) throws Exception {
-            while (sIterator.hasNext()) {
-                String subKmer = "";
-
-                Row s = sIterator.next();
-
-                subKmerArray= seq2array(s.getSeq(0));
-
-                subKmer = BinaryBlocksToString(subKmerArray);
-
-                reflexivKmerStringList.add(
-                        subKmer
-                );
-            }
-            return reflexivKmerStringList.iterator();
-        }
-
-        private char BinaryToNucleotide(Long twoBits) {
-            char nucleotide;
-            if (twoBits == 0) {
-                nucleotide = 'A';
-            } else if (twoBits == 1) {
-                nucleotide = 'C';
-            } else if (twoBits == 2) {
-                nucleotide = 'G';
-            } else {
-                nucleotide = 'T';
-            }
-            return nucleotide;
-        }
-
-        private String BinaryBlocksToString (long[] binaryBlocks){
-            //           String KmerString="";
-            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
-            StringBuilder sb= new StringBuilder();
-            char currentNucleotide;
-
-            for (int i=0; i< KmerLength; i++){
-                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
-                currentNucleotideBinary &= 3L;
-                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                sb.append(currentNucleotide);
-            }
-
-            return sb.toString();
-        }
-
-        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
-            int kmerSize;
-            int blockSize = binaryBlocks.length;
-            kmerSize= (blockSize-1) *31;
-            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
-            int lastMers = Long.SIZE/2-suffix0s/2-1;
-
-            kmerSize+=lastMers;
-            return kmerSize;
-
-        }
-
-        private long[] seq2array(Seq a){
-            long[] array =new long[a.length()];
-            for (int i = 0; i < a.length(); i++) {
-                array[i] = (Long) a.apply(i);
-            }
-            return array;
-        }
-
-    }
     /**
      *
      * @param param

@@ -145,10 +145,7 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
         String checkpointDir= sc.getCheckpointDir().get();
 
         Dataset<Row> KmerCountDS;
-        Dataset<Row> LongerKmerCountDS;
-
         Dataset<Row> KmerBinaryCountDS;
-        Dataset<Row>LongerKmerBinaryCountDS;
 
         StructType kmerCountTupleStruct = new StructType();
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmer", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -165,7 +162,7 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
         ReflexivKmerStruct = ReflexivKmerStruct.add("right", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> ReflexivSubKmerEncoder = RowEncoder.apply(ReflexivKmerStruct);
 
-        Dataset<Row> ReflexivSubKmerDSCompressed;
+
         StructType ReflexivKmerStructCompressedStruct = new StructType();
         ReflexivKmerStructCompressedStruct = ReflexivKmerStructCompressedStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
         ReflexivKmerStructCompressedStruct = ReflexivKmerStructCompressedStruct.add("reflection", DataTypes.LongType, false);
@@ -173,15 +170,11 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
         ExpressionEncoder<Row> ReflexivSubKmerCompressedEncoder= RowEncoder.apply(ReflexivKmerStructCompressedStruct);
 
         Dataset<Row> ReflexivFullKmerDS;
-        Dataset<Row> MixedFullKmerDS;
-        Dataset<Row> MixedReflexivSubkmerDS;
         StructType FullKmerWithAttributeStruct = new StructType();
         FullKmerWithAttributeStruct = FullKmerWithAttributeStruct.add("k", DataTypes.createArrayType(DataTypes.LongType), false);
         FullKmerWithAttributeStruct = FullKmerWithAttributeStruct.add("reflection", DataTypes.LongType, false);
         ExpressionEncoder<Row> ReflexivFullKmerEncoder= RowEncoder.apply(FullKmerWithAttributeStruct);
 
-
-        Dataset<Row> DSFullKmerStringShort;
         Dataset<Row> DSFullKmerString;
         StructType ReflexivFullKmerStringStruct = new StructType();
         ReflexivFullKmerStringStruct = ReflexivFullKmerStringStruct.add("k", DataTypes.StringType, false);
@@ -262,10 +255,6 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
          */
 
         ReflexivFullKmerDS= ReflexivSubKmerDS.mapPartitions(DSSubKmerToFullLengthKmer, ReflexivFullKmerEncoder);
-/*
-        LongerKmerToEnglightenKmer LongerKmerEnlightmentPreparation = new LongerKmerToEnglightenKmer();
-        ReflexivFullKmerDS =ReflexivSubKmerDS.mapPartitions(LongerKmerEnlightmentPreparation, ReflexivFullKmerEncoder);
-*/
 
         DSBinaryFullKmerArrayToStringLong FullKmerToStringLong = new DSBinaryFullKmerArrayToStringLong();
 
@@ -306,8 +295,6 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
         List<Row> reflexivKmerStringList = new ArrayList<Row>();
 
         public Iterator<Row> call(Iterator<Row> sIterator) {
-        //    Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        //    System.out.println(timestamp + "RepeatCheck DSBinaryFullKmerArrayToStringLong: " + param.kmerSize1);
 
             while (sIterator.hasNext()) {
                 Row s = sIterator.next();
@@ -1109,12 +1096,6 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
 
     }
 
-
-    /**
-     *
-     */
-
-
     class DSReflectedSubKmerExtractionFromForward implements MapPartitionsFunction<Row, Row>, Serializable {
         List<Row> TupleList = new ArrayList<Row>();
         Long suffixBinary;
@@ -1570,15 +1551,6 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
     }
 
     /**
-     *
-     */
-
-
-    /**
-     * interface class for RDD implementation, used in step 5
-     */
-
-    /**
      * interface class for RDD implementation, used in step 4
      */
 
@@ -1779,136 +1751,6 @@ public class ReflexivDSKmerLeftAndRightSortingOld implements Serializable {
         }
 
     }
-
-    class ReverseComplementKmerBinaryExtractionFromDataset implements MapPartitionsFunction<String, Long>, Serializable {
-        long maxKmerBits = ~((~0L) << (2 * param.kmerSize));
-
-        List<Long> kmerList = new ArrayList<Long>();
-        int readLength;
-        String[] units;
-        String read;
-        char nucleotide;
-        long nucleotideInt;
-        long nucleotideIntComplement;
-
-        public Iterator<Long> call(Iterator<String> s) {
-
-            while (s.hasNext()) {
-                units = s.next().split("\\n");
-                read = units[1];
-                readLength = read.length();
-
-                if (readLength - param.kmerSize - param.endClip <= 1 || param.frontClip > readLength) {
-                    continue;
-                }
-
-                Long nucleotideBinary = 0L;
-                Long nucleotideBinaryReverseComplement = 0L;
-
-                for (int i = param.frontClip; i < readLength - param.endClip; i++) {
-                    nucleotide = read.charAt(i);
-                    if (nucleotide >= 256) nucleotide = 255;
-                    nucleotideInt = nucleotideValue(nucleotide);
-                    // forward kmer in bits
-                    nucleotideBinary <<= 2;
-                    nucleotideBinary |= nucleotideInt;
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinary &= maxKmerBits;
-                    }
-
-                    // reverse kmer binarizationalitivities :) non English native speaking people making fun of English
-                    nucleotideIntComplement = nucleotideInt ^ 3;  // 3 is binary 11; complement: 11(T) to 00(A), 10(G) to 01(C)
-
-                    if (i - param.frontClip >= param.kmerSize) {
-                        nucleotideBinaryReverseComplement >>>= 2;
-                        nucleotideIntComplement <<= 2 * (param.kmerSize - 1);
-                    } else {
-                        nucleotideIntComplement <<= 2 * (i - param.frontClip);
-                    }
-                    nucleotideBinaryReverseComplement |= nucleotideIntComplement;
-
-                    // reach the first complete K-mer
-                    if (i - param.frontClip >= param.kmerSize - 1) {
-                        if (nucleotideBinary.compareTo(nucleotideBinaryReverseComplement) < 0) {
-                            kmerList.add(nucleotideBinary);
-                        } else {
-                            kmerList.add(nucleotideBinaryReverseComplement);
-                        }
-                    }
-                }
-            }
-            return kmerList.iterator();
-        }
-
-        private long nucleotideValue(char a) {
-            long value;
-            if (a == 'A') {
-                value = 0L;
-            } else if (a == 'C') {
-                value = 1L;
-            } else if (a == 'G') {
-                value = 2L;
-            } else { // T
-                value = 3L;
-            }
-            return value;
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, used in step 3
-     *      -----------
-     *      ------
-     *       ------
-     *        ------
-     *         ------
-     *          ------
-     *           ------
-     */
-
-
-    class DSFastqUnitFilter implements FilterFunction<String>, Serializable {
-        public boolean call(String s) {
-            return s != null;
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, Used in step 1
-     */
-
-
-    class DSFastqFilterWithQual implements MapFunction<String, String>, Serializable {
-        String line = "";
-        int lineMark = 0;
-
-        public String call(String s) {
-            if (lineMark == 2) {
-                lineMark++;
-                line = line + "\n" + s;
-                return null;
-            } else if (lineMark == 3) {
-                lineMark++;
-                line = line + "\n" + s;
-                return line;
-            } else if (s.startsWith("@")) {
-                line = s;
-                lineMark = 1;
-                return null;
-            } else if (lineMark == 1) {
-                line = line + "\n" + s;
-                lineMark++;
-                return null;
-            } else {
-                return null;
-            }
-        }
-    }
-
-    /**
-     * interface class for RDD implementation, used in step 2
-     */
-
 
     /**
      *

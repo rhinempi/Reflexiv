@@ -129,12 +129,7 @@ public class ReflexivDSReAssembler64 implements Serializable {
         kmerCountTupleStruct = kmerCountTupleStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
         kmerCountTupleStruct = kmerCountTupleStruct.add("count", DataTypes.IntegerType, false);
         ExpressionEncoder<Row> KmerBinaryCountEncoder = RowEncoder.apply(kmerCountTupleStruct);
-/*
-        StructType kmerBinaryStruct = new StructType();
-        kmerBinaryStruct = kmerBinaryStruct.add("kmerBlocks", DataTypes.createArrayType(DataTypes.LongType), false);
-        kmerBinaryStruct = kmerBinaryStruct.add("count", DataTypes.IntegerType, false);
-        ExpressionEncoder<Row> kmerBinaryEncoder = RowEncoder.apply(kmerBinaryStruct);
-*/
+
         Dataset<Row> ReflexivSubKmerDS;
         StructType ReflexivKmerStruct = new StructType();
         ReflexivKmerStruct = ReflexivKmerStruct.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -532,10 +527,6 @@ public class ReflexivDSReAssembler64 implements Serializable {
 
         iterations++;
 
-        //ReflexivSubKmerStringDS= ReflexivSubKmerDS.mapPartitions(StringOutputDS, ReflexivKmerStringEncoder);
-        // ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-        //ReflexivSubKmerStringDS.write().format("csv").save(param.outputPath + iterations);
-
         /**
          * Extract Long sub kmer
          */
@@ -590,18 +581,7 @@ public class ReflexivDSReAssembler64 implements Serializable {
 
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.sort("k-1");
 
-//            ReflexivLongSubKmerDS.cache();
-//            ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
-//            ReflexivLongSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringDS= ReflexivLongSubKmerDS.mapPartitions(StringOutputDS, reflexivKmerStringEncoder);
-//            ReflexivSubKmerStringDS.toJavaRDD().saveAsTextFile(param.outputPath + iterations);
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations);
-
             ReflexivLongSubKmerDS = ReflexivLongSubKmerDS.mapPartitions(DSKmerExtenstionArrayToArray, ReflexivLongKmerEncoder);
-
-//            ReflexivSubKmerStringRDD = ReflexivLongSubKmerRDD.mapPartitionsToPair(ArrayStringOutput);
-//            ReflexivSubKmerStringRDD.saveAsTextFile(param.outputPath + iterations + "Extend");
 
         }
 
@@ -614,48 +594,9 @@ public class ReflexivDSReAssembler64 implements Serializable {
 
         ReflexivLongSubKmerStringDS = ReflexivLongSubKmerDS.mapPartitions(DSArrayStringOutput, ReflexivLongKmerStringEncoder);
 
-        /**
-         *
-         */
-     //   DSKmerToContigLength contigLengthDS = new DSKmerToContigLength();
-     //   ContigLengthRows = ReflexivLongSubKmerStringDS.mapPartitions(contigLengthDS, ContigLengthEncoder);
-
-
-        // DSFormatContigs ContigFormater = new DSFormatContigs();
-        // ContigRows= ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
 
         DSKmerToContig contigformaterDS = new DSKmerToContig();
         ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
-/*        DSKmerToContigString contigStringerDS = new DSKmerToContigString();
-        NewContigDS = ReflexivLongSubKmerStringDS.mapPartitions(contigStringerDS, Encoders.STRING());
-
-        DSContigInputParser contigParser = new DSContigInputParser();
-
-        ContigDS= ContigDS.union(NewContigDS);
-
-        ContigDS.cache();
-
-        ContigLengthRows = ContigDS.mapPartitions(contigParser, ContigLengthEncoder);
-        ContigLengthRows = ContigLengthRows.sort("length");
-
-        ContigLengthRows = ContigLengthRows.coalesce(1);
-
-        DSMergeRedundantContigs RedundantMerger = new DSMergeRedundantContigs();
-        DSMergeRedundantNonRCContigs RedundantNonRCMerger = new DSMergeRedundantNonRCContigs();
-        if (param.RCmerge){
-            ContigMergedRow = ContigLengthRows.mapPartitions(RedundantMerger, ContigMergedEncoder);
-        } else {
-            ContigMergedRow = ContigLengthRows.mapPartitions(RedundantNonRCMerger, ContigMergedEncoder);
-        }
-
-        ContigMergedRow = ContigMergedRow.repartition(param.partitions);
-
-        DSFormatContigs ContigFormater = new DSFormatContigs();
-
-        ContigRows = ContigMergedRow.mapPartitions(ContigFormater, ContigStringEncoder);
-*/
-     //   DSKmerToContig contigformaterDS = new DSKmerToContig();
-     //   ContigRows = ReflexivLongSubKmerStringDS.mapPartitions(contigformaterDS, ContigStringEncoder);
 
         /**
          *

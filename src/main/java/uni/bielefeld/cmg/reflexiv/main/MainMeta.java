@@ -56,7 +56,7 @@ public class MainMeta {
      */
     public static void main(String[] args) throws IOException {
         InfoDumper info = new InfoDumper();
-        info.readParagraphedMessages("Reflexiv main initiating ... \ninterpreting parameters.");
+        info.readParagraphedMessages("Reflexiv assembly initiating ... \ninterpreting parameters.");
         info.screenDump();
 
         Parameter parameter = null;

@@ -294,10 +294,7 @@ public class ReflexivDSStitchingLonger implements Serializable {
             // if (relativeShiftSize ==0) then only shifting blocks
 
             int j=0; // new index for shifted blocks
-            //           long oldShiftOut=0L; // if only one block, then 0 bits
-//            if (blocks.length-(startingBlockIndex+1) >=1) { // more than one block, newBlock.length = blocks.length-startingBlockIndex
-//                oldShiftOut = blocks[startingBlockIndex + 1] >>> 2 * (32 - relativeShiftSize);
-            //           }
+
             for (int i=startingBlockIndex; i<blocks.length-1; i++){ // without the last block
                 long shiftOut = blocks[i+1] >>> 2*(31-relativeShiftSize); // ooooxxxxxxx -> -------oooo  o=shift out x=needs to be left shifted
                 newBlock[j]= blocks[i] << 2*relativeShiftSize; // 00000xxxxx -> xxxxx-----

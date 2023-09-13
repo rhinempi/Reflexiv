@@ -125,8 +125,6 @@ public class ReflexivCounter implements Serializable{
         JavaPairRDD<Long, Tuple4<Integer, Long[], Integer, Integer>> ReflexivLongSubKmerRDD;
 
         JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflexivSubKmerStringRDD; // Generates strings, for testing
-        //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ForwardSubKmerRDD;
-  //      JavaPairRDD<String, Tuple4<Integer, String, Integer, Integer>> ReflectedSubKmerRDD;
 
         JavaPairRDD<String, String> ContigTuple2RDD;
         JavaPairRDD<Tuple2<String, String>, Long> ContigTuple2IndexRDD;
