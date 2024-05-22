@@ -157,6 +157,12 @@ public class Pipelines implements Pipeline, Serializable{
         rfPipe.assembly();
     }
 
+    public void reflexivDS64MercyKmerPipe() throws IOException{
+        ReflexivDSDynamicMercyKmer rfPipe = new ReflexivDSDynamicMercyKmer();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
     public void reflexivDS64ReAssembleCounterPipe(){
         ReflexivDataFrameReAssembleCounter64 rfPipe = new ReflexivDataFrameReAssembleCounter64();
         rfPipe.setParam(param);
@@ -1040,6 +1046,9 @@ public class Pipelines implements Pipeline, Serializable{
                             reflexivDSCounterPipe();
                         } else {
                             reflexivDS64CounterPipe();
+
+                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                            reflexivDS64MercyKmerPipe();
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
@@ -1051,7 +1060,7 @@ public class Pipelines implements Pipeline, Serializable{
                     param.setKmerSize(param.kmerSize1); // set kmer size for counter
                     param.setAllbyKmerSize(param.kmerSize1);
 
-                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "*/part*.csv.gz";
 
                     if (param.kmerSize1>=61 && param.kmerSize2 <81 ){
                         param.minErrorCoverage=3*param.minKmerCoverage;
@@ -1106,6 +1115,9 @@ public class Pipelines implements Pipeline, Serializable{
                             reflexivDSCounterPipe();
                         } else {
                             reflexivDS64CounterPipe();
+
+                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
+                            reflexivDS64MercyKmerPipe();
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
@@ -1117,7 +1129,7 @@ public class Pipelines implements Pipeline, Serializable{
                     param.setKmerSize(param.kmerSize2); // set kmer size for counter
                     param.setAllbyKmerSize(param.kmerSize2);
 
-                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+                    param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
 
                     if (param.kmerSize2>=61 && param.kmerSize2 <81 ){
                         param.minErrorCoverage=3*param.minKmerCoverage;
@@ -1230,6 +1242,9 @@ public class Pipelines implements Pipeline, Serializable{
                         reflexivDSCounterPipe();
                     } else {
                         reflexivDS64CounterPipe();
+
+                        param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
+                        reflexivDS64MercyKmerPipe();
                     }
                 } else {
                     info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + " succeeded");
@@ -1241,7 +1256,7 @@ public class Pipelines implements Pipeline, Serializable{
                 param.setKmerSize(param.kmerListInt[param.kmerListInt.length - 1]); // set kmer size for counter
                 param.setAllbyKmerSize(param.kmerListInt[param.kmerListInt.length - 1]);
 
-                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
+                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "*/part*.csv.gz";
 
      //           if (param.kmerListInt[param.kmerListInt.length - 1]>=100){
                    // param.minErrorCoverage=4;
