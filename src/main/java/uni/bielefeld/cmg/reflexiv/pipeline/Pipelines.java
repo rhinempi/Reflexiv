@@ -1044,6 +1044,9 @@ public class Pipelines implements Pipeline, Serializable{
                         info.screenDump();
                         if (param.kmerSize <= 31) {
                             reflexivDSCounterPipe();
+
+                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                            reflexivDS64MercyKmerPipe();
                         } else {
                             reflexivDS64CounterPipe();
 
@@ -1113,6 +1116,9 @@ public class Pipelines implements Pipeline, Serializable{
                         info.screenDump();
                         if (param.kmerSize <= 31) {
                             reflexivDSCounterPipe();
+
+                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+                            reflexivDS64MercyKmerPipe();
                         } else {
                             reflexivDS64CounterPipe();
 

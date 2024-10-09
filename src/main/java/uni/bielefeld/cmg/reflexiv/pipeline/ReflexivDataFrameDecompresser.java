@@ -1,16 +1,13 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 import com.fing.compression.fourmc.FourMcCodec;
-import com.fing.fourmc.elephantbird.adapter.FourMzEbProtoInputFormat;
 import com.fing.mapreduce.FourMcTextInputFormat;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkFiles;
@@ -23,10 +20,7 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
-import scala.collection.Seq;
-import scala.io.Source;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 

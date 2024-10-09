@@ -1,8 +1,6 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
-import com.oracle.jrockit.jfr.DataType;
-import org.apache.avro.generic.GenericData;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
@@ -15,23 +13,15 @@ import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
-import org.apache.spark.sql.catalyst.parser.SqlBaseParser;
 import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.LongType;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.sql.types.ArrayType;
 import scala.Tuple2;
-import scala.Tuple4;
-import scala.collection.Seq;
-import scala.collection.mutable.HashTable;
-import scala.reflect.ClassTag;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.first;
 
 import java.io.*;
-import java.text.DecimalFormat;
 import java.util.*;
 
 

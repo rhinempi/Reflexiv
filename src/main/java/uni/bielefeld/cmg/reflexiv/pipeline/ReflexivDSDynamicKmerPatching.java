@@ -2,14 +2,10 @@ package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
 import com.fing.mapreduce.FourMcTextInputFormat;
-import com.sun.javafx.scene.control.skin.VirtualFlow;
-import org.apache.arrow.flatbuf.Binary;
-import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.shaded.org.apache.avro.generic.GenericData;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -22,7 +18,6 @@ import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
-import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import static org.apache.spark.sql.functions.col;
