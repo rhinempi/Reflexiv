@@ -538,7 +538,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 nucleotideBinarySlot[param.kmerListHash.get(currentKmerSize)-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
 
                 // long[] RCnucleotideBinarySlot = binaryBlockReverseComplementary(nucleotideBinarySlot);
-                System.out.println("kmer Binary: " + BinaryBlocksToString(nucleotideBinarySlot));
+            //    System.out.println("kmer Binary: " + BinaryBlocksToString(nucleotideBinarySlot));
                 // System.out.println("kmer Binary RC: " + BinaryBlocksToString(RCnucleotideBinarySlot));
                 // return
                 kmerList.add(
@@ -715,7 +715,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 kmerEndMark <<= 2*(32-1-((currentExtensionSize-1)%31+1));
                 extensionBinarySlot[currentExtensionBlockSize-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
 
-                System.out.println("kmer Binarized: " + BinaryBlocksToString(extensionBinarySlot));
+            //    System.out.println("kmer Binarized: " + BinaryBlocksToString(extensionBinarySlot));
 
                 // attribute= onlyChangeReflexivMarker(attribute,1);
                 kmerList.add(
@@ -951,9 +951,9 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
 
             // the leftover of lastMarkerArray will not find a read anymore
 
-            for (int i=0; i<MercyKmer.size(); i++){
-                System.out.println("Final mercy k-mer : " + BinaryBlocksToString( (long[])MercyKmer.get(i).get(0) ) ) ;
-            }
+         //   for (int i=0; i<MercyKmer.size(); i++){
+          //      System.out.println("Final mercy k-mer : " + BinaryBlocksToString( (long[])MercyKmer.get(i).get(0) ) ) ;
+          //  }
 
             return MercyKmer.iterator();
         }
@@ -971,7 +971,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
             // ****------******------*****
             // 0L, rc marker, range, range, ....
             for (int i=2; i<markerArray.length; i++){
-                System.out.println("Markerlong: " + markerArray[i]);
+             //   System.out.println("Markerlong: " + markerArray[i]);
                 int startIndex=getLeftMarker(markerArray[i]);
                 int endIndex = getRightMarker(markerArray[i]);
 
@@ -1206,7 +1206,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
             int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
             leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
 
-            System.out.println("getLeftMarker before: " + leftMarker);
+          //  System.out.println("getLeftMarker before: " + leftMarker);
 
             if (leftMarker>30000){
                 leftMarker=30000-leftMarker;
@@ -1243,10 +1243,10 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                     indices.add((int)s.getLong(1));
                 }else{
                     if (s.getLong(0) == lastKmer.getLong(0)){
-                        System.out.println("sorted read ID: " + s.getLong(0) + " index " + s.getLong(1));
+             //           System.out.println("sorted read ID: " + s.getLong(0) + " index " + s.getLong(1));
                         indices.add((int)s.getLong(1));
                     }else{
-                        System.out.println("sorted current different from last, current: " + s.getLong(0) + " index " + s.getLong(1) + " last: " + lastKmer.getLong(0) + " index "+ lastKmer.getLong(1));
+             //           System.out.println("sorted current different from last, current: " + s.getLong(0) + " index " + s.getLong(1) + " last: " + lastKmer.getLong(0) + " index "+ lastKmer.getLong(1));
                         indices.add((int)lastKmer.getLong(1)); // add the last one
 
                         if (indices.size()>1) { // more than one match
@@ -1276,10 +1276,10 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 }
             }
 
-            for (int i =0; i< ReadsAndRange.size(); i++){
-                System.out.println("Read ID: " + ReadsAndRange.get(i).getLong(0) + " first range: " + getLeftMarker( ((long[]) ReadsAndRange.get(i).get(1))[0] )  + " to " + getRightMarker( ((long[]) ReadsAndRange.get(i).get(1))[0]) );
+         //   for (int i =0; i< ReadsAndRange.size(); i++){
+         //       System.out.println("Read ID: " + ReadsAndRange.get(i).getLong(0) + " first range: " + getLeftMarker( ((long[]) ReadsAndRange.get(i).get(1))[0] )  + " to " + getRightMarker( ((long[]) ReadsAndRange.get(i).get(1))[0]) );
 
-            }
+          //  }
 
             indices.add((int)lastKmer.getLong(1)) ; // add the last one
             if (indices.size()>1){
@@ -1298,9 +1298,9 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 }
             }
 
-            if (ReadsAndRange.size()>0) {
-                System.out.println("Read ID last: " + ReadsAndRange.get(ReadsAndRange.size() - 1).getLong(0) + " first range: " + getLeftMarker(((long[]) ReadsAndRange.get(ReadsAndRange.size() - 1).get(1))[0]) + " to " + getRightMarker(((long[]) ReadsAndRange.get(ReadsAndRange.size() - 1).get(1))[0]));
-            }
+          //  if (ReadsAndRange.size()>0) {
+           //     System.out.println("Read ID last: " + ReadsAndRange.get(ReadsAndRange.size() - 1).getLong(0) + " first range: " + getLeftMarker(((long[]) ReadsAndRange.get(ReadsAndRange.size() - 1).get(1))[0]) + " to " + getRightMarker(((long[]) ReadsAndRange.get(ReadsAndRange.size() - 1).get(1))[0]));
+          //  }
 
             return ReadsAndRange.iterator();
         }
@@ -1319,12 +1319,12 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
             int a = 0;
             int b = 0;
             for (int j =1 ; j <i.size(); j++){
-                System.out.println("sorted array in findRange: " + i.get(j) + " and " + lastIndex);
+           //     System.out.println("sorted array in findRange: " + i.get(j) + " and " + lastIndex);
                 if (i.get(j) - lastIndex >1){ // at least one k-mer gap
                     a= lastIndex;
                     b = i.get(j);
 
-                    System.out.println("a gap: " + index + " from " + a + " to " + i.get(j));
+             //       System.out.println("a gap: " + index + " from " + a + " to " + i.get(j));
 
                     /**
                      *  a-1 means that the gap starts from the next k-mer
@@ -1410,7 +1410,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
             while (sIterator.hasNext()){
                 Row s = sIterator.next();
 
-                System.out.println("Findmatch new entry: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+         //       System.out.println("Findmatch new entry: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                 // ------- k-mer
                 // ------- read
                 // ------- read
@@ -1419,13 +1419,13 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                     if (ReadsKmerBuffer.size()>0){
                         for (int i =0; i< ReadsKmerBuffer.size();i++){
                             if (dynamicSubKmerComparator(ReadsKmerBuffer.get(i).getSeq(0), s.getSeq(0)) == true){
-                                System.out.println("Findmatch buffered difference compared: " + BinaryBlocksToString( seq2array(ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getSeq(0)) ) + " ID " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(1) + " index/mark " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(2));
-                                System.out.println("Findmatch buffered to current compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+             //                   System.out.println("Findmatch buffered difference compared: " + BinaryBlocksToString( seq2array(ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getSeq(0)) ) + " ID " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(1) + " index/mark " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(2));
+             //                   System.out.println("Findmatch buffered to current compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                                 ReadsAndIndices.add(
                                         RowFactory.create(ReadsKmerBuffer.get(i).getLong(1), ReadsKmerBuffer.get(i).getLong(2))
                                 );
                             }else{
-                                System.out.println("Findmatch buffered did not match current: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+             //                   System.out.println("Findmatch buffered did not match current: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                             }
                         }
 
@@ -1433,12 +1433,12 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                     }
 
                     lastKmer = s;
-                    System.out.println("Findmatch lastKmer: " + BinaryBlocksToString( seq2array(lastKmer.getSeq(0)) ) + " ID " + lastKmer.getLong(1) + " index/mark " + lastKmer.getLong(2));
+               //     System.out.println("Findmatch lastKmer: " + BinaryBlocksToString( seq2array(lastKmer.getSeq(0)) ) + " ID " + lastKmer.getLong(1) + " index/mark " + lastKmer.getLong(2));
                 }else{ // a read k-mer
                     if (lastKmer !=null){
                         if (dynamicSubKmerComparator(lastKmer.getSeq(0), s.getSeq(0)) == true){
-                            System.out.println("Findmatch lastKmer compared: " + BinaryBlocksToString( seq2array(lastKmer.getSeq(0)) ) + " ID " + lastKmer.getLong(1) + " index/mark " + lastKmer.getLong(2));
-                            System.out.println("Findmatch current to last directly compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+                 //           System.out.println("Findmatch lastKmer compared: " + BinaryBlocksToString( seq2array(lastKmer.getSeq(0)) ) + " ID " + lastKmer.getLong(1) + " index/mark " + lastKmer.getLong(2));
+                  //          System.out.println("Findmatch current to last directly compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                             ReadsAndIndices.add(
                                     RowFactory.create(s.getLong(1), s.getLong(2))
                             );
@@ -1449,30 +1449,30 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                             // -----
                             if (ReadsKmerBuffer.size()>0) {
                                 if (dynamicSubKmerComparator(ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getSeq(0), s.getSeq(0)) == true) {
-                                    System.out.println("Findmatch buffered difference compared: " + BinaryBlocksToString( seq2array(ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getSeq(0)) ) + " ID " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(1) + " index/mark " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(2));
-                                    System.out.println("Findmatch current to buffered compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+                    //                System.out.println("Findmatch buffered difference compared: " + BinaryBlocksToString( seq2array(ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getSeq(0)) ) + " ID " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(1) + " index/mark " + ReadsKmerBuffer.get(ReadsKmerBuffer.size() - 1).getLong(2));
+                    //                System.out.println("Findmatch current to buffered compared: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                                     ReadsKmerBuffer.add(s);
                                 } else {
-                                    System.out.println("Findmatch read k-mer did not match lastKmer :" + BinaryBlocksToString(seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+                      //              System.out.println("Findmatch read k-mer did not match lastKmer :" + BinaryBlocksToString(seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                                     ReadsKmerBuffer = new ArrayList<Row>();
                                     ReadsKmerBuffer.add(s);
                                 }
                             }else{
-                                System.out.println("Findmatch read k-mer buffer empty :" + BinaryBlocksToString(seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+                      //          System.out.println("Findmatch read k-mer buffer empty :" + BinaryBlocksToString(seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                                 ReadsKmerBuffer.add(s);
                             }
                         }
                     }else{
-                        System.out.println("Findmatch read without k-mer yet: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
+                 //       System.out.println("Findmatch read without k-mer yet: " + BinaryBlocksToString( seq2array(s.getSeq(0)) ) + " ID " + s.getLong(1) + " index/mark " + s.getLong(2));
                         ReadsKmerBuffer.add(s);
                     }
                 }
 
             }
 
-            for (int i=0; i< ReadsAndIndices.size(); i++){
-                System.out.println("Matched 2x k-mer read ID: " + ReadsAndIndices.get(i).getLong(0) + " and its index: " + ReadsAndIndices.get(i).getLong(1) );
-            }
+        //    for (int i=0; i< ReadsAndIndices.size(); i++){
+         //       System.out.println("Matched 2x k-mer read ID: " + ReadsAndIndices.get(i).getLong(0) + " and its index: " + ReadsAndIndices.get(i).getLong(1) );
+         //   }
 
             return ReadsAndIndices.iterator();
         }
@@ -1700,8 +1700,8 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 long[] nucleotideBinarySlot = new long[param.subKmerBinarySlots];
                 long[] nucleotideBinaryReverseComplementSlot = new long[param.subKmerBinarySlots];
 
-                System.out.println("subKmerBinarySlots: " + param.subKmerBinarySlots);
-                System.out.println("subKmerSizeResidue: " + kmerResidue);
+            //    System.out.println("subKmerBinarySlots: " + param.subKmerBinarySlots);
+            //    System.out.println("subKmerSizeResidue: " + kmerResidue);
 
                 for (int i = param.frontClip; i < readLength - param.endClip; i++) {
                     nucleotide = read.charAt(i);
@@ -1737,7 +1737,8 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
 
                         // the rest
                         for (int j = param.subKmerBinarySlots - 2; j >= 0; j--) {
-                            transitBit2 = nucleotideBinarySlot[j] >>> (2 * 31);   // **---------------  -> 0000000000000**
+                            transitBit2 = nucleotideBinarySlot[j] >>> (2 * 30);   // --**---------------  -> 00000000000--**    the two bits in the head will be shift out in the code below
+                            transitBit2 &= 3L; // 00000000000--**  -> 0000000000000**
                             nucleotideBinarySlot[j] <<= 2;    // ---------------  -> --------------00
                             nucleotideBinarySlot[j] |= transitBit1;  // -------------00 -> -------------**
                             transitBit1 = transitBit2;
@@ -1776,7 +1777,8 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                         }
                     } else {
                         // the first transition bit from the first block
-                        long transitBit1 = nucleotideBinaryReverseComplementSlot[0] << 2 * 31;
+                        long transitBit1 = nucleotideBinaryReverseComplementSlot[0] << 2 * 31; // -----------**  -> **0000000000000
+                        transitBit1 >>>=2; // **0000000000000 -> 00**00000000000
                         long transitBit2;
 
                         nucleotideBinaryReverseComplementSlot[0] >>>= 2;
@@ -1789,6 +1791,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
 
                         for (int j = 1; j < param.subKmerBinarySlots - 1; j++) {
                             transitBit2 = nucleotideBinaryReverseComplementSlot[j] << 2 * 31;
+                            transitBit2 >>>=2; // **0000000000000 -> 00**00000000000
                             nucleotideBinaryReverseComplementSlot[j] >>>= 2;
                             // transitBit1 <<= 2*31;
                             nucleotideBinaryReverseComplementSlot[j] |= transitBit1;
@@ -1797,7 +1800,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
 
                         if (param.subKmerBinarySlots>1) {  // if param.subKmerBinarySlots =1 , then the above loop will not happen, nucleotideBinaryReverseComplementSlot[0] will leff shift twice
                             nucleotideBinaryReverseComplementSlot[param.subKmerBinarySlots - 1] >>>= 2;
-                            transitBit1 >>>= 2 * (31 - kmerResidue + 1);
+                            transitBit1 >>>= 2 * (31 - kmerResidue ); //  00**00000000000 -> 0000000**-----  where length(-----) == kmerResidue -1
                             nucleotideBinaryReverseComplementSlot[param.subKmerBinarySlots - 1] |= transitBit1;
                         }
                     }
@@ -1809,7 +1812,7 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                             nucleotideBinarySlotPreRow[j] <<= 2;// --*************** -> ****************--
                         }
 
-                        nucleotideBinarySlotPreRow[nucleotideBinarySlotPreRow.length - 1] >>>= 2; // above in the loop, the last slot left shitted 2 bits
+                        nucleotideBinarySlotPreRow[nucleotideBinarySlotPreRow.length - 1] >>>= 2; // above in the loop, the last slot left shifted 2 bits
                         nucleotideBinarySlotPreRow[nucleotideBinarySlotPreRow.length - 1] <<= 2 * (32 - kmerResidue);
                         nucleotideBinarySlotPreRow[nucleotideBinarySlotPreRow.length - 1] |= (1L << 2 * (32 - kmerResidue - 1)); // add C marker
                         // kmerList.add(RowFactory.create(nucleotideBinarySlotPreRow, ID, (long) i));  // the number does not matter, as the count is based on units
@@ -1834,17 +1837,17 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                         //    ID=Long.MAX_VALUE;
                        // }
 
-                        System.out.println("forward k-mer extracted from Read: " + kmerReadExtracted + " ID " + ID + " index: " + ((long) i - param.kmerSize + 1));
+                    //    System.out.println("forward k-mer extracted from Read: " + kmerReadExtracted + " ID " + ID + " index: " + ((long) i - param.kmerSize + 1));
                         long b = -ID;
                         // long c = -b;
                        //  System.out.println("reverse k-mer extracted from Read: " + kmerRcReadExtracted + " ID " + b + " index: " + (long) (readLength - i - 1) + " test negative: " + c);
-                        System.out.println("reverse k-mer extracted from Read: " + kmerRcReadExtracted + " ID " + ID + " index: " + ((long) i - param.kmerSize + 1));
+                     //   System.out.println("reverse k-mer extracted from Read: " + kmerRcReadExtracted + " ID " + ID + " index: " + ((long) i - param.kmerSize + 1));
 
                         if (compareLongArrayBlocks(nucleotideBinarySlotPreRow, nucleotideBinaryReverseComplementSlotPreRow) == true) {
-                            System.out.println("Choose : " + BinaryBlocksToString(nucleotideBinarySlotPreRow));
+                      //      System.out.println("Choose : " + BinaryBlocksToString(nucleotideBinarySlotPreRow));
                             kmerList.add(RowFactory.create(nucleotideBinarySlotPreRow, ID, (long) (i - param.kmerSize + 1)));  // the number does not matter, as the count is based on units
                         }else{
-                            System.out.println("Choose : " + BinaryBlocksToString(nucleotideBinaryReverseComplementSlotPreRow));
+                       //     System.out.println("Choose : " + BinaryBlocksToString(nucleotideBinaryReverseComplementSlotPreRow));
                             kmerList.add(RowFactory.create(nucleotideBinaryReverseComplementSlotPreRow, ID, (long) (i - param.kmerSize + 1)));
                             // update 2, index is set to the same forward index
                             // update,  set reverse complement to the same read, as only low bit k-mer is used now. Later both forward and reverse complement mercy k-mer are used

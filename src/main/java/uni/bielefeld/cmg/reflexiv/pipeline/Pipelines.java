@@ -686,7 +686,7 @@ public class Pipelines implements Pipeline, Serializable{
                 if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" +  param.endIteration)){
                     info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                     info.screenDump();
-                    cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                  //  cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                 }else{
                     info.readMessage("Failed " + param.startIteration + " -> " + param.endIteration + " iterations : ");
                     info.screenDump();
@@ -1084,7 +1084,7 @@ public class Pipelines implements Pipeline, Serializable{
                         info.readMessage("Removing : Count_" + param.kmerSize1);
                         info.screenDump();
 
-                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                     } else {
                         info.readMessage("Failed k-mer sorting : " + param.kmerSize1 + " failed:");
                         info.screenDump();
@@ -1098,7 +1098,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerSize1);
                     info.screenDump();
 
-                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                 }
 
                 if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")) {
@@ -1156,7 +1156,7 @@ public class Pipelines implements Pipeline, Serializable{
                         info.readMessage("Removing : Count_" + param.kmerSize2);
                         info.screenDump();
 
-                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                     } else {
                         info.readMessage("Failed k-mer sorting : " + param.kmerSize2 + " failed:");
                         info.screenDump();
@@ -1170,7 +1170,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerSize2);
                     info.screenDump();
 
-                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                 }
 
                 param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
@@ -1187,7 +1187,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted");
                     info.screenDump();
 
-                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
                 } else {
                     info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
                     info.screenDump();
@@ -1202,7 +1202,7 @@ public class Pipelines implements Pipeline, Serializable{
                     // if (param.kmerSize2 <100) {
                         info.readMessage("Removing: Count_" + param.kmerSize2 + "_sorted");
                         info.screenDump();
-                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
                    /* }else {
                         info.readMessage("Rename last k-mer sorted to k-mer reduced");
                         info.screenDump();
@@ -1216,9 +1216,9 @@ public class Pipelines implements Pipeline, Serializable{
                 info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted, Count_" + param.kmerSize1 + ", and Count_" + param.kmerSize2);
                 info.screenDump();
 
-                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
-                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
-                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
             }
         }
 
@@ -1279,7 +1279,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
                     info.screenDump();
 
-                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
+//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
                 } else {
                     info.readMessage("Failed k-mer sorting : " + param.kmerListInt[param.kmerListInt.length - 1] + " failed:");
                     info.screenDump();
@@ -1292,7 +1292,7 @@ public class Pipelines implements Pipeline, Serializable{
                 info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length-1] );
                 info.screenDump();
 
-                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] );
+//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] );
 
                 info.readMessage("This is the last k-mer reduction round");
                 info.screenDump();

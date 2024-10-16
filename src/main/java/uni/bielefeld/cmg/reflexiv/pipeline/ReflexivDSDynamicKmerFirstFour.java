@@ -200,9 +200,12 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
             iterations++;
             ReflexivSubKmerDS = ReflexivSubKmerDS.sort("k-1");
             ReflexivSubKmerDS = ReflexivSubKmerDS.mapPartitions(DSKmerExtention, ReflexivSubKmerEncoderCompressed);
+
+            // long kmerNumber = ReflexivSubKmerDS.count();
+            // System.out.println("kmer count after extension " + iterations + " is " + kmerNumber);
         }
 
-       // ReflexivSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
+        // ReflexivSubKmerDS.persist(StorageLevel.MEMORY_AND_DISK());
 
         DSBinarySubKmerWithShortExtensionToString SubKmerToString = new DSBinarySubKmerWithShortExtensionToString();
         ReflexivLongSubKmerStringDS = ReflexivSubKmerDS.mapPartitions(SubKmerToString, ReflexivLongKmerStringEncoder);
@@ -211,7 +214,7 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
             ReflexivLongSubKmerStringDS.write().
                     mode(SaveMode.Overwrite).
                     format("csv").
-                    option("compression", "lz4").
+                    option("compression", "gzip").
                     save(param.outputPath + "/Assembly_intermediate/00firstFour");
 
 
@@ -1750,6 +1753,9 @@ public class ReflexivDSDynamicKmerFirstFour implements Serializable {
                     lineMarker++;
                     // return reflexivKmerConcatList.iterator();
                 }
+
+               // System.out.println("tempReflexivkmer size: " + tmpReflexivKmerExtendList.size());
+               // System.out.println("reflexivKmerConcatList size: " + reflexivKmerConcatList.size());
             } // while loop
             tmpKmerRandomizer();
 
