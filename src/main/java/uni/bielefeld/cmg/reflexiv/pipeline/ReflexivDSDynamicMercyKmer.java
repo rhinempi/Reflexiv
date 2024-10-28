@@ -1329,8 +1329,17 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                     /**
                      *  a-1 means that the gap starts from the next k-mer
                      */
-                    range = buildingAlongFromThreeInt(1, a+1, b); // a+1 means that the gap starts from the next k-mer
-                    gaps.add(range);
+                    if (param.kmerSize +1 >=b-a-1 && b-a-1>=param.kmerSize-1){
+                        /**
+                         *   ATCG--------*---------
+                         *   ATCG--------*ATCG-----
+                         *       --------- Gap size = b-a-1
+                         */
+                        // if the gap size is equal to an error
+                    }else {
+                        range = buildingAlongFromThreeInt(1, a + 1, b); // a+1 means that the gap starts from the next k-mer
+                        gaps.add(range);
+                    }
                 }
 
                 lastIndex=i.get(j);

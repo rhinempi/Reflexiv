@@ -1050,8 +1050,10 @@ public class Pipelines implements Pipeline, Serializable{
                         } else {
                             reflexivDS64CounterPipe();
 
-                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
-                            reflexivDS64MercyKmerPipe();
+                            if (param.kmerSize <=55) {
+                                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                                reflexivDS64MercyKmerPipe();
+                            }
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
@@ -1122,8 +1124,11 @@ public class Pipelines implements Pipeline, Serializable{
                         } else {
                             reflexivDS64CounterPipe();
 
-                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
-                            reflexivDS64MercyKmerPipe();
+
+                            if (param.kmerSize <=55) {
+                                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
+                                reflexivDS64MercyKmerPipe();
+                            }
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
@@ -1246,11 +1251,16 @@ public class Pipelines implements Pipeline, Serializable{
                     info.screenDump();
                     if (param.kmerSize <= 31) {
                         reflexivDSCounterPipe();
-                    } else {
-                        reflexivDS64CounterPipe();
 
                         param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
                         reflexivDS64MercyKmerPipe();
+                    } else {
+                        reflexivDS64CounterPipe();
+
+                        if (param.kmerSize <=55) {
+                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
+                            reflexivDS64MercyKmerPipe();
+                        }
                     }
                 } else {
                     info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + " succeeded");
