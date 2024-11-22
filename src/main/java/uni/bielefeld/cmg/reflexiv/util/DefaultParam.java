@@ -129,6 +129,7 @@ public class DefaultParam implements Serializable{
     public int scramble = 2;
 
     public boolean RCmerge = true;
+    public boolean sensitive = false;
 
     public boolean stitch = false;
     public int stitchKmerLength = 31;

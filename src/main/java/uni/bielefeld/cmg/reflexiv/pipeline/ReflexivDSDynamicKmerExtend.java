@@ -1,31 +1,24 @@
 package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
+import jdk.incubator.vector.VectorOperators;
 import org.apache.commons.lang.StringUtils;
-import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
-import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.*;
-import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.storage.StorageLevel;
-import scala.Tuple2;
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.Serializable;
 import java.util.*;
-
-import static org.apache.spark.sql.functions.col;
 
 
 /**
@@ -62,7 +55,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSDynamicKmerFixing implements Serializable {
+public class ReflexivDSDynamicKmerExtend implements Serializable {
     private long time;
     private DefaultParam param;
 
@@ -163,7 +156,8 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("k-1", DataTypes.createArrayType(DataTypes.LongType), false);
         ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("attribute", DataTypes.LongType, false);
         ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("extension", DataTypes.createArrayType(DataTypes.LongType), false);
-        ExpressionEncoder<Row> ReflexivLongSubKmerEncoderCompressed = RowEncoder.apply(ReflexivLongKmerStructCompressed);
+        ReflexivLongKmerStructCompressed= ReflexivLongKmerStructCompressed.add("extensionLength", DataTypes.LongType, false);
+        ExpressionEncoder<Row> ReflexivLongSubKmerEncoderCompressedWithExtensionLeftRight = RowEncoder.apply(ReflexivLongKmerStructCompressed);
 
 
         Dataset<Row> ReflexivLongSubKmerDS;
@@ -188,7 +182,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         }
 
         DynamicKmerBinarizerFromReducedToSubKmer ReducedKmerToSubKmer= new DynamicKmerBinarizerFromReducedToSubKmer();
-        ReflexivLongSubKmerDS = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, ReflexivLongSubKmerEncoderCompressed);
+        ReflexivLongSubKmerDS = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, ReflexivLongSubKmerEncoderCompressedWithExtensionLeftRight);
 
         DSExtractFixingKmerFromContigEnds FixingKmerPreperation = new DSExtractFixingKmerFromContigEnds();
         ReflexivLongFullKmerDS= ReflexivLongSubKmerDS.mapPartitions(FixingKmerPreperation, KmerBinaryCountLongEncoder);
@@ -252,7 +246,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                     mode(SaveMode.Overwrite).
                     format("csv").
                     option("compression", "gzip").
-                    save(param.outputPath + "/Assembly_intermediate/04Fixing");
+                    save(param.outputPath + "/Assembly_intermediate/08Extend");
 
 
 
@@ -535,6 +529,8 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                     subKmer = leftShiftOutFromArray(fullKmerArray, FixedKmerSize-1);
                     extension = leftShiftArray(fullKmerArray, FixedKmerSize-1);
                     kmerList.add(RowFactory.create(subKmer[0],fullKmer.getLong(1), extension));
+
+                    //System.out.println("Fixed Long kmer " + BinaryBlocksToString(subKmer) + " " + BinaryBlocksToString(extension));
                 }
             }
             return kmerList.iterator();
@@ -868,6 +864,9 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                     kmerList.add(
                             RowFactory.create(
                                     seq2array(fullKmer.getSeq(0))[0], 1));
+                    long[] FixedKmerString = new long[1];
+                    FixedKmerString[0] = seq2array(fullKmer.getSeq(0))[0];
+                  //  System.out.println("get Fixing Kmer " +  BinaryBlocksToString(FixedKmerString));
                 }
             }
             return kmerList.iterator();
@@ -1208,30 +1207,27 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                 if (length >= 2 * (param.maxKmerSize)){
                     long[] fixedKmerLeft;
                     long[] fixedKmerRight;
+                    int leftExtend = getLeftMarker(subKmer.getLong(3));
+                    int rightExtend = getRightMarker(subKmer.getLong(3));
 
-                    for (int i=0;i<param.maxKmerSize-FixedKmerSize+1; i++){
-                        // xxxxxxxxxxx---------
-                        // xxxx
-                        //  xxxx
-                        //   xxxx
+                    long attribute = buildingAlongFromThreeInt(1, -1, -1);
+                    for (int i=0; i<leftExtend; i++){
                         fixedKmerLeft = leftShiftOutFromArray(fullKmerArray,i+FixedKmerSize);
                         fixedKmerLeft=leftShiftArray(fixedKmerLeft, i);
-                        long attribute = buildingAlongFromThreeInt(1, -1, -1);
+                       // System.out.println( "Fixing Kmer left " + BinaryBlocksToString(fixedKmerLeft));
                         kmerList.add(RowFactory.create(fixedKmerLeft,attribute));
+                    }
 
-                        // ---------xxxxxxxxxxx
-                        //                 xxxx
-                        //                xxxx
-                        //               xxxx
-
+                    for (int i=rightExtend-1; i>=0; i--){
                         fixedKmerRight= leftShiftArray(fullKmerArray, length-i-FixedKmerSize);
                         fixedKmerRight= leftShiftOutFromArray(fixedKmerRight, FixedKmerSize);
+                      //  System.out.println( "Fixing Kmer right " + BinaryBlocksToString(fixedKmerRight));
                         kmerList.add(RowFactory.create(fixedKmerRight,attribute));
                     }
 
 
-                    long[] cuttedKmer= leftShiftArray(fullKmerArray, param.maxKmerSize-FixedKmerSize+1);
-                    cuttedKmer = leftShiftOutFromArray(cuttedKmer, length-2*(param.maxKmerSize-FixedKmerSize+1));
+                    long[] cuttedKmer= leftShiftArray(fullKmerArray, leftExtend);
+                    cuttedKmer = leftShiftOutFromArray(cuttedKmer, length-leftExtend-rightExtend);
 
                 //    if (currentKmerSizeFromBinaryBlockArray(cuttedKmer) <32){
                 //        System.out.println("short k-mer length: " + BinaryBlocksToString(cuttedKmer) + " length: " + currentKmerSizeFromBinaryBlockArray(cuttedKmer));
@@ -1239,13 +1235,24 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
 
                     long attribute2=onlyChangeReflexivMarker(subKmer.getLong(1), 1);
                     if (getLeftMarker(subKmer.getLong(1)) >0 && getRightMarker(subKmer.getLong(1)) >0){
-                        attribute2 = buildingAlongFromThreeInt(1, 3+param.maxKmerSize, 3+param.maxKmerSize);
+                        attribute2 = buildingAlongFromThreeInt(1, leftExtend, rightExtend);
                     }else if (getLeftMarker(subKmer.getLong(1)) >0 ){
-                        attribute2 = buildingAlongFromThreeInt(1, 3+param.maxKmerSize, getRightMarker(subKmer.getLong(1)));
+                        attribute2 = buildingAlongFromThreeInt(1, leftExtend, getRightMarker(subKmer.getLong(1)));
                     }else if (getRightMarker(subKmer.getLong(1)) >0) {
-                        attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), +3+param.maxKmerSize);
+                        attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), rightExtend);
+                    }
+                    /*
+                    if (getLeftMarker(subKmer.getLong(1)) >0 && getRightMarker(subKmer.getLong(1)) >0){
+                        attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), getRightMarker(subKmer.getLong(1)));
+                    }else if (getLeftMarker(subKmer.getLong(1)) >0 ){
+                        attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), getRightMarker(subKmer.getLong(1)));
+                    }else if (getRightMarker(subKmer.getLong(1)) >0) {
+                        attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), +getRightMarker(subKmer.getLong(1)));
                     }
 
+                     */
+
+                 //   System.out.println("main body " + BinaryBlocksToString(cuttedKmer) + " " + getLeftMarker(subKmer.getLong(1)) + " " + getRightMarker(subKmer.getLong(1)));
 //                    long attribute2 = buildingAlongFromThreeInt(1, -1, -1);
                     kmerList.add(RowFactory.create(cuttedKmer, attribute2));
                 }
@@ -3118,6 +3125,7 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
         long nucleotideInt;
         //     Long suffixBinary;
         //     Long[] suffixBinaryArray;
+        int FixedKmerSize=31;
 
 
         public Iterator<Row> call(Iterator<Row> s) {
@@ -3125,8 +3133,11 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
             while (s.hasNext()) {
                 units = s.next();
 
-                kmer = units.getString(0);
-                extension = units.getString(2);
+                String[] headers = units.getString(0).split("_");
+             //   System.out.println("header length " + headers.length + " " + units.getString(0) + " "+ units);
+
+                kmer = units.getString(1).substring(0,FixedKmerSize); // java substring end index is the next char
+                extension = units.getString(1).substring(FixedKmerSize);
 
                 if (kmer.startsWith("(")) {
                     kmer = kmer.substring(1);
@@ -3145,15 +3156,13 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                 //   if (!kmerSizeCheck(kmer, param.kmerListHash)){continue;} // the kmer length does not fit into any of the kmers in the list.
 
                 if (units.getString(1).endsWith(")")) {
-                    String[] attributeStringArray = StringUtils.chop(units.getString(1)).split("\\|");
                     attribute = buildingAlongFromThreeInt(
-                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                            1,Integer.parseInt(headers[2]),Integer.parseInt(headers[3])
                     );
                     // attribute = Long.parseLong(StringUtils.chop(units.getString(1)));
                 } else {
-                    String[] attributeStringArray = units.getString(1).split("\\|");
                     attribute = buildingAlongFromThreeInt(
-                            Integer.parseInt(attributeStringArray[0]),Integer.parseInt(attributeStringArray[1]),Integer.parseInt(attributeStringArray[2])
+                            1,Integer.parseInt(headers[2]),Integer.parseInt(headers[3])
                     );
                     // attribute = Long.parseLong(units.getString(1));
                 }
@@ -3194,8 +3203,10 @@ public class ReflexivDSDynamicKmerFixing implements Serializable {
                 extensionBinarySlot[currentExtensionBlockSize-1] |= kmerEndMark; // param.kmerListHash.get(currentKmerSize)] == currentKmerBlockSize
 
                 // attribute= onlyChangeReflexivMarker(attribute,1);
+                long attribute2 = buildingAlongFromThreeInt(1, Integer.parseInt(headers[5]), Integer.parseInt(headers[6]) ); // reflexiv marker is use less, I just want to pass the left and right extension length to a long
+
                 kmerList.add(
-                        RowFactory.create(nucleotideBinarySlot, attribute, extensionBinarySlot)
+                        RowFactory.create(nucleotideBinarySlot, attribute, extensionBinarySlot, attribute2)
                 );
             }
 

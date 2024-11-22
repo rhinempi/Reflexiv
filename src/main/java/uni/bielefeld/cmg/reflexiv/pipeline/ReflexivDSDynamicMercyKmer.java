@@ -125,7 +125,9 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
                 .config("spark.sql.files.maxPartitionBytes", "6000000")
                 .config("spark.sql.adaptive.coalescePartitions.parallelismFirst", false)
-                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","12mb")
+                .config("spark.sql.adaptive.enabled", true)
+                .config("spark.sql.adaptive.coalescePartitions.enabled", true)
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","5000000")
                 .config("spark.driver.maxResultSize","1000g")
                 .config("spark.memory.fraction","0.7")
                 .config("spark.network.timeout","60000s")
@@ -251,7 +253,9 @@ public class ReflexivDSDynamicMercyKmer implements Serializable {
        // markerKmerRow = KmerCountDS.mapPartitions(ReducedKmerToSubKmer, ReadAndContigSeedEncoder);
        // markerTupleRow.persist(StorageLevel.DISK_ONLY());
 
+
         markerKmerRow = markerKmerRow.union(ReadSeedDS);
+        markerKmerRow.persist(StorageLevel.DISK_ONLY());
 
         markerKmerRow = markerKmerRow.sort("seed");
 

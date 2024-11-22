@@ -486,6 +486,20 @@ public class Pipelines implements Pipeline, Serializable{
         rfPipe.assemblyFromKmer();
     }
 
+    public void reflexivDSDynamicKmerExtendPipe() throws IOException{
+
+        ReflexivDSDynamicKmerExtend rfPipe = new ReflexivDSDynamicKmerExtend();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerExtendRoundTwoPipe() throws IOException{
+
+        ReflexivDSDynamicKmerExtendRoundTwo rfPipe = new ReflexivDSDynamicKmerExtendRoundTwo();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
     public void reflexivDSDynamicKmerFixingPipe() throws IOException{
 
         ReflexivDSDynamicKmerFixing rfPipe = new ReflexivDSDynamicKmerFixing();
@@ -539,10 +553,65 @@ public class Pipelines implements Pipeline, Serializable{
         if (checkOutputFile(param.outputPath + "/Assembly")){
             info.readParagraphedMessages("An assembly already exist: \nUse a new output directory or delete the existing one at:\n\t"+ param.outputPath + "/Assembly");
             info.screenDump();
-            return 6; // 6 as kill
-        } else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
+            return 10; // 10 as kill
+        } else if (checkOutputFile(param.outputPath + "/09ExtendAgain") ){
+            info.readParagraphedMessages("09ExtendAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
 
-            info.readParagraphedMessages("03FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/04Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/05FixingAgain");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/05FixingAgain");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/08Extend");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/08Extend");
+
+            return 9;
+
+        } else if (checkOutputFile(param.outputPath + "/08Extend")){
+            info.readParagraphedMessages("08Extend succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/04Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/05FixingAgain");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/05FixingAgain");
+
+            return 8;
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/05FixingAgain")){
+
+            info.readParagraphedMessages("05FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
             info.screenDump();
 
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
@@ -557,14 +626,14 @@ public class Pipelines implements Pipeline, Serializable{
             info.screenDump();
            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
 
-            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/02Fixing");
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/04Fixing");
             info.screenDump();
-            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/02Fixing");
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
 
             return 5;
 
-        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/02Fixing")){
-            info.readParagraphedMessages("02Fixing succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/02Fixing");
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/04Fixing")){
+            info.readParagraphedMessages("04Fixing succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/02Fixing");
             info.screenDump();
 
             info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
@@ -638,7 +707,7 @@ public class Pipelines implements Pipeline, Serializable{
 
         int step = checkStepsForDynamicAssemblyPipe();
 
-        if (step ==6){
+        if (step ==10){
             exit(1);
         }
 
@@ -686,7 +755,7 @@ public class Pipelines implements Pipeline, Serializable{
                 if (checkOutputFile(param.outputPath + "/Assembly_intermediate/01Iteration" + param.startIteration + "_" +  param.endIteration)){
                     info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                     info.screenDump();
-                  //  cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                    cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                 }else{
                     info.readMessage("Failed " + param.startIteration + " -> " + param.endIteration + " iterations : ");
                     info.screenDump();
@@ -774,10 +843,10 @@ public class Pipelines implements Pipeline, Serializable{
             info.readMessage("Fixing Contigs finished");
             info.screenDump();
 
-            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/02Fixing")){
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/04Fixing")){
                 info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                 info.screenDump();
-                // cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            //    cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
             }else{
                 info.readMessage("Failed Fixing contigs : ");
                 info.screenDump();
@@ -809,7 +878,7 @@ public class Pipelines implements Pipeline, Serializable{
             }
 
 
-            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/02Fixing/part*";
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/04Fixing/part*";
 
             info.readMessage("Start Fixing Contigs round two");
             info.screenDump();
@@ -818,7 +887,7 @@ public class Pipelines implements Pipeline, Serializable{
             info.readMessage("Fixing Contigs round two finished");
             info.screenDump();
 
-            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/03FixingAgain")){
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/05FixingAgain")){
                 info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
                 info.screenDump();
                 cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
@@ -830,7 +899,90 @@ public class Pipelines implements Pipeline, Serializable{
             }
         }
 
- //       if (step <6){
+        if (step <8) {
+            if (OriginalPartition >= 10) {
+                if (OriginalPartition >= 1000) {
+                    param.partitions = OriginalPartition * 10 / 100;
+                } else if (OriginalPartition >= 100 && OriginalPartition < 1000) {
+                    param.partitions = OriginalPartition * 20 / 100;
+                } else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+            if (OriginalShufflePartition >= 10) {
+                if (OriginalShufflePartition >= 1000) {
+                    param.shufflePartition = OriginalShufflePartition * 10 / 100;
+                } else if (OriginalShufflePartition >= 100 && OriginalShufflePartition < 1000) {
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/05FixingAgain/part*";
+
+            info.readMessage("Start Extend Contigs");
+            info.screenDump();
+            reflexivDSDynamicKmerExtendPipe();
+
+            info.readMessage("Extend Contigs finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/08Extend")) {
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0, param.inputKmerPath.length() - 6));
+                info.screenDump();
+                // cleanDiskStorage(param.inputKmerPath.substring(0, param.inputKmerPath.length() - 6));
+            } else {
+                info.readMessage("Failed Extend contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
+
+        if (step <9){
+            if (OriginalPartition >= 10) {
+                if (OriginalPartition >= 1000) {
+                    param.partitions = OriginalPartition * 10 / 100;
+                } else if (OriginalPartition >= 100 && OriginalPartition < 1000) {
+                    param.partitions = OriginalPartition * 20 / 100;
+                } else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+            if (OriginalShufflePartition >= 10) {
+                if (OriginalShufflePartition >= 1000) {
+                    param.shufflePartition = OriginalShufflePartition * 10 / 100;
+                } else if (OriginalShufflePartition >= 100 && OriginalShufflePartition < 1000) {
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/08Extend/part*";
+
+            info.readMessage("Start Extend Contigs round two");
+            info.screenDump();
+
+            reflexivDSDynamicKmerExtendRoundTwoPipe();
+
+            info.readMessage("Extend Contigs round two finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/09ExtendAgain")) {
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0, param.inputKmerPath.length() - 6));
+                info.screenDump();
+                // cleanDiskStorage(param.inputKmerPath.substring(0, param.inputKmerPath.length() - 6));
+            } else {
+                info.readMessage("Failed Extend round two contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
 /*
             if (OriginalPartition>=10) {
                 if (OriginalPartition>=20000){
@@ -888,7 +1040,7 @@ public class Pipelines implements Pipeline, Serializable{
 
         param.inputKmerPath = param.outputPath + "/Assembly_intermediate/04Patching/part*";
 */
-        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/03FixingAgain/part*";
+        param.inputKmerPath = param.outputPath + "/Assembly_intermediate/09ExtendAgain/part*";
 
         if (OriginalPartition>=10) {
             if (OriginalPartition>=20000){
@@ -1045,15 +1197,17 @@ public class Pipelines implements Pipeline, Serializable{
                         if (param.kmerSize <= 31) {
                             reflexivDSCounterPipe();
 
-                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
-                            reflexivDS64MercyKmerPipe();
-                        } else {
-                            reflexivDS64CounterPipe();
-
-                            if (param.kmerSize <=55) {
+                            if (param.sensitive) {
                                 param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
                                 reflexivDS64MercyKmerPipe();
                             }
+                        } else {
+                            reflexivDS64CounterPipe();
+
+                      //      if (param.kmerSize <=55) {
+                      //          param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize1 + "/part*.csv.gz";
+                      //          reflexivDS64MercyKmerPipe();
+                      //      }
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize1 + " succeeded");
@@ -1119,16 +1273,18 @@ public class Pipelines implements Pipeline, Serializable{
                         if (param.kmerSize <= 31) {
                             reflexivDSCounterPipe();
 
-                            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
-                            reflexivDS64MercyKmerPipe();
+                            if(param.sensitive==true) {
+                                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "/part*.csv.gz";
+                                reflexivDS64MercyKmerPipe();
+                            }
                         } else {
                             reflexivDS64CounterPipe();
 
 
-                            if (param.kmerSize <=55) {
-                                param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
-                                reflexivDS64MercyKmerPipe();
-                            }
+                       //     if (param.kmerSize <=55) {
+                       //         param.inputKmerPath = param.outputPath + "/Count_" + param.kmerSize2 + "*/part*.csv.gz";
+                       //         reflexivDS64MercyKmerPipe();
+                       //     }
                         }
                     } else {
                         info.readMessage("Checking existing k-mer counts: Count_" + param.kmerSize2 + " succeeded");
@@ -1252,15 +1408,17 @@ public class Pipelines implements Pipeline, Serializable{
                     if (param.kmerSize <= 31) {
                         reflexivDSCounterPipe();
 
-                        param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
-                        reflexivDS64MercyKmerPipe();
-                    } else {
-                        reflexivDS64CounterPipe();
-
-                        if (param.kmerSize <=55) {
+                        if (param.sensitive == true) {
                             param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
                             reflexivDS64MercyKmerPipe();
                         }
+                    } else {
+                        reflexivDS64CounterPipe();
+
+                //        if (param.kmerSize <=55) {
+                //            param.inputKmerPath = param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1] + "/part*.csv.gz";
+                //            reflexivDS64MercyKmerPipe();
+                //        }
                     }
                 } else {
                     info.readMessage("Checking existing k-mer counts: Count_" + param.kmerListInt[param.kmerListInt.length-1] + " succeeded");

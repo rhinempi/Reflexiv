@@ -2,14 +2,12 @@ package uni.bielefeld.cmg.reflexiv.pipeline;
 
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.*;
-import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -17,15 +15,12 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.storage.StorageLevel;
 import scala.Tuple2;
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import uni.bielefeld.cmg.reflexiv.util.DefaultParam;
 import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.Serializable;
 import java.util.*;
-
-import static org.apache.spark.sql.functions.col;
 
 
 /**
@@ -62,7 +57,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
+public class ReflexivDSDynamicKmerExtendRoundTwo implements Serializable {
     private long time;
     private DefaultParam param;
 
@@ -162,18 +157,9 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
         ContigLongKmerStringStruct = ContigLongKmerStringStruct.add("contig", DataTypes.StringType, false);
         ExpressionEncoder<Row> ContigStringEncoder = RowEncoder.apply(ContigLongKmerStringStruct);
 
-        Dataset<Row> ReflexivLongSubKmerStringDS;
-        StructType ReflexivLongKmerStringStruct = new StructType();
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("k-1", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("attribute", DataTypes.StringType, false);
-        ReflexivLongKmerStringStruct = ReflexivLongKmerStringStruct.add("extension", DataTypes.StringType, false);
-        ExpressionEncoder<Row> ReflexivLongKmerStringEncoder = RowEncoder.apply(ReflexivLongKmerStringStruct);
-
         Dataset<Tuple2<Row, Long>> markerTuple;
-        Dataset<Tuple2<String, Long>> markerTupleString;
 
         Dataset<Row> FixingFullKmer;
-        Dataset<String> FixingFullKmerString;
 
         StructType markerTupleStruct = new StructType();
         markerTupleStruct = markerTupleStruct.add("kmer", DataTypes.createArrayType(DataTypes.LongType), false);
@@ -211,7 +197,9 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
                 FixingKmerDSCount = FixingKmerDSCount.mapPartitions(FixingKmerExtensionLoop, ReflexivFixingKmerEndocer);
             }
         }
-/*
+
+        // FixingKmerDSCount.persist(StorageLevel.DISK_ONLY());
+
         DSBinaryFixingKmerToFullKmer FixingKmer2FullKmer = new DSBinaryFixingKmerToFullKmer();
 
         FixingFullKmer = FixingKmerDSCount.mapPartitions(FixingKmer2FullKmer,markerTupleEncoder );
@@ -227,297 +215,9 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
         ContigDS.write().
                 mode(SaveMode.Overwrite).
                 format("csv").
-                option("compression", "gzip").save(param.outputPath + "/Assembly_intermediate/03FixingAgain");
+                option("compression", "gzip").save(param.outputPath + "/Assembly_intermediate/09ExtendAgain");
 
         spark.stop();
-*/
-
-        DSBinaryFixingKmerWithLongExtensionToString SubKmerToString = new DSBinaryFixingKmerWithLongExtensionToString();
-        FixingFullKmerString  = FixingKmerDSCount.mapPartitions(SubKmerToString, Encoders.STRING());
-        FixingFullKmerString.persist(StorageLevel.DISK_ONLY());
-
-        JavaPairRDD<String, Long> ContigsRDDStringIndex = FixingFullKmerString.toJavaRDD().zipWithIndex();
-
-        markerTupleString = spark.createDataset(ContigsRDDStringIndex.rdd(), Encoders.tuple(Encoders.STRING(), Encoders.LONG()));
-
-        TagStringContigRDDID DSContigIDLabel = new TagStringContigRDDID();
-        ContigDS = markerTupleString.flatMap(DSContigIDLabel, ContigStringEncoder);
-
-        ContigDS.write().
-                mode(SaveMode.Overwrite).
-                format("csv").
-                option("compression", "gzip").save(param.outputPath + "/Assembly_intermediate/05FixingAgain");
-
-        spark.stop();
-    }
-
-    class DSBinaryFixingKmerWithLongExtensionToString implements MapPartitionsFunction<Row, String>, Serializable{
-        List<String> reflexivKmerStringList = new ArrayList<String>();
-
-        long[] subKmerArray;
-        String attributeString;
-
-
-        public Iterator<String> call(Iterator<Row> sIterator) throws Exception {
-            while (sIterator.hasNext()) {
-                String subKmer = "";
-                String extension ="";
-                Row s = sIterator.next();
-
-                subKmerArray=new long[1];
-                subKmerArray[0]=s.getLong(0);
-                /*
-                if (getReflexivMarker(s.getLong(1)) ==1){
-                    combinedArray = combineTwoLongBlocks( subKmerArray, seq2array(s.getSeq(2)));
-                }else{
-                    combinedArray = combineTwoLongBlocks( seq2array(s.getSeq(2)), subKmerArray );
-                }
-*/
-
-                subKmer = BinaryBlocksToString(subKmerArray);
-
-
-                if (s.get(2) instanceof  Seq) {
-                    extension = BinaryBlocksToString(seq2array(s.getSeq(2)));
-                }else{
-                    extension = BinaryBlocksToString((long[]) s.get(2));
-                }
-
-                String Contig="";
-                if (getReflexivMarker(s.getLong(1)) ==1){
-                    Contig = subKmer + extension;
-                }else{
-                    Contig = extension + subKmer;
-                }
-
-                if (Contig.length()<2*param.maxKmerSize){
-                    continue;
-                }
-
-                attributeString = "Contig_"+ Contig.length() + "_" + getLeftMarker(s.getLong(1)) + "_" + getRightMarker(s.getLong(1));
-                Contig = attributeString + "," + Contig;
-
-                reflexivKmerStringList.add(
-                        Contig
-                );
-            }
-            return reflexivKmerStringList.iterator();
-        }
-
-        private int getLeftMarker(long attribute){
-            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
-            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
-            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
-
-            if (leftMarker>30000){
-                leftMarker=30000-leftMarker;
-            }
-
-            return leftMarker;
-        }
-
-        private int getRightMarker(long attribute){
-            int rightMarker = (int) attribute;
-
-            if (rightMarker>30000){
-                rightMarker=30000-rightMarker;
-            }
-
-            return rightMarker;
-        }
-
-        private char BinaryToNucleotide(Long twoBits) {
-            char nucleotide;
-            if (twoBits == 0) {
-                nucleotide = 'A';
-            } else if (twoBits == 1) {
-                nucleotide = 'C';
-            } else if (twoBits == 2) {
-                nucleotide = 'G';
-            } else {
-                nucleotide = 'T';
-            }
-            return nucleotide;
-        }
-
-        private String BinaryBlocksToString (long[] binaryBlocks){
-            //           String KmerString="";
-            int KmerLength = currentKmerSizeFromBinaryBlockArray(binaryBlocks);
-            StringBuilder sb= new StringBuilder();
-            char currentNucleotide;
-
-            for (int i=0; i< KmerLength; i++){
-                Long currentNucleotideBinary = binaryBlocks[i/31] >>> 2 * (32 - (i%31+1));
-                currentNucleotideBinary &= 3L;
-                currentNucleotide = BinaryToNucleotide(currentNucleotideBinary);
-                sb.append(currentNucleotide);
-            }
-
-            return sb.toString();
-        }
-
-        private long[] leftShiftArray(long[] blocks, int shiftingLength) throws Exception {
-            int startingBlockIndex = (shiftingLength)/31;
-            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
-            int residueLength = Long.SIZE / 2 - (Long.numberOfTrailingZeros(blocks[blocks.length-1])/2+1); // last block length
-
-            int remainLength=nucleotideLength-shiftingLength-1;
-            if (remainLength <0){
-                remainLength=0;
-            }
-            long[] newBlock = new long[remainLength/31+1];
-            int relativeShiftSize = shiftingLength % 31;
-
-            if (shiftingLength >= nucleotideLength){
-                // apparantly, it is possible. meaning the block has nothing left
-                // throw new Exception("shifting length longer than the kmer length");
-                newBlock[0]|=(1L<<2*31); //add c marker at the end
-                return newBlock;
-            }
-
-            // if (relativeShiftSize ==0) then only shifting blocks
-
-            int j=0; // new index for shifted blocks
-            //           long oldShiftOut=0L; // if only one block, then 0 bits
-//            if (blocks.length-(startingBlockIndex+1) >=1) { // more than one block, newBlock.length = blocks.length-startingBlockIndex
-//                oldShiftOut = blocks[startingBlockIndex + 1] >>> 2 * (32 - relativeShiftSize);
-            //           }
-            for (int i=startingBlockIndex; i<blocks.length-1; i++){ // without the last block
-                long shiftOut = blocks[i+1] >>> 2*(31-relativeShiftSize); // ooooxxxxxxx -> -------oooo  o=shift out x=needs to be left shifted
-                newBlock[j]= blocks[i] << 2*relativeShiftSize; // 00000xxxxx -> xxxxx-----
-                newBlock[j] |= shiftOut;
-                newBlock[j] &= (~0L<<2); // remove the last two bits, in case of overlength  xxxxxxxxxxx - > xxxxxxxxxxx-  C marker will be added later if necessary
-
-                j++;
-            }
-
-            if (residueLength > relativeShiftSize){ // still some nucleotide left in the last block
-                newBlock[j]= blocks[blocks.length-1] << 2*relativeShiftSize;
-            }else if (residueLength == relativeShiftSize){ // nothing left in the last block, but the new last block needs a C marker in the end
-                newBlock[j-1] |= 1L; // j-1 == newBlock.length-1
-            } // else the last block has been completely shift into the new last block, including the C marker
-
-            return newBlock;
-
-        }
-
-        private long[] leftShiftOutFromArray(long[] blocks, int shiftingLength) throws Exception{
-            int relativeShiftSize = shiftingLength % 31;
-            int endingBlockIndex = (shiftingLength-1)/31;
-            int nucleotideLength = currentKmerSizeFromBinaryBlockArray(blocks);
-            long[] shiftOutBlocks = new long[endingBlockIndex+1];
-
-            if (shiftingLength > nucleotideLength){
-                // throw new Exception("shifting length longer than the kmer length");
-                return blocks;
-            }
-
-            for (int i=0; i<endingBlockIndex; i++){
-                shiftOutBlocks[i]=blocks[i];
-            }
-
-            if (relativeShiftSize > 0) {
-                shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex] & (~0L << 2 * (32 - relativeShiftSize));  //   1111111100000000000
-                shiftOutBlocks[endingBlockIndex] |= (1L << (2 * (32 - relativeShiftSize - 1)));
-            }else{ // relativeShiftSize == 0;
-                if (endingBlockIndex+1 == blocks.length) { // a block with C marker
-                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
-                }else{ // endingBlockIndex < blocks.length -1     means a block without C marker
-                    shiftOutBlocks[endingBlockIndex] = blocks[endingBlockIndex];
-                    shiftOutBlocks[endingBlockIndex]|=1L;  // adding C marker in the end xxxxxxxxxC
-                }
-
-            }
-
-            return shiftOutBlocks;
-        }
-
-        private int currentKmerSizeFromBinaryBlockArray(long[] binaryBlocks){
-            int kmerSize;
-            int blockSize = binaryBlocks.length;
-            kmerSize= (blockSize-1) *31;
-            final int suffix0s = Long.numberOfTrailingZeros(binaryBlocks[blockSize - 1]); // ATCG...01---
-            int lastMers = Long.SIZE/2-suffix0s/2-1;
-
-            kmerSize+=lastMers;
-            return kmerSize;
-
-        }
-
-
-        private long[] seq2array(Seq a){
-            long[] array =new long[a.length()];
-            for (int i = 0; i < a.length(); i++) {
-                array[i] = (Long) a.apply(i);
-            }
-            return array;
-        }
-
-        private int getReflexivMarker(long attribute){
-            int reflexivMarker = (int) (attribute >>> 2*(32-1)); // 01-------- -> ---------01 reflexiv marker
-            return reflexivMarker;
-        }
-
-        private long[] combineTwoLongBlocks(long[] leftBlocks, long[] rightBlocks) throws Exception {
-            int leftNucleotideLength = currentKmerSizeFromBinaryBlockArray(leftBlocks);
-            int leftRelativeNTLength = (leftNucleotideLength-1) % 31+1;
-            int leftVacancy = 31-leftRelativeNTLength;
-            int rightNucleotideLength = currentKmerSizeFromBinaryBlockArray(rightBlocks);
-            int combinedBlockSize = (leftNucleotideLength+rightNucleotideLength-1)/31+1;
-            long[] newBlocks= new long[combinedBlockSize];
-
-            if (rightNucleotideLength==0){
-                return leftBlocks;
-            }
-
-            if (leftNucleotideLength==0){
-                return rightBlocks;
-            }
-
-            if (leftVacancy ==0){ // left last block is a perfect block
-                for (int i =0; i<leftBlocks.length; i++){
-                    newBlocks[i]=leftBlocks[i];
-                }
-
-                newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove the last block's C marker
-
-                for (int j=leftBlocks.length;j<combinedBlockSize;j++){
-                    newBlocks[j]=rightBlocks[j-leftBlocks.length];
-                }
-            }else{
-                // String rightBlocksString = BinaryBlocksToString(rightBlocks);
-                // String leftBlocksString = BinaryBlocksToString(leftBlocks);
-
-                long[] shiftOutBlocks = leftShiftOutFromArray(rightBlocks, leftVacancy); // right shift out for the left. here we only expect one block, because leftVacancy is relative to one block
-                for (int i =0; i<leftBlocks.length; i++){
-                    newBlocks[i]=leftBlocks[i];
-                }
-
-                newBlocks[leftBlocks.length-1] &= (~0L<<2*(leftVacancy+1)); // leftVacancy = 32-leftRelativeNTLength-1. This is to remove the C marker
-                newBlocks[leftBlocks.length-1] |= (shiftOutBlocks[0]>>> 2*(leftRelativeNTLength));
-                if (leftBlocks.length<combinedBlockSize) { // this is not the end block, the last 2 bits (C marker) of shift out needs to be removed  ----------C
-                    newBlocks[leftBlocks.length-1] &= (~0L<<2); // remove shift out blocks C marker. apparently, if there is a C marker, this is the last block anyway
-                }
-
-                long[] rightBlocksLeftShifted = leftShiftArray(rightBlocks, leftVacancy);
-
-                int k=0; // rightBlocksLeftShifted index
-                for (int j=leftBlocks.length;j<combinedBlockSize;j++){ // including the last blocks.
-                    newBlocks[j]=rightBlocksLeftShifted[k];
-                    k++;
-                    long[] rightBlocksLeftShiftedArray= new long[1];
-                    rightBlocksLeftShiftedArray[0]=rightBlocksLeftShifted[k-1];
-                    //  String rightShift= BinaryBlocksToString(rightBlocksLeftShiftedArray);
-                    //  System.out.println("rightShift: " + rightShift);
-                }
-
-                // String mergedKmer= BinaryBlocksToString(newBlocks);
-
-                //System.out.println(" left Blocks:" + leftBlocksString + " Right blocks: " + rightBlocksString + " rightLength: " + rightNucleotideLength + " leftNucleotideLength: " + leftNucleotideLength + " leftRelativeNTLength: " + leftRelativeNTLength + " leftVacancy: " + leftVacancy + " rightNucleotideLength: " + rightNucleotideLength + " combinedBlockSize: " + combinedBlockSize + " newBlock: " + mergedKmer);
-            }
-
-            return newBlocks;
-        }
     }
 
     class DynamicKmerBinarizerFromReducedToSubKmer implements MapPartitionsFunction<Row, Row>, Serializable{
@@ -743,9 +443,11 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
                     continue;
                 }
 
+            //    System.out.println("Binary Block " + BinaryBlocksToString(combinedArray) + " " + getLeftMarker(s.getLong(1)) + " " + getRightMarker(s.getLong(1)));
 
                 reflexivKmerStringList.add(
-                        RowFactory.create(combinedArray)
+                        RowFactory.create(combinedArray
+                        )
                 );
             }
             return reflexivKmerStringList.iterator();
@@ -883,6 +585,28 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
             return reflexivMarker;
         }
 
+        private int getLeftMarker(long attribute){
+            int leftMarker = (int) (attribute >>> 2*(16)); // 01--xxxx-----xxxx -> 01--xxxx shift out right marker
+            int leftMarkerBinaryBits= ~(3 << 30) ; // ---------11 -> 11---------- -> 0011111111111
+            leftMarker &= leftMarkerBinaryBits; // remove reflexivMarker
+
+            if (leftMarker>30000){
+                leftMarker=30000-leftMarker;
+            }
+
+            return leftMarker;
+        }
+
+        private int getRightMarker(long attribute){
+            int rightMarker = (int) attribute;
+
+            if (rightMarker>30000){
+                rightMarker=30000-rightMarker;
+            }
+
+            return rightMarker;
+        }
+
         private long[] combineTwoLongBlocks(long[] leftBlocks, long[] rightBlocks) throws Exception {
             int leftNucleotideLength = currentKmerSizeFromBinaryBlockArray(leftBlocks);
             int leftRelativeNTLength = (leftNucleotideLength-1) % 31+1;
@@ -945,22 +669,22 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
         }
     }
 
-    class TagStringContigRDDID implements FlatMapFunction<Tuple2<String, Long>, Row>, Serializable {
+    class TagRowContigRDDID implements FlatMapFunction<Tuple2<Row, Long>, Row>, Serializable {
 
         List<Row> contigList;
 
-        public Iterator<Row> call(Tuple2<String, Long> s) {
+        public Iterator<Row> call(Tuple2<Row, Long> s) {
 
             contigList = new ArrayList<Row>();
 
-            String[] contig = s._1().split(",");
-
-            int length = contig[1].length();
-
-            if (length >= 2*param.maxKmerSize) {
-                contigList.add(RowFactory.create(">" + contig[0] + "_" + s._2(), contig[1]));
-            }
+            String contig = BinaryBlocksToString(seq2array(s._1().getSeq(0)));
+            int length = contig.length();
             //if (length>=200){
+             if (length >= 2*param.maxKmerSize) {
+                String ID = ">Contig-" + length + "-" + s._2();
+                String formatedContig = changeLine(contig, length, 10000000);
+                contigList.add(RowFactory.create(ID, formatedContig));
+            }
 
             return contigList.iterator();
         }
