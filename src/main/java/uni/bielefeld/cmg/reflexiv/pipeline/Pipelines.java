@@ -554,7 +554,7 @@ public class Pipelines implements Pipeline, Serializable{
             info.readParagraphedMessages("An assembly already exist: \nUse a new output directory or delete the existing one at:\n\t"+ param.outputPath + "/Assembly");
             info.screenDump();
             return 10; // 10 as kill
-        } else if (checkOutputFile(param.outputPath + "/09ExtendAgain") ){
+        } else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/09ExtendAgain") ){
             info.readParagraphedMessages("09ExtendAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
             info.screenDump();
 
@@ -584,7 +584,7 @@ public class Pipelines implements Pipeline, Serializable{
 
             return 9;
 
-        } else if (checkOutputFile(param.outputPath + "/08Extend")){
+        } else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/08Extend")){
             info.readParagraphedMessages("08Extend succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
             info.screenDump();
 

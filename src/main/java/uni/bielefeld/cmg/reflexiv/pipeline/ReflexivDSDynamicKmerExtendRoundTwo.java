@@ -438,10 +438,12 @@ public class ReflexivDSDynamicKmerExtendRoundTwo implements Serializable {
                     combinedArray = combineTwoLongBlocks( extensionArray, subKmerArray );
                 }
 
-                //if (currentKmerSizeFromBinaryBlockArray(combinedArray) < 200){
                 if (currentKmerSizeFromBinaryBlockArray(combinedArray) < 2*param.maxKmerSize){
                     continue;
                 }
+
+                //if (currentKmerSizeFromBinaryBlockArray(combinedArray) < 200){
+
 
             //    System.out.println("Binary Block " + BinaryBlocksToString(combinedArray) + " " + getLeftMarker(s.getLong(1)) + " " + getRightMarker(s.getLong(1)));
 

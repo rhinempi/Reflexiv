@@ -2673,6 +2673,7 @@ public class ReflexivDSDynamicKmerExtend implements Serializable {
             int forwardSuffixLength = currentKmerSizeFromBinaryBlockArray(seq2array(forwardSubKmer.getSeq(2)));
             int reflexedPrefixLength = currentKmerSizeFromBinaryBlockArray(seq2array(reflexedSubKmer.getSeq(2)));
 
+
             int newSubKmerLength;
             long[] longerSubKmer= new long[1];
             longerSubKmer[0]=forwardSubKmer.getLong(0);
