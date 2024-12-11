@@ -54,7 +54,7 @@ public class MainMeta {
      *
      * @param args  a space separated command line arguments.
      */
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         InfoDumper info = new InfoDumper();
         info.readParagraphedMessages("Reflexiv assembly initiating ... \ninterpreting parameters.");
         info.screenDump();

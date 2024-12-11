@@ -2,7 +2,6 @@ package uni.bielefeld.cmg.reflexiv.pipeline;
 
 import com.fing.compression.fourmc.FourMcCodec;
 import com.fing.mapreduce.FourMcTextInputFormat;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -14,7 +13,10 @@ import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.*;
+import org.apache.spark.api.java.function.FilterFunction;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.MapFunction;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -27,9 +29,10 @@ import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
-
-import static org.apache.spark.sql.functions.col;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 
 
 /**
@@ -66,7 +69,7 @@ import static org.apache.spark.sql.functions.col;
  * @version %I%, %G%
  * @see
  */
-public class ReflexivDataFrameDecompresser implements Serializable{
+public class ReflexivDataFrameErrorCorrecter implements Serializable{
     private long time;
     private DefaultParam param;
 
@@ -97,12 +100,13 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         SparkSession spark = SparkSession
                 .builder()
                 .appName("Reflexiv")
+                .config("spark.executor.cores", "1")
                 .config("spark.kryo.registrator", "uni.bielefeld.cmg.reflexiv.serializer.SparkKryoRegistrator")
                 .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
                 .config("spark.cleaner.referenceTracking.cleanCheckpoints", true)
                 .config("spark.checkpoint.compress",true)
                 .config("spark.sql.shuffle.partitions", String.valueOf(shufflePartitions))
-                .config("spark.sql.files.maxPartitionBytes", "6000000")
+                .config("spark.sql.files.maxPartitionBytes", "512mb")
                 .config("spark.sql.adaptive.advisoryPartitionSizeInBytes","6mb")
                 .config("spark.driver.maxResultSize","1000G")
                 .config("spark.memory.fraction","0.7")
@@ -190,6 +194,10 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         FastqDS = spark.read().text(param.inputFqPath).as(Encoders.STRING());
 
         JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
+
+        DSErrorCorrectionPipe javaPipe = new DSErrorCorrectionPipe();
+        JavaRDD<String> correctedFastq = FastqRDD.mapPartitions(javaPipe);
+        correctedFastq.saveAsTextFile(param.outputPath + "/Read_Repartitioned_corrected/", FourMcCodec.class); // try GzipCodec.class
 
         if (!param.inputFormat.equals("bzip2")){
 
@@ -478,6 +486,89 @@ public class ReflexivDataFrameDecompresser implements Serializable{
                     "--allow-outies",
                     "--max-overlap", "85",
                     "-c", "/dev/stdin"
+            );
+
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command(executeCommands);
+            // Start the process
+            final Process process = pb.start();
+
+            // Get the output stream of the process
+            OutputStream outputStream = process.getOutputStream();
+
+            // Start a separate thread to read the output of the external program
+            final List<String> output = new ArrayList<String>();
+
+            Thread outputThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        reflexivKmerStringList.add(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            outputThread.start();
+
+
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                outputStream.write(s.getBytes());
+                outputStream.write("\n".getBytes());
+                //  outputStream.flush();
+            }
+
+            outputStream.close();
+
+            // Wait for the output thread to finish
+            try {
+                outputThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+
+            try {
+                int exitCode = process.waitFor();
+                // System.out.println("External process finished with exit code " + exitCode);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class DSErrorCorrectionPipe implements FlatMapFunction<Iterator<String>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            String executable = SparkFiles.get("lighter");
+
+            int CPUs= Runtime.getRuntime().availableProcessors();
+            if (CPUs <=1){
+                CPUs=1;
+            }
+
+            List<String> executeCommands = Arrays.asList(
+                    "/bin/bash",
+                    "-c",
+                    String.join(" ",
+                    "awk '{print}' > " + param.tmpDir + "/toBeCorrect.fastq;",
+                    executable,
+                    "-r",
+                    param.tmpDir + "/toBeCorrect.fastq",
+                    "-K",
+                    "17 5000000000",
+                    "-od",
+                    param.tmpDir,
+                    "-t",
+                    CPUs + ";",
+                    "rm",
+                    "-r",
+                    param.tmpDir + "/toBeCorrect.fastq"
+                    )
             );
 
             ProcessBuilder pb = new ProcessBuilder();

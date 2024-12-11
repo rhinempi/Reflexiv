@@ -65,8 +65,10 @@ public class DefaultParam implements Serializable{
     public String inputKmerPath2; // for kmer reduction, longer one
     public String inputFaPath;
     public String inputContigPath;
+    public String inputContigEnds;
     public String outputPath;
     public String inputFormat = "4mc"; // 4mc zipped file or gzip or bzip
+    public String tmpDir = "/tmp";
     public long readLimit =Long.MAX_VALUE;
 
     public int kmerSize = 31;
@@ -102,7 +104,7 @@ public class DefaultParam implements Serializable{
     public int minKmerCoverage = 2;
     public int maxKmerCoverage = 10000000;
     public int minErrorCoverage = 4 * minKmerCoverage; // equal to minKmerCoverage
-    public double minRepeatFold = 1.5;
+    public double minRepeatFold = 2.0;
     public int minContig = 500;
     public boolean bubble= true;
 

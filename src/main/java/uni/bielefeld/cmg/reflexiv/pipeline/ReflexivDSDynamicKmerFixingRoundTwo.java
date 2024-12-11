@@ -243,12 +243,51 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
         TagStringContigRDDID DSContigIDLabel = new TagStringContigRDDID();
         ContigDS = markerTupleString.flatMap(DSContigIDLabel, ContigStringEncoder);
 
+        ContigDS.persist(StorageLevel.DISK_ONLY());
+
         ContigDS.write().
                 mode(SaveMode.Overwrite).
                 format("csv").
                 option("compression", "gzip").save(param.outputPath + "/Assembly_intermediate/05FixingAgain");
 
+        DSExtractContigEndsForAlignment extractContigEnds = new DSExtractContigEndsForAlignment();
+        Dataset<String> ContigEnds = ContigDS.mapPartitions(extractContigEnds, Encoders.STRING());
+
+        // ContigEnds = ContigEnds.coalesce(1);
+
+        JavaRDD<String> ContigEndsRDD = ContigEnds.toJavaRDD();
+
+        ContigEndsRDD.saveAsTextFile(param.outputPath + "/Assembly_intermediate/06ContigEnds", GzipCodec.class);
+
         spark.stop();
+    }
+
+    class DSExtractContigEndsForAlignment implements MapPartitionsFunction<Row, String>, Serializable{
+        List<String> ContigEnds = new ArrayList<>();
+
+        public Iterator<String> call(Iterator<Row> sIterator) throws Exception{
+            while (sIterator.hasNext()){
+                Row s= sIterator.next();
+
+                String ID = s.getString(0);
+                String Seq = s.getString(1);
+
+                int Length = Seq.length();
+
+                if (Length >= 400){
+                    String prefix = Seq.substring(0,200);
+                    String suffix = Seq.substring(Length-200);
+
+                    ContigEnds.add(ID+"-L\n"+prefix);
+                    ContigEnds.add(ID+"-R\n"+suffix);
+                }else{
+                    ContigEnds.add(ID+"\n"+Seq);
+                }
+            }
+
+
+            return ContigEnds.iterator();
+        }
     }
 
     class DSBinaryFixingKmerWithLongExtensionToString implements MapPartitionsFunction<Row, String>, Serializable{

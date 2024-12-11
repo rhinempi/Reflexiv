@@ -390,6 +390,88 @@ public class Pipelines implements Pipeline, Serializable{
         }
     }
 
+    public void reflexivDSErrorCorrectionPipe() throws IOException {
+        ReflexivDataFrameErrorCorrecter rfPipe = new ReflexivDataFrameErrorCorrecter();
+        rfPipe.setParam(param);
+
+        if (param.interleaved != null) {
+            if (!checkOutputFile(param.outputPath + "/Read_Interleaved") || !checkOutputFile(param.outputPath + "/Read_Interleaved_Merged")) {
+                info.readMessage("Starting to process interleaved input reads");
+                info.screenDump();
+
+                cleanDiskStorage(param.outputPath + "/Read_Interleaved");
+                cleanDiskStorage(param.outputPath + "/Read_Interleaved_Merged");
+
+                param.interleavedSwitch = true;
+                param.inputFqPath = param.interleaved;
+                rfPipe.assembly();
+            } else {
+                info.readMessage("interleaved input reads has already been processed");
+                info.screenDump();
+                param.pairing=true;
+            }
+        }
+
+        if (param.inputPaired !=null){
+            if (!checkOutputFile(param.outputPath + "/Read_Paired") || !checkOutputFile(param.outputPath + "/Read_Paired_Merged")) {
+                info.readMessage("Starting to process paired-end input");
+                info.screenDump();
+
+                cleanDiskStorage(param.outputPath + "/Read_Paired");
+                cleanDiskStorage(param.outputPath + "/Read_Paired_Merged");
+
+                param.inputSingleSwitch = false;
+                param.interleavedSwitch = false;
+                param.inputPairedSwitch = true;
+                param.inputFqPath = param.inputPaired;
+                rfPipe.assembly();
+            }else{
+                info.readMessage("paired-end input has already been processed");
+                info.screenDump();
+                param.pairing=true;
+            }
+        }
+
+        if (param.inputSingle !=null) {
+            if (param.pairing){
+                if (!checkOutputFile(param.outputPath + "/Read_Single") || ! checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
+                    info.readMessage("Starting to process single end input");
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Read_Single");
+                    cleanDiskStorage(param.outputPath + "/Read_Repartitioned");
+
+                    param.interleavedSwitch = false;
+                    param.inputPairedSwitch = false;  // however param.pairing is on
+                    param.inputSingleSwitch = true;
+                    param.inputFqPath=param.inputSingle;
+                    rfPipe.assembly();
+                } else{
+                    info.readMessage("Single end input has already been processed");
+                    info.screenDump();
+                }
+            }else{
+                if (! checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
+                    info.readMessage("Starting to process single end input");
+                    info.screenDump();
+
+                    cleanDiskStorage(param.outputPath + "/Read_Single");
+                    cleanDiskStorage(param.outputPath + "/Read_Repartitioned");
+
+                    param.interleavedSwitch = false;
+                    param.inputPairedSwitch = false;  // however param.pairing is on
+                    param.inputSingleSwitch = true;
+                    param.inputFqPath=param.inputSingle;
+                    rfPipe.assembly();
+                }else{
+                    info.readMessage("Single end input has already been processed");
+                    info.screenDump();
+                }
+            }
+
+        }
+    }
+
     public void reflexivDSDynamicKmerReductionPipe(){
         ReflexivDSDynamicKmerRuduction rfPipe = new ReflexivDSDynamicKmerRuduction();
         rfPipe.setParam(param);
@@ -482,6 +564,12 @@ public class Pipelines implements Pipeline, Serializable{
     public void reflexivDSDynamicKmerIterationPipe() throws IOException{
 
         ReflexivDSDynamicKmerIteration rfPipe = new ReflexivDSDynamicKmerIteration();
+        rfPipe.setParam(param);
+        rfPipe.assemblyFromKmer();
+    }
+
+    public void reflexivDSDynamicKmerMappingPipe() throws IOException, InterruptedException {
+        ReflexivDSDynamicKmerMapping rfPipe = new ReflexivDSDynamicKmerMapping();
         rfPipe.setParam(param);
         rfPipe.assemblyFromKmer();
     }
@@ -609,6 +697,60 @@ public class Pipelines implements Pipeline, Serializable{
             // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/05FixingAgain");
 
             return 8;
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/07EndExtend")){
+
+            info.readParagraphedMessages("05FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/04Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/05FixingAgain");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/06ContigEnds");
+            info.screenDump();
+           // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            return 7;
+
+        }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/06ContigEnds")){
+
+            info.readParagraphedMessages("05FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
+            info.screenDump();
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/00firstFour");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/00firstFour");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration15_19");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+            info.screenDump();
+            // cleanDiskStorage(param.outputPath + "/Assembly_intermediate/01Iteration61_70");
+
+            info.readMessage("Removing: " + param.outputPath + "/Assembly_intermediate/04Fixing");
+            info.screenDump();
+            cleanDiskStorage(param.outputPath + "/Assembly_intermediate/04Fixing");
+
+            return 5;
+
         }else if (checkOutputFile(param.outputPath + "/Assembly_intermediate/05FixingAgain")){
 
             info.readParagraphedMessages("05FixingAgain succeed, will use existing results:\n"+ param.outputPath + "/Assembly_intermediate/03FixingAgain");
@@ -695,7 +837,7 @@ public class Pipelines implements Pipeline, Serializable{
      *
      * @throws IOException
      */
-    public void reflexivDSDynamicAssemblyStepsPipe() throws IOException{
+    public void reflexivDSDynamicAssemblyStepsPipe() throws IOException, InterruptedException {
 
         info.readMessage("-------- Starting Assembly pipeline --------");
         info.screenDump();
@@ -899,6 +1041,51 @@ public class Pipelines implements Pipeline, Serializable{
             }
         }
 
+        if (step <7) {
+            if (OriginalPartition>=10) {
+                if (OriginalPartition>=1000 ){
+                    param.partitions = OriginalPartition * 10 / 100;
+                } else if (OriginalPartition>=100 && OriginalPartition<1000){
+                    param.partitions = OriginalPartition * 20 / 100;
+                }else {
+                    param.partitions = OriginalPartition * 40 / 100;
+                }
+            }
+
+            if (OriginalShufflePartition>=10) {
+                if (OriginalShufflePartition>=1000 ){
+                    param.shufflePartition = OriginalShufflePartition * 10 / 100;
+                } else if (OriginalShufflePartition>=100 && OriginalShufflePartition<1000){
+                    param.shufflePartition = OriginalShufflePartition * 20 / 100;
+                } else {
+                    param.shufflePartition = OriginalShufflePartition * 40 / 100;
+                }
+            }
+
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/05FixingAgain/part*";
+            param.inputContigEnds = param.outputPath + "/Assembly_intermediate/06ContigEnds";
+
+            info.readMessage("Start Mapping Contigs");
+            info.screenDump();
+            reflexivDSDynamicKmerMappingPipe();
+
+            info.readMessage("Mapping Contigs finished");
+            info.screenDump();
+
+            if (checkOutputFile(param.outputPath + "/Assembly_intermediate/07EndExtend")){
+                info.readMessage("Removing: " + param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+                info.screenDump();
+               // cleanDiskStorage(param.inputKmerPath.substring(0,param.inputKmerPath.length()-6));
+            }else{
+                info.readMessage("Failed Fixing contigs : ");
+                info.screenDump();
+                info.readMessage("The process is finished. However, one or more results are not complete");
+                info.screenDump();
+            }
+        }
+
+
+
         if (step <8) {
             if (OriginalPartition >= 10) {
                 if (OriginalPartition >= 1000) {
@@ -920,7 +1107,7 @@ public class Pipelines implements Pipeline, Serializable{
                 }
             }
 
-            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/05FixingAgain/part*";
+            param.inputKmerPath = param.outputPath + "/Assembly_intermediate/07EndExtend/part*";
 
             info.readMessage("Start Extend Contigs");
             info.screenDump();
@@ -1111,7 +1298,8 @@ public class Pipelines implements Pipeline, Serializable{
 
     public void reflexivDSInputDataPreprocessing() throws IOException {
         if (!checkOutputFile(param.outputPath + "/Read_Repartitioned")) {
-            reflexivDSDecompresserPipe();
+            reflexivDSErrorCorrectionPipe();
+            // reflexivDSDecompresserPipe();
         }else{
             info.readMessage("Output file: " + param.outputPath + "/Read_Repartitioned already exist!");
             info.screenDump();
@@ -1240,7 +1428,7 @@ public class Pipelines implements Pipeline, Serializable{
                         info.readMessage("Removing : Count_" + param.kmerSize1);
                         info.screenDump();
 
-//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                     } else {
                         info.readMessage("Failed k-mer sorting : " + param.kmerSize1 + " failed:");
                         info.screenDump();
@@ -1254,7 +1442,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerSize1);
                     info.screenDump();
 
-//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
                 }
 
                 if (!checkOutputFile(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted")) {
@@ -1317,7 +1505,7 @@ public class Pipelines implements Pipeline, Serializable{
                         info.readMessage("Removing : Count_" + param.kmerSize2);
                         info.screenDump();
 
-//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                     } else {
                         info.readMessage("Failed k-mer sorting : " + param.kmerSize2 + " failed:");
                         info.screenDump();
@@ -1331,7 +1519,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerSize2);
                     info.screenDump();
 
-//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
                 }
 
                 param.inputKmerPath1 = param.outputPath + "/Count_" + param.kmerSize1 + "_sorted/part*.csv.gz";
@@ -1348,7 +1536,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted");
                     info.screenDump();
 
-//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
                 } else {
                     info.readMessage("Failed k-mer reduction : " + param.kmerSize2 + " vs " + param.kmerSize1 + " failed:");
                     info.screenDump();
@@ -1363,7 +1551,7 @@ public class Pipelines implements Pipeline, Serializable{
                     // if (param.kmerSize2 <100) {
                         info.readMessage("Removing: Count_" + param.kmerSize2 + "_sorted");
                         info.screenDump();
-//                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
+                        cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2 + "_sorted");
                    /* }else {
                         info.readMessage("Rename last k-mer sorted to k-mer reduced");
                         info.screenDump();
@@ -1377,9 +1565,9 @@ public class Pipelines implements Pipeline, Serializable{
                 info.readMessage("Removing: Count_" + param.kmerSize1 + "_sorted, Count_" + param.kmerSize1 + ", and Count_" + param.kmerSize2);
                 info.screenDump();
 
-//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
-//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
-//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1 + "_sorted");
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize1);
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerSize2);
             }
         }
 
@@ -1447,7 +1635,7 @@ public class Pipelines implements Pipeline, Serializable{
                     info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
                     info.screenDump();
 
-//                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
+                    cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length - 1]);
                 } else {
                     info.readMessage("Failed k-mer sorting : " + param.kmerListInt[param.kmerListInt.length - 1] + " failed:");
                     info.screenDump();
@@ -1460,7 +1648,7 @@ public class Pipelines implements Pipeline, Serializable{
                 info.readMessage("Removing : Count_" + param.kmerListInt[param.kmerListInt.length-1] );
                 info.screenDump();
 
-//                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] );
+                cleanDiskStorage(param.outputPath + "/Count_" + param.kmerListInt[param.kmerListInt.length-1] );
 
                 info.readMessage("This is the last k-mer reduction round");
                 info.screenDump();
