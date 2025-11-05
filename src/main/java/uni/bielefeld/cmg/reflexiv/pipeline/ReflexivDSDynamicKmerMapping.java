@@ -16,6 +16,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.internal.config.R;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -29,6 +30,8 @@ import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 
 import java.io.*;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -413,6 +416,8 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
         String leftConsen="";
         String rightConsen="";
         String OriginalContig="";
+        String leftLimitString="NA";
+        String rightLimitString="NA";
 
         public Iterator<String> call(Iterator<Row> sIterator) throws Exception {
             while (sIterator.hasNext()){
@@ -430,6 +435,34 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                         leftConsen = reverseString(leftConsen);
                         OriginalContig = leftConsen + OriginalContig;
                         OriginalContig = OriginalContig + rightConsen;
+
+                        String[] IDelement = lastID.split("_");
+                        if (!leftLimitString.equals("NA")) {
+                            if (Integer.parseInt(IDelement[2])>0) { //
+                                if (Integer.parseInt(leftLimitString) >= Integer.parseInt(IDelement[2])) {
+                                    IDelement[2] = leftLimitString;
+                                }
+                            }else{ //  negative, has to be
+                                IDelement[2] = leftLimitString;
+                            }
+
+                          //  System.out.println("modify left extend");
+                        }
+
+                        if (!rightLimitString.equals("NA")) {
+                            if (Integer.parseInt(IDelement[3])>0) {
+                                if (Integer.parseInt(rightLimitString) >= Integer.parseInt(IDelement[3])) {
+                                    IDelement[3] = rightLimitString;
+                                }
+                            }else{
+                                IDelement[3] = rightLimitString;
+                            }
+
+                          //  System.out.println("modify right extend");
+                        }
+
+                        lastID = String.join("_", IDelement);
+
                         lastID = lastID + "_" + leftConsen.length() + "_" + rightConsen.length();
                         OriginalContig = lastID + "," + OriginalContig;
 
@@ -441,12 +474,35 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     leftConsen="";
                     rightConsen="";
                     OriginalContig="";
+                    leftLimitString="NA";
+                    rightLimitString="NA";
                 }
 
                 if (s.getString(1).startsWith("L-")){ // left extension consensus sequence
                     leftConsen = s.getString(1).substring(2);
+
+                    Pattern numberPattern = Pattern.compile("l(\\d+)-");
+                    Matcher numberMatcher = numberPattern.matcher(leftConsen);
+
+                    if (numberMatcher.find()) {
+                        leftLimitString = numberMatcher.group(1);
+                        System.out.println("found a left: " + leftLimitString + " " + currentID);
+
+                        leftConsen.replaceAll("l\\d+-", "");
+                    }
+
                 }else if (s.getString(1).startsWith("R-")){ // right extension consensus sequence
                     rightConsen= s.getString(1).substring(2);
+
+                    Pattern numberPattern = Pattern.compile("r(\\d+)-");
+                    Matcher numberMatcher = numberPattern.matcher(rightConsen);
+
+                    if (numberMatcher.find()) {
+                        rightLimitString = numberMatcher.group(1);
+                        System.out.println("found a right: " + rightLimitString + " " + currentID);
+                        rightConsen.replaceAll("r\\d+-", "");
+                    }
+
                 }else{
                     OriginalContig = s.getString(1);
                 }
@@ -459,6 +515,30 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                 leftConsen = reverseString(leftConsen);
                 OriginalContig = leftConsen + OriginalContig;
                 OriginalContig = OriginalContig + rightConsen;
+
+                String[] IDelement = lastID.split("_");
+                if (!leftLimitString.equals("NA")) {
+                    if (Integer.parseInt(IDelement[2])>0) { //
+                        if (Integer.parseInt(leftLimitString) >= Integer.parseInt(IDelement[2])) {
+                            IDelement[2] = leftLimitString;
+                        }
+                    }else{ //  negative, has to be
+                        IDelement[2] = leftLimitString;
+                    }
+                }
+
+                if (!rightLimitString.equals("NA")) {
+                    if (Integer.parseInt(IDelement[3])>0) {
+                        if (Integer.parseInt(rightLimitString) >= Integer.parseInt(IDelement[3])) {
+                            IDelement[3] = rightLimitString;
+                        }
+                    }else{
+                        IDelement[3] = rightLimitString;
+                    }
+                }
+
+                lastID = String.join("_", IDelement);
+
                 lastID = lastID + "_" + leftConsen.length() + "_" + rightConsen.length();
                 OriginalContig = lastID + "," + OriginalContig;
 
@@ -487,6 +567,10 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
         int longestExtend = 300; // two reads with 150nt overlaps maximum 290
         int[][] consensus = new int[300][4];// = new int[300][4];
         int[][] consensusRight = new int[300][4];
+        int leftRepeat=0;
+        int rightRepeat=0;
+        int leftRepeatLimit=0;
+        int rightRepeatLimit=0;
 
         public Iterator<Row> call(Iterator<Row> sIterator) throws Exception {
             while (sIterator.hasNext()) {
@@ -501,6 +585,15 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                 }else if (lastContig.equals(contigID)){
 
                 }else{
+                    if (leftRepeat>=2){
+                        leftRepeatLimit=param.maxKmerSize;
+                    }
+
+                    if (rightRepeat>=2){
+                        rightRepeatLimit=param.maxKmerSize;
+                    }
+
+
                     String consen = "";
                     for (int i=0; i<longestExtend; i++){
                         int highCharInt =-1;
@@ -522,6 +615,11 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                         if (highCharInt>=0) {
                             consen += int2char(highCharInt);
                         }
+                    }
+
+                    if (leftRepeatLimit>0){
+                        // consen += "l" + leftRepeatLimit + "-" ;
+                        consen = "l" + 1 + "-" + consen;
                     }
 
                     ExtensionList.add(RowFactory.create(lastContig, "L-" + consen));
@@ -549,12 +647,22 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                         }
                     }
 
+                    if (rightRepeatLimit>0){
+                        // consen += "r" + rightRepeatLimit + "-" ;
+                        consen = "r" + 1 + "-" + consen;
+                    }
+
                     ExtensionList.add(RowFactory.create(lastContig, "R-" + consen));
 
                     lastContig=contigID;
 
                     consensus=new int[300][4];
                     consensusRight = new int[300][4];
+
+                    leftRepeat=0;
+                    rightRepeat=0;
+                    leftRepeatLimit=0;
+                    rightRepeatLimit=0;
                 }
 
                 String Len= s.getString(2).replaceAll("\\D+", "-");
@@ -566,6 +674,12 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                 String[] tags = Arrays.copyOfRange(tags_extra, 1, tags_extra.length);
 
                 if (s.getString(0).endsWith("-L")){
+
+                    if (s.getString(3).equals("L")){
+                        leftRepeat++;
+                        continue;
+                    }
+
                     int refStart = s.getInt(1);
 
                     if (refStart >=10){
@@ -599,6 +713,12 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     }
 
                 }else if (s.getString(0).endsWith("-R")){
+
+                    if (s.getString(3).equals("R")){
+                        rightRepeat++;
+                        continue;
+                    }
+
                     int start=0;
                     int alignLength =0;
                     int overhang=0;
@@ -614,6 +734,7 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     for (int i=0; i<Lengths.length; i++){
                         if (tags[i].equals("M")){
                             start=i;
+                            break;
                         }
                     }
 
@@ -628,7 +749,7 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     }
 
                     int refLength = 200;
-                    int refTailLength = refLength - (alignLength + refStart);
+                    int refTailLength = refLength - (alignLength + refStart -1 ); // refStart is not start Index rather the real position
                     if(refTailLength >= 10){
                         continue;
                     }
@@ -652,6 +773,24 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
 
 
                 }else{
+
+                    if (s.getString(3).equals("L")){
+                        leftRepeat++;
+                        continue;
+                    }
+
+                    if (s.getString(3).equals("R")){
+                        rightRepeat++;
+                        continue;
+                    }
+
+                    if (s.getString(3).equals("L-R")){
+                        leftRepeat++;
+                        rightRepeat++;
+                        continue;
+                    }
+
+
                     int start =0;
                     int alignLength = 0;
                     int overhang = 0;
@@ -687,6 +826,7 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                         for (int i=0; i<Lengths.length;i++){
                             if(tags[i].equals("M")){
                                 start = i;
+                                break;
                             }
                         }
 
@@ -702,7 +842,7 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
 
                         String[] contig = s.getString(0).split("_");
                         int refLength = Integer.parseInt(contig[1]);
-                        int refTailLength = refLength - (alignLength + refStart);
+                        int refTailLength = refLength - (alignLength + refStart -1);
 
                         if (refTailLength >=10){
                             continue;
@@ -730,7 +870,16 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
 
             }
 
-            if (longestExtend > 1) { // ?
+            if (longestExtend > 1) { //
+
+                if (leftRepeat>=2){
+                    leftRepeatLimit=param.maxKmerSize;
+                }
+
+                if (rightRepeat>=2){
+                    rightRepeatLimit=param.maxKmerSize;
+                }
+
                 String consen = "";
                 for (int i = 0; i < longestExtend; i++) {
                     int highCharInt = -1;
@@ -754,6 +903,16 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     }
                 }
 
+                if (leftRepeatLimit>0){
+                    // consen += "l" + leftRepeatLimit + "-" ;
+                    consen = "l" + 1 + "-" + consen ;
+                }
+/*
+                if (rightRepeatLimit>0){
+                    // consen += "r" + rightRepeatLimit + "-" ;
+                    consen += "r" + 1 + "-" ;
+                }
+*/
                 ExtensionList.add(RowFactory.create(lastContig, "L-" + consen));
 
                 consen = "";
@@ -777,6 +936,14 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                     if (highCharInt>=0) {
                         consen += int2char(highCharInt);
                     }
+                }
+/*
+                if (leftRepeatLimit>0){
+                    consen += "l" + 1 + "-" ;
+                }
+*/
+                if (rightRepeatLimit>0){
+                    consen = "r" + 1 + "-" + consen ;
                 }
 
                 ExtensionList.add(RowFactory.create(lastContig, "R-" + consen));
@@ -994,12 +1161,13 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
         public Iterator<String> call(Iterator<String> sIterator) throws Exception {
             String executable = SparkFiles.get("minimap2");
             String indexPath = SparkFiles.get("contigEnds.mmi");
+            String samProcesser = SparkFiles.get("samProcesser.pl");
+
 
             int CPUs= Runtime.getRuntime().availableProcessors();
             if (CPUs <=1){
                 CPUs=1;
             }
-
 
             List<String> executeCommands = Arrays.asList(
                 "/bin/bash",
@@ -1014,7 +1182,11 @@ public class ReflexivDSDynamicKmerMapping implements Serializable {
                         indexPath,
                     "/dev/stdin",
                     "|",
-                    "awk '{if ($3!=\"*\" && $1!~/^@/){print $3\"\\t\"$4\"\\t\"$6\"\\t\"$10}}' "
+                    "perl",
+                    samProcesser,
+                    "/dev/stdin",
+                    "/dev/stdout"
+                    //"awk '{if ($3!=\"*\" && $1!~/^@/){print $3\"\\t\"$4\"\\t\"$6\"\\t\"$10}}' "
                 )
             );
 

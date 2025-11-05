@@ -1234,6 +1234,7 @@ public class ReflexivDSDynamicKmerExtend implements Serializable {
                  //   }
 
                     long attribute2=onlyChangeReflexivMarker(subKmer.getLong(1), 1);
+                    /*
                     if (getLeftMarker(subKmer.getLong(1)) >0 && getRightMarker(subKmer.getLong(1)) >0){
                         attribute2 = buildingAlongFromThreeInt(1, leftExtend, rightExtend);
                     }else if (getLeftMarker(subKmer.getLong(1)) >0 ){
@@ -1241,6 +1242,8 @@ public class ReflexivDSDynamicKmerExtend implements Serializable {
                     }else if (getRightMarker(subKmer.getLong(1)) >0) {
                         attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), rightExtend);
                     }
+                    */
+
                     /*
                     if (getLeftMarker(subKmer.getLong(1)) >0 && getRightMarker(subKmer.getLong(1)) >0){
                         attribute2 = buildingAlongFromThreeInt(1, getLeftMarker(subKmer.getLong(1)), getRightMarker(subKmer.getLong(1)));
@@ -1254,6 +1257,7 @@ public class ReflexivDSDynamicKmerExtend implements Serializable {
 
                  //   System.out.println("main body " + BinaryBlocksToString(cuttedKmer) + " " + getLeftMarker(subKmer.getLong(1)) + " " + getRightMarker(subKmer.getLong(1)));
 //                    long attribute2 = buildingAlongFromThreeInt(1, -1, -1);
+                    // attribute2=subKmer.getLong(1);
                     kmerList.add(RowFactory.create(cuttedKmer, attribute2));
                 }
 

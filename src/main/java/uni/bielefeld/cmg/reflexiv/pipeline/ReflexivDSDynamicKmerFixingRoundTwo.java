@@ -278,10 +278,10 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
                     String prefix = Seq.substring(0,200);
                     String suffix = Seq.substring(Length-200);
 
-                    ContigEnds.add(ID+"-L\n"+prefix);
-                    ContigEnds.add(ID+"-R\n"+suffix);
+                    ContigEnds.add(">" + ID + "-L\n"+prefix);
+                    ContigEnds.add(">" + ID+"-R\n"+suffix);
                 }else{
-                    ContigEnds.add(ID+"\n"+Seq);
+                    ContigEnds.add(">" + ID+"\n"+Seq);
                 }
             }
 
@@ -997,7 +997,7 @@ public class ReflexivDSDynamicKmerFixingRoundTwo implements Serializable {
             int length = contig[1].length();
 
             if (length >= 2*param.maxKmerSize) {
-                contigList.add(RowFactory.create(">" + contig[0] + "_" + s._2(), contig[1]));
+                contigList.add(RowFactory.create(contig[0] + "_" + s._2(), contig[1]));
             }
             //if (length>=200){
 

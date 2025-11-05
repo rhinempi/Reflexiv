@@ -195,10 +195,6 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
 
         JavaRDD<String> FastqRDD = FastqDS.toJavaRDD();
 
-        DSErrorCorrectionPipe javaPipe = new DSErrorCorrectionPipe();
-        JavaRDD<String> correctedFastq = FastqRDD.mapPartitions(javaPipe);
-        correctedFastq.saveAsTextFile(param.outputPath + "/Read_Repartitioned_corrected/", FourMcCodec.class); // try GzipCodec.class
-
         if (!param.inputFormat.equals("bzip2")){
 
 
@@ -220,10 +216,22 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
         }
         //  DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
 
+
+        DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
+        FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
+
+        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+        FastqDS = FastqDS.filter(FilterDSUnit);
+
+        ErrorCorrectionLighterPipe LigtherErrorCorrection = new ErrorCorrectionLighterPipe();
+
+        JavaRDD<String> CorrectedFastq = FastqDS.toJavaRDD().mapPartitions(LigtherErrorCorrection);
+        FastqDS = spark.createDataset(CorrectedFastq.rdd(), Encoders.STRING());
+
         DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
         Dataset<String> FastqDSLine = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
 
-        DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
+        //DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
         FastqDSLine = FastqDSLine.filter(FilterDSUnit);
 
@@ -241,7 +249,7 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
         if (param.interleavedSwitch) {
 
 
-            DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
+           // DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
             FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
 
             FastqDS = FastqDS.filter(FilterDSUnit);
@@ -618,6 +626,90 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class ErrorCorrectionLighterPipe implements FlatMapFunction<Iterator<String>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            String executable = SparkFiles.get("lighter");
+            String gzipExec = SparkFiles.get("gzip");
+
+            int fileSuffix = (int) (Math.random() * 100000000);
+
+            List<String> executeCommands = Arrays.asList(
+                    "/bin/bash",
+                    "-c",
+                    String.join(" ",
+                            "cat",
+                            ">",
+                            param.tmpDir + "/partition" + fileSuffix+ ".fastq",
+                            "&&",
+
+                            executable,
+                            // "/vol/spool/Reflexiv/Reflexiv-master/sbin/lighter",
+                            "-r", param.tmpDir + "/partition" + fileSuffix+".fastq",
+                            "-K", "17 200000000"
+                    )
+            );
+
+            System.out.println(String.join(" ", executeCommands));
+
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command(executeCommands);
+            // Start the process
+            final Process process = pb.start();
+
+            // Get the output stream of the process
+            OutputStream outputStream = process.getOutputStream();
+
+            // Start a separate thread to read the output of the external program
+            final List<String> output = new ArrayList<String>();
+
+            Thread outputThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        reflexivKmerStringList.add(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            outputThread.start();
+
+
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+              //  System.out.println(s);
+                outputStream.write(s.getBytes());
+                outputStream.write("\n".getBytes());
+                //  outputStream.flush();
+            }
+
+            outputStream.close();
+
+          //  Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
+
+            // Wait for the output thread to finish
+            try {
+                outputThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            try {
+                int exitCode = process.waitFor();
+                // System.out.println("External process finished with exit code " + exitCode);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
 
             return reflexivKmerStringList.iterator();
         }

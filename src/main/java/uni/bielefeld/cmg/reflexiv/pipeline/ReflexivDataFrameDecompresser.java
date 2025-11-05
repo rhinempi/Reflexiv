@@ -212,6 +212,14 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         }
         //  DSFastqFilterOnlySeq DSFastqFilterToSeq = new DSFastqFilterOnlySeq(); // for reflexiv
 
+        DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
+        FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
+
+        ErrorCorrectionLighterPipe LigtherErrorCorrection = new ErrorCorrectionLighterPipe();
+
+        JavaRDD<String> CorrectedFastq = FastqDS.toJavaRDD().mapPartitions(LigtherErrorCorrection);
+        FastqDS = spark.createDataset(CorrectedFastq.rdd(), Encoders.STRING());
+
         DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
         Dataset<String> FastqDSLine = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
 
@@ -233,7 +241,7 @@ public class ReflexivDataFrameDecompresser implements Serializable{
         if (param.interleavedSwitch) {
 
 
-            DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
+           // DSFastqFilterWithQual DSFastqFilterToFastq = new DSFastqFilterWithQual();
             FastqDS = FastqDS.map(DSFastqFilterToFastq, Encoders.STRING());
 
             FastqDS = FastqDS.filter(FilterDSUnit);
@@ -524,6 +532,87 @@ public class ReflexivDataFrameDecompresser implements Serializable{
             try {
                 int exitCode = process.waitFor();
                // System.out.println("External process finished with exit code " + exitCode);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            return reflexivKmerStringList.iterator();
+        }
+    }
+
+    class ErrorCorrectionLighterPipe implements FlatMapFunction<Iterator<String>, String>, Serializable {
+        List<String> reflexivKmerStringList = new ArrayList<String>();
+
+
+        public Iterator<String> call(Iterator<String> sIterator) throws Exception {
+            String executable = SparkFiles.get("lighter");
+            String gzipExec = SparkFiles.get("gzip");
+
+            int fileSuffix = (int) (Math.random() * 1000000);
+
+            List<String> executeCommands = Arrays.asList(
+                    "/bin/bash",
+                    "-c",
+                    String.join(" ",
+                            "cat",
+                            ">",
+                            "/tmp/partition"+fileSuffix+".fastq",
+                            ";",
+
+                            executable,
+                            "-r", "/tmp/partition" + fileSuffix + ".fastq",
+                            "-K", "17 200000000",
+                            ";",
+
+                            "rm -rf",
+                            "/tmp/partition" + fileSuffix + ".fastq"
+                    )
+            );
+
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command(executeCommands);
+            // Start the process
+            final Process process = pb.start();
+
+            // Get the output stream of the process
+            OutputStream outputStream = process.getOutputStream();
+
+            // Start a separate thread to read the output of the external program
+            final List<String> output = new ArrayList<String>();
+
+            Thread outputThread = new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        reflexivKmerStringList.add(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            outputThread.start();
+
+
+            while (sIterator.hasNext()) {
+                String s = sIterator.next();
+                outputStream.write(s.getBytes());
+                outputStream.write("\n".getBytes());
+                //  outputStream.flush();
+            }
+
+            outputStream.close();
+
+            // Wait for the output thread to finish
+            try {
+                outputThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+
+            try {
+                int exitCode = process.waitFor();
+                // System.out.println("External process finished with exit code " + exitCode);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
