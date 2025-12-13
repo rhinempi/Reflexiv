@@ -405,8 +405,6 @@ public class ReflexivDataFrameCounter64 implements Serializable{
                 read = s.next();
                 readLength = read.length();
 
-    //            System.out.println(read);
-
                 if (readLength - param.kmerSize - param.endClip +1 <= 0 || param.frontClip > readLength) {
                     continue;
                 }

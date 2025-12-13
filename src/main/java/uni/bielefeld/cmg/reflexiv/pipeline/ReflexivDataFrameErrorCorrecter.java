@@ -7,16 +7,14 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkFiles;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.FilterFunction;
-import org.apache.spark.api.java.function.FlatMapFunction;
-import org.apache.spark.api.java.function.MapFunction;
-import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.api.java.function.*;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -29,10 +27,8 @@ import uni.bielefeld.cmg.reflexiv.util.InfoDumper;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.nio.file.StandardOpenOption;
+import java.util.*;
 
 
 /**
@@ -205,6 +201,8 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
             FastqRDD.saveAsTextFile(param.outputPath + "/Read_Repartitioned_4MC/", FourMcCodec.class);
 
             Configuration baseConfiguration = new Configuration();
+            baseConfiguration.setLong("mapreduce.input.fileinputformat.split.minsize", 128 * 1024 * 1024); // set minimum input split to 128mb
+
             Job jobConf = Job.getInstance(baseConfiguration);
             JavaPairRDD<LongWritable, Text> FastqPairRDD = sc.newAPIHadoopFile(param.outputPath + "/Read_Repartitioned_4MC/part*", FourMcTextInputFormat.class, LongWritable.class, Text.class, jobConf.getConfiguration());
 
@@ -223,23 +221,27 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
         DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
         FastqDS = FastqDS.filter(FilterDSUnit);
 
-        ErrorCorrectionLighterPipe LigtherErrorCorrection = new ErrorCorrectionLighterPipe();
+        if (param.correction) {
+            ErrorCorrectionLighterPipe LigtherErrorCorrection = new ErrorCorrectionLighterPipe();
 
-        JavaRDD<String> CorrectedFastq = FastqDS.toJavaRDD().mapPartitions(LigtherErrorCorrection);
-        FastqDS = spark.createDataset(CorrectedFastq.rdd(), Encoders.STRING());
+            JavaRDD<String> CorrectedFastq = FastqDS.toJavaRDD().mapPartitions(LigtherErrorCorrection);
+            FastqDS = spark.createDataset(CorrectedFastq.rdd(), Encoders.STRING());
+        }
 
-        DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
-        Dataset<String> FastqDSLine = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
+      //  FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Lighter_correct_tmp");
 
         //DSFastqUnitFilter FilterDSUnit = new DSFastqUnitFilter();
 
-        FastqDSLine = FastqDSLine.filter(FilterDSUnit);
-
-        if (param.partitions > 0) {
-            FastqDSLine = FastqDSLine.repartition(param.partitions);
-        }
-
         if (param.pairing && param.inputSingleSwitch ){
+            DSFastqFilterWithOutSeq DSFastqFilterToSeqOnly = new DSFastqFilterWithOutSeq();
+            Dataset<String> FastqDSLine = FastqDS.map(DSFastqFilterToSeqOnly, Encoders.STRING());
+
+            FastqDSLine = FastqDSLine.filter(FilterDSUnit);
+
+            if (param.partitions > 0) {
+                FastqDSLine = FastqDSLine.repartition(param.partitions);
+            }
+
             FastqRDD = FastqDSLine.toJavaRDD();
          //   FastqRDD.persist(StorageLevel.DISK_ONLY());
             FastqRDD.saveAsTextFile(param.outputPath + "/Read_Single", FourMcCodec.class);
@@ -257,6 +259,8 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
             DSInputFastqToTab FastqToTab = new DSInputFastqToTab();
             FastqDS = FastqDS.mapPartitions(FastqToTab, Encoders.STRING());
 
+ //           FastqDS.write().mode(SaveMode.Overwrite).format("text").option("compression", "gzip").save(param.outputPath + "/Read_Correct_link_tmp");
+
             JavaRDD<String> MergedSeq;
 
             DSJavaPipe myPipe = new DSJavaPipe();
@@ -269,7 +273,7 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
                 MergedSeq = MergedSeq.repartition(param.partitions);
             }
 
-            MergedSeq.saveAsTextFile(param.outputPath + "/Read_Interleaved_Merged", FourMcCodec.class);
+            MergedSeq.saveAsTextFile(param.outputPath + "/Read_Interleaved_Merged",  FourMcCodec.class);
         }
 
         if (param.inputPairedSwitch){
@@ -519,7 +523,6 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
             });
             outputThread.start();
 
-
             while (sIterator.hasNext()) {
                 String s = sIterator.next();
                 outputStream.write(s.getBytes());
@@ -539,7 +542,10 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
 
             try {
                 int exitCode = process.waitFor();
-                // System.out.println("External process finished with exit code " + exitCode);
+                if (exitCode != 0) {
+                    // include stderr debugging when needed; here we throw to fail the partition
+                    throw new RuntimeException("flash exited with code " + exitCode);
+                }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -634,7 +640,6 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
     class ErrorCorrectionLighterPipe implements FlatMapFunction<Iterator<String>, String>, Serializable {
         List<String> reflexivKmerStringList = new ArrayList<String>();
 
-
         public Iterator<String> call(Iterator<String> sIterator) throws Exception {
             String executable = SparkFiles.get("lighter");
             String gzipExec = SparkFiles.get("gzip");
@@ -653,7 +658,7 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
                             executable,
                             // "/vol/spool/Reflexiv/Reflexiv-master/sbin/lighter",
                             "-r", param.tmpDir + "/partition" + fileSuffix+".fastq",
-                            "-K", "17 200000000"
+                            "-K", "17 100000000"
                     )
             );
 
@@ -685,7 +690,7 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
 
             while (sIterator.hasNext()) {
                 String s = sIterator.next();
-              //  System.out.println(s);
+                //  System.out.println(s);
                 outputStream.write(s.getBytes());
                 outputStream.write("\n".getBytes());
                 //  outputStream.flush();
@@ -693,7 +698,7 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
 
             outputStream.close();
 
-          //  Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
+            //  Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
 
             // Wait for the output thread to finish
             try {
@@ -704,12 +709,16 @@ public class ReflexivDataFrameErrorCorrecter implements Serializable{
 
             try {
                 int exitCode = process.waitFor();
-                // System.out.println("External process finished with exit code " + exitCode);
+                if (exitCode != 0) {
+                    // include stderr debugging when needed; here we throw to fail the partition
+                    throw new RuntimeException("lighter exited with code " + exitCode + " on file " + fileSuffix);
+                }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
 
-            Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
+           // Runtime.getRuntime().exec("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq");
+            Files.deleteIfExists(Paths.get("rm -rf " + param.tmpDir + "/partition" + fileSuffix + ".fastq"));
 
             return reflexivKmerStringList.iterator();
         }

@@ -97,6 +97,7 @@ public class DefaultParam implements Serializable{
     public int kmerIncrease = 10;
     public int maxKmerSize = 99;
 
+    public boolean correction = true;
 
     public int kmerBits = (1 << (kmerSize*2)) - 1;
     public int kmerOverlap = kmerSize - 1;

@@ -1321,7 +1321,7 @@ public class Pipelines implements Pipeline, Serializable{
         //          reflexivDSDecompresserPipe();
         //      }
         param.setGzip(true);
-        param.inputFormat="4mc";
+       // param.inputFormat="4mc";
 
         // step 2 smallest kmer count
 

@@ -274,7 +274,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
 
         markerTupleRow = markerTupleRow.sort("count");
 
-
+/*
         DSShorterForwardAndRCContigRemovalArray shorterForwardAndRCRemovalArray = new DSShorterForwardAndRCContigRemovalArray();
 
         FixingFullKmer = markerTupleRow.mapPartitions(shorterForwardAndRCRemovalArray, markerTupleEncoder);
@@ -284,7 +284,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
         /**
          * round three
          */
-
+/*
         ContigsRDDIndex = FixingFullKmer.toJavaRDD().zipWithIndex();
 
         markerTuple = spark.createDataset(ContigsRDDIndex.rdd(), Encoders.tuple(markerTupleEncoder, Encoders.LONG()));
@@ -319,6 +319,7 @@ public class ReflexivDSDynamicKmerDedup implements Serializable {
 
         markerTupleRow = markerTupleRow.sort("count");
 
+*/
         DSShorterForwardAndRCContigRemoval shorterForwardAndRCRemoval=new DSShorterForwardAndRCContigRemoval();
         ContigDS = markerTupleRow.mapPartitions(shorterForwardAndRCRemoval, Encoders.STRING());
 
